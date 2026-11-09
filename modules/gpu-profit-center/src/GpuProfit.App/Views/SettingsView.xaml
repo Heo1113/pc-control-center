@@ -1,0 +1,149 @@
+<UserControl x:Class="GpuProfit.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <TextBlock Text="설정" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="{Binding StatusText}" Style="{StaticResource StatusLine}" VerticalAlignment="Center" />
+    </DockPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="전기요금과 전력 가정 (데이터베이스에 함께 저장)" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="{Binding TariffNote}" Style="{StaticResource Caption}" />
+              <TextBlock Text="요금 방식" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding TariffModes}" SelectedItem="{Binding Mode}" AutomationProperties.Name="요금 방식" />
+              <TextBlock Text="유효 단가 (원/kWh)" Style="{StaticResource FieldLabel}" />
+              <TextBox Text="{Binding FlatRate, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" AutomationProperties.Name="유효 단가" />
+              <TextBlock Text="누진 단계 (추정 방식에만 사용)" Style="{StaticResource FieldLabel}" />
+              <TextBlock Text="{Binding TiersHelp}" Style="{StaticResource Caption}" />
+              <TextBox Text="{Binding TiersText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" MinHeight="70" TextWrapping="Wrap" Margin="0,2,0,4" AutomationProperties.Name="누진 단계" />
+              <UniformGrid Columns="3">
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="작업 제외 가구 월 사용량 (kWh)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding HouseholdKwh, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="작업 월 사용량 가정 (kWh, 선택)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding WorkloadKwh, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel><TextBlock Text="세금·기금 배율 (예: 1.137)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding Surcharge, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+              </UniformGrid>
+              <TextBlock Text="기본 전력 산정 기준" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding Bases}" SelectedItem="{Binding DefaultBasis}" AutomationProperties.Name="기본 전력 산정 기준" />
+              <UniformGrid Columns="2">
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="시스템 추가 전력 가정 (W)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding ExtraW, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel><TextBlock Text="GPU 유휴 전력 가정 (W)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding IdleW, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="최대 샘플 간격 (초, 넘으면 보간 안 함)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding MaxGap, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                <StackPanel><TextBlock Text="GPU 활성 판정 사용률 (%)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding ActiveUtil, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+              </UniformGrid>
+              <TextBlock Text="미관측 구간 처리" Style="{StaticResource FieldLabel}" />
+              <ComboBox ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" AutomationProperties.Name="미관측 구간 처리" />
+              <Button Content="회계 조건 저장" Command="{Binding SaveProfileCommand}" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+            </StackPanel>
+          </Border>
+          <StackPanel Grid.Column="1">
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Text="수집·보존·표시 (settings.json)" Style="{StaticResource SectionTitle}" />
+                <UniformGrid Columns="2">
+                  <StackPanel Margin="0,0,6,0"><TextBlock Text="샘플 간격 (초)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding IntervalSeconds, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                  <StackPanel><TextBlock Text="센서 기록 보존 (일, 0 = 무기한)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding RetentionDays, UpdateSourceTrigger=PropertyChanged}" /></StackPanel>
+                </UniformGrid>
+                <CheckBox Content="GPU 센서 사용 (NVIDIA NVML)" IsChecked="{Binding GpuEnabled}" Margin="0,8,0,0" />
+                <CheckBox Content="CPU·RAM 센서 사용" IsChecked="{Binding SystemEnabled}" Margin="0,4,0,0" />
+                <TextBlock Text="글자·화면 크기" Style="{StaticResource FieldLabel}" />
+                <ComboBox ItemsSource="{Binding FontScales}" SelectedItem="{Binding FontScale}" AutomationProperties.Name="글자 크기" />
+                <CheckBox Content="시각을 UTC로 표시" IsChecked="{Binding UseUtc}" Margin="0,8,0,0" />
+                <TextBlock Style="{StaticResource Caption}" Text="보존 기간이 지나도 세션 구간의 센서 기록은 지우지 않으므로 과거 세션을 언제든 다시 계산할 수 있습니다." Margin="0,6,0,0" />
+                <Button Content="설정 저장" Command="{Binding SaveAppSettingsCommand}" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Text="데이터 관리" Style="{StaticResource SectionTitle}" />
+                <DataGrid ItemsSource="{Binding DatabaseInfo}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="항목" Binding="{Binding Name}" />
+                    <DataGridTextColumn Header="값" Binding="{Binding Value}" Width="*" ElementStyle="{StaticResource WrapCell}" />
+                    <DataGridTextColumn Header="참고" Binding="{Binding Note}" ElementStyle="{StaticResource WrapCell}" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <WrapPanel Margin="0,8,0,0">
+                  <Button Content="백업" Command="{Binding BackupCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="백업에서 복원…" Command="{Binding RestoreCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="무결성 검사" Command="{Binding IntegrityCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="전체 JSON 내보내기" Command="{Binding ExportLedgerCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="세션·수익·비용 CSV" Command="{Binding ExportSessionsCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="모든 세션 재계산" Command="{Binding RecalculateAllCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="데이터 폴더 열기" Command="{Binding OpenDataFolderCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="데모 데이터 추가" Command="{Binding AddDemoDataCommand}" Style="{StaticResource ToolButton}" />
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Caption}" Text="복원할 때 현재 데이터베이스는 삭제하지 않고 옆에 보관합니다. 손상된 데이터베이스도 삭제하지 않고 이름을 바꿔 보관합니다. 이 앱은 지갑 키·API 키·비밀번호를 저장하지 않습니다." />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="장비와 감가상각" Style="{StaticResource SectionTitle}" />
+              <WrapPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="이름" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding EqName, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="구입 가격 (원)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding EqPrice, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="잔존가치 (원)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding EqSalvage, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="방식" Style="{StaticResource FieldLabel}" /><ComboBox ItemsSource="{Binding Methods}" SelectedItem="{Binding EqMethod}" MinWidth="140" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="기간 (개월)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding EqLifeMonths, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="수명 (시간)" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding EqLifeHours, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="적용 작업" Style="{StaticResource FieldLabel}" /><ComboBox ItemsSource="{Binding WorkloadScopes}" SelectedItem="{Binding EqScope}" MinWidth="140" /></StackPanel>
+                <Button Content="장비 추가" Command="{Binding AddEquipmentCommand}" Style="{StaticResource ToolButton}" VerticalAlignment="Bottom" />
+              </WrapPanel>
+              <DataGrid ItemsSource="{Binding Equipment}" SelectedItem="{Binding SelectedEquipment}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                        CanUserAddRows="False" MaxHeight="200" Margin="0,6,0,0">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="장비" Binding="{Binding Name}" />
+                  <DataGridTextColumn Header="가격" Binding="{Binding Price}" />
+                  <DataGridTextColumn Header="감가상각" Binding="{Binding Method}" />
+                  <DataGridTextColumn Header="적용" Binding="{Binding Scope}" />
+                  <DataGridTextColumn Header="상태" Binding="{Binding Active}" />
+                  <DataGridTextColumn Header="메모" Binding="{Binding Note}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <WrapPanel Margin="0,6,0,0">
+                <Button Content="적용/해제" Command="{Binding ToggleEquipmentCommand}" Style="{StaticResource ToolButton}" />
+                <Button Content="삭제" Command="{Binding DeleteEquipmentCommand}" Style="{StaticResource ToolButton}" />
+              </WrapPanel>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="환율 (사용자 입력, 네트워크로 가져오지 않음)" Style="{StaticResource SectionTitle}" />
+              <WrapPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="통화" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding RateCurrency, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="1단위당 원화" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding RateValue, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="기준 시각" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding RateAsOf, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <StackPanel Margin="0,0,6,0"><TextBlock Text="출처" Style="{StaticResource FieldLabel}" /><TextBox Text="{Binding RateSource, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource Field}" /></StackPanel>
+                <Button Content="환율 추가" Command="{Binding AddRateCommand}" Style="{StaticResource ToolButton}" VerticalAlignment="Bottom" />
+              </WrapPanel>
+              <DataGrid ItemsSource="{Binding Rates}" SelectedItem="{Binding SelectedRate}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                        CanUserAddRows="False" MaxHeight="200" Margin="0,6,0,0">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="통화" Binding="{Binding Currency}" />
+                  <DataGridTextColumn Header="1단위당" Binding="{Binding KrwPerUnit}" />
+                  <DataGridTextColumn Header="기준 시각" Binding="{Binding AsOf}" />
+                  <DataGridTextColumn Header="출처" Binding="{Binding Source}" Width="*" />
+                  <DataGridTextColumn Header="구분" Binding="{Binding Origin}" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <Button Content="선택 환율 삭제" Command="{Binding DeleteRateCommand}" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

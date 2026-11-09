@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Timeouts exist to name a hanging test on CI (same as projects B and E). -->
+    <NoWarn>$(NoWarn);xUnit1069</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PcControlCenter.Core\PcControlCenter.Core.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Operator\PcControlCenter.Operator.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.History\PcControlCenter.History.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Migration\PcControlCenter.Migration.csproj" />
+    <!-- Built first; started as a separate process by the supervisor tests (mock desktop only). -->
+    <ProjectReference Include="..\PcControlCenter.MockOperatorHost\PcControlCenter.MockOperatorHost.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

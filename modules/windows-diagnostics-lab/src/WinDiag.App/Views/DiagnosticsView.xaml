@@ -1,0 +1,176 @@
+<UserControl x:Class="WinDiag.App.Views.DiagnosticsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WinDiag.App">
+  <UserControl.Resources>
+    <local:StatusBrushConverter x:Key="StatusBrush" />
+    <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    <local:NotEmptyToVisibilityConverter x:Key="NotEmpty" />
+    <DataTemplate x:Key="FindingTemplate">
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Strength, StringFormat='근거 강도: {0}'}" Style="{StaticResource Caption}"
+                       Visibility="{Binding HasStrength, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock DockPanel.Dock="Left" Text="{Binding Severity}" FontWeight="SemiBold" Margin="0,0,8,0" Foreground="{Binding Level, Converter={StaticResource StatusBrush}}" />
+            <TextBlock Text="{Binding Title}" Style="{StaticResource Value}" FontWeight="SemiBold" />
+          </DockPanel>
+          <TextBlock Text="{Binding Detail}" Style="{StaticResource Value}" Foreground="{StaticResource TextSecondaryBrush}" Visibility="{Binding Detail, Converter={StaticResource NotEmpty}}" />
+          <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,4,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate><TextBlock Text="{Binding StringFormat='· {0}'}" Style="{StaticResource Caption}" Foreground="{StaticResource TextSecondaryBrush}" /></DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <StackPanel Visibility="{Binding HasVerification, Converter={StaticResource BoolToVisibility}}" Margin="0,6,0,0">
+            <TextBlock Text="추가 검증 방법" Style="{StaticResource CardTitle}" />
+            <ItemsControl ItemsSource="{Binding Verification}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate><TextBlock Text="{Binding StringFormat='→ {0}'}" Style="{StaticResource Value}" /></DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          <TextBlock Text="{Binding Caution}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="0,6,0,0"
+                     Visibility="{Binding HasCaution, Converter={StaticResource BoolToVisibility}}" />
+          <Button Content="관련 이벤트 열기" HorizontalAlignment="Left" Margin="0,6,0,0" Padding="8,1"
+                  Command="{Binding DataContext.OpenEvidenceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}"
+                  Visibility="{Binding FirstEventId, Converter={StaticResource NotEmpty}}" />
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.Resources>
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Bottom">
+        <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" DisplayMemberPath="Name" MinWidth="130" Margin="0,0,6,6" />
+        <Button Content="분석 실행" Command="{Binding RunCommand}" Style="{StaticResource ToolButton}" />
+        <Button Content="보고서 HTML" Command="{Binding ExportHtmlCommand}" Style="{StaticResource ToolButton}" />
+        <Button Content="보고서 Markdown" Command="{Binding ExportMarkdownCommand}" Style="{StaticResource ToolButton}" />
+        <Button Content="진단 자료 묶음" Command="{Binding ExportBundleCommand}" Style="{StaticResource ToolButton}" />
+      </StackPanel>
+      <TextBlock Text="진단" Style="{StaticResource PageTitle}" />
+    </DockPanel>
+    <Border DockPanel.Dock="Top" Style="{StaticResource Card}">
+      <StackPanel>
+        <TextBlock Text="{Binding Summary}" Style="{StaticResource Value}" />
+        <TextBlock Text="확인된 사실(기록 자체) · 관측된 연관성(시간·센서 통계) · 원인 후보(추가 검증 필요)를 구분합니다. 어떤 항목도 원인을 확정하지 않습니다." Style="{StaticResource Caption}" />
+        <TextBlock Text="⚠ 가상(테스트) 이벤트가 포함된 결과입니다." Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Visibility="{Binding IncludesVirtual, Converter={StaticResource BoolToVisibility}}" />
+        <TextBlock Text="⚠ MOCK(가상) 센서 값이 포함된 결과입니다." Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Visibility="{Binding IncludesMock, Converter={StaticResource BoolToVisibility}}" />
+        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" />
+      </StackPanel>
+    </Border>
+    <TabControl Margin="6" Background="Transparent">
+      <TabItem Header="원인 후보 (검증 필요)">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Hypotheses}" ItemTemplate="{StaticResource FindingTemplate}" />
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="관측된 연관성">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Associations}" ItemTemplate="{StaticResource FindingTemplate}" />
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="확인된 사실">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding Facts}" ItemTemplate="{StaticResource FindingTemplate}" />
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Header="시스템 충돌">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}">
+            <DataGrid ItemsSource="{Binding Crashes}" SelectedItem="{Binding SelectedCrash}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="시각(기준)" Binding="{Binding Time, Mode=OneWay}" Width="135" />
+                <DataGridTextColumn Header="종류" Binding="{Binding Kind, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="직전 기록" Binding="{Binding Before, Mode=OneWay}" Width="*" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </Border>
+          <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Visibility="{Binding HasCrashDetail, Converter={StaticResource BoolToVisibility}}">
+            <StackPanel>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <ItemsControl ItemsSource="{Binding CrashFacts}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <StackPanel Margin="0,2">
+                          <TextBlock Style="{StaticResource Value}"><Run Text="{Binding Name, Mode=OneWay}" Foreground="{StaticResource TextMutedBrush}" /> <Run Text="{Binding Value, Mode=OneWay}" /></TextBlock>
+                          <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Visibility="{Binding Note, Converter={StaticResource NotEmpty}}" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock Text="{Binding CrashNotes}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="0,6,0,0" />
+                  <Button Content="이 시각 센서 보기" Command="{Binding ShowCrashSensorsCommand}" HorizontalAlignment="Left" Margin="0,6,0,0" Style="{StaticResource ToolButton}" />
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="직전 센서 (실측 또는 MOCK)" Style="{StaticResource CardTitle}" />
+                  <DataGrid ItemsSource="{Binding CrashSensors}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                            CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="지표" Binding="{Binding Metric, Mode=OneWay}" Width="*" />
+                      <DataGridTextColumn Header="이전 평균" Binding="{Binding BeforeMean, Mode=OneWay}" Width="80" />
+                      <DataGridTextColumn Header="이전 최대" Binding="{Binding BeforeMax, Mode=OneWay}" Width="80" />
+                      <DataGridTextColumn Header="시점" Binding="{Binding AtEvent, Mode=OneWay}" Width="70" />
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}">
+                <StackPanel>
+                  <TextBlock Text="관련 이벤트 (직전 30분 + 재부팅 기록)" Style="{StaticResource CardTitle}" />
+                  <DataGrid ItemsSource="{Binding CrashEventsBefore}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                            CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+                    <DataGrid.Columns>
+                      <DataGridTextColumn Header="시각" Binding="{Binding Time, Mode=OneWay}" Width="135" />
+                      <DataGridTextColumn Header="내용" Binding="{Binding Title, Mode=OneWay}" Width="*" />
+                      <DataGridTemplateColumn Width="54">
+                        <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                            <Button Content="보기" Padding="6,0" Command="{Binding DataContext.OpenCrashEventCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                          </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                      </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                  </DataGrid>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </TabItem>
+      <TabItem Header="반복 문제">
+        <Border Style="{StaticResource Card}">
+          <DataGrid ItemsSource="{Binding Repeats}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                    CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="중요도" Binding="{Binding Severity, Mode=OneWay}" Width="58" />
+              <DataGridTextColumn Header="횟수" Binding="{Binding Count, Mode=OneWay}" Width="52" />
+              <DataGridTextColumn Header="일수" Binding="{Binding Days, Mode=OneWay}" Width="44" />
+              <DataGridTextColumn Header="하루당" Binding="{Binding PerDay, Mode=OneWay}" Width="58" />
+              <DataGridTextColumn Header="분류" Binding="{Binding Category, Mode=OneWay}" Width="130" />
+              <DataGridTextColumn Header="문제" Binding="{Binding Title, Mode=OneWay}" Width="*" />
+              <DataGridTextColumn Header="추세" Binding="{Binding Trend, Mode=OneWay}" Width="100" />
+              <DataGridTextColumn Header="마지막" Binding="{Binding Last, Mode=OneWay}" Width="135" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </Border>
+      </TabItem>
+      <TabItem Header="수집 범위와 한계">
+        <Border Style="{StaticResource Card}">
+          <ItemsControl ItemsSource="{Binding Limitations}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate><TextBlock Text="{Binding StringFormat='· {0}'}" Style="{StaticResource Value}" Margin="0,2" /></DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</UserControl>

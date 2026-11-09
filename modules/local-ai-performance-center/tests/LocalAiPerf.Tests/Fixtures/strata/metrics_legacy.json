@@ -1,0 +1,8 @@
+{
+  "engine": {"model": "Qwen3.6-35B-A3B", "max_context": 32768, "images": false, "version": "0.1.40", "batch_groups": null},
+  "live": {"state": "generating", "queued": 2, "phase": "decode", "prompt_tokens": 2000, "generated": 100, "tok_s": 55.2, "tok_s_mean": 54.0, "prefill_tok_s_mean": 1200.0, "tok_s_window_s": 3},
+  "requests": [{"id": "abcdefabcdef", "time": 1793534000.0, "duration_s": 10.0, "finish": "length", "prompt_tokens": 2000, "reused": 0, "output_tokens": 512, "prompt_ms": 1600.0, "decode_ms": 9000.0, "first_engine_token_s": 1.7}],
+  "totals": {"since": 1793530000, "requests": 7, "prompt_tokens": 14000, "output_tokens": 3500, "prompt_ms": 1.0},
+  "hardware": {"gpu_util": 90},
+  "time": 1793534500.5
+}

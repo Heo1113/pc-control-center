@@ -1,0 +1,209 @@
+<UserControl x:Class="WinDiag.App.Views.CompareView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WinDiag.App">
+  <UserControl.Resources>
+    <local:StatusBrushConverter x:Key="StatusBrush" />
+    <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+  </UserControl.Resources>
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="400" />
+      <ColumnDefinition Width="*" />
+    </Grid.ColumnDefinitions>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock Text="비교" Style="{StaticResource PageTitle}" />
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="새로 고침" Command="{Binding ReloadCommand}" Padding="8,1" />
+              <TextBlock Text="기준선" Style="{StaticResource SectionTitle}" />
+            </DockPanel>
+            <DataGrid ItemsSource="{Binding Baselines}" SelectedItem="{Binding SelectedBaseline}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" MaxHeight="220">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="이름" Binding="{Binding Name, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="기준 시각" Binding="{Binding Time, Mode=OneWay}" Width="135" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <Grid Margin="0,8,0,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+              <TextBlock Text="이전" Style="{StaticResource Label}" VerticalAlignment="Center" />
+              <ComboBox Grid.Column="1" ItemsSource="{Binding Windows}" SelectedItem="{Binding BeforeWindow}" DisplayMemberPath="Name" />
+              <TextBlock Grid.Column="2" Text="이후" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="10,2,10,2" />
+              <ComboBox Grid.Column="3" ItemsSource="{Binding Windows}" SelectedItem="{Binding AfterWindow}" DisplayMemberPath="Name" />
+            </Grid>
+            <WrapPanel Margin="0,8,0,0">
+              <Button Content="전후 비교" Command="{Binding CompareCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="지금을 기준선으로" Command="{Binding AddBaselineNowCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="기준선 삭제" Command="{Binding DeleteBaselineCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="기준선 추가" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="이름 (예: BIOS 3.25 업데이트, EXPO 적용, 메모리 전압 1.40V)" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,6" MaxLength="120" />
+            <TextBlock Text="기준 날짜와 시각 (HH:mm)" Style="{StaticResource Caption}" />
+            <DockPanel Margin="0,2,0,6">
+              <TextBox DockPanel.Dock="Right" Text="{Binding NewTime, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="6,0,0,0" />
+              <DatePicker SelectedDate="{Binding NewDate}" />
+            </DockPanel>
+            <TextBlock Text="설명 (선택)" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding NewDescription, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,6" />
+            <Button Content="기준선 추가" Command="{Binding AddBaselineCommand}" HorizontalAlignment="Left" Style="{StaticResource ToolButton}" />
+            <TextBlock Text="사용자 기록에서 만들기" Style="{StaticResource CardTitle}" Margin="0,10,0,4" />
+            <DataGrid ItemsSource="{Binding Records}" SelectedItem="{Binding SelectedRecord}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" MaxHeight="180">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="시각" Binding="{Binding Time, Mode=OneWay}" Width="135" />
+                <DataGridTextColumn Header="기록" Binding="{Binding Title, Mode=OneWay}" Width="*" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <Button Content="선택한 기록을 기준선으로" Command="{Binding AddBaselineFromRecordCommand}" HorizontalAlignment="Left" Margin="0,6,0,0" Style="{StaticResource ToolButton}" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="구성 스냅샷 직접 비교" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="이전" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding Snapshots}" SelectedItem="{Binding SnapshotA}" Margin="0,2,0,4">
+              <ComboBox.ItemTemplate>
+                <DataTemplate><TextBlock><Run Text="{Binding FirstSeen, Mode=OneWay}" /> <Run Text="{Binding Summary, Mode=OneWay}" Foreground="{StaticResource TextMutedBrush}" /></TextBlock></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Text="이후" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding Snapshots}" SelectedItem="{Binding SnapshotB}" Margin="0,2,0,6">
+              <ComboBox.ItemTemplate>
+                <DataTemplate><TextBlock><Run Text="{Binding FirstSeen, Mode=OneWay}" /> <Run Text="{Binding Summary, Mode=OneWay}" Foreground="{StaticResource TextMutedBrush}" /></TextBlock></DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <WrapPanel>
+              <Button Content="구성 비교" Command="{Binding CompareSnapshotsCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="구성 비교 내보내기" Command="{Binding ExportSnapshotComparisonCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+            <TextBlock Text="{Binding SnapshotDiffText}" Style="{StaticResource Caption}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" Margin="8,8,8,0" />
+        <StackPanel Visibility="{Binding HasResult, Converter={StaticResource BoolToVisibility}}">
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                  <Button Content="결과 저장" Command="{Binding SaveResultCommand}" Style="{StaticResource ToolButton}" />
+                  <Button Content="HTML" Command="{Binding ExportResultCommand}" CommandParameter="html" Style="{StaticResource ToolButton}" />
+                  <Button Content="CSV" Command="{Binding ExportResultCommand}" CommandParameter="csv" Style="{StaticResource ToolButton}" />
+                  <Button Content="JSON" Command="{Binding ExportResultCommand}" CommandParameter="json" Style="{StaticResource ToolButton}" />
+                </StackPanel>
+                <TextBlock Text="{Binding ResultTitle}" Style="{StaticResource SectionTitle}" TextWrapping="Wrap" />
+              </DockPanel>
+              <ItemsControl ItemsSource="{Binding Notes}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding StringFormat='ⓘ {0}'}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="오류 빈도 (하루당, 정확 검정)" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Rates}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="분류" Binding="{Binding Name, Mode=OneWay}" Width="*" />
+                  <DataGridTextColumn Header="이전" Binding="{Binding BeforeCount, Mode=OneWay}" Width="52" />
+                  <DataGridTextColumn Header="이후" Binding="{Binding AfterCount, Mode=OneWay}" Width="52" />
+                  <DataGridTextColumn Header="이전/일" Binding="{Binding BeforePerDay, Mode=OneWay}" Width="62" />
+                  <DataGridTextColumn Header="이후/일" Binding="{Binding AfterPerDay, Mode=OneWay}" Width="62" />
+                  <DataGridTemplateColumn Header="변화" Width="80">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate><TextBlock Text="{Binding Change}" Foreground="{Binding Level, Converter={StaticResource StatusBrush}}" Margin="2" /></DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTextColumn Header="p" Binding="{Binding PValue, Mode=OneWay}" Width="62" />
+                  <DataGridTextColumn Header="판단" Binding="{Binding Assessment, Mode=OneWay}" Width="200" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+          <UniformGrid Columns="2">
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Text="이후에 새로 나타난 문제" Style="{StaticResource SectionTitle}" />
+                <ItemsControl ItemsSource="{Binding NewGroups}">
+                  <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat='· {0}'}" Style="{StaticResource Value}" /></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}">
+              <StackPanel>
+                <TextBlock Text="이후에 사라진 문제" Style="{StaticResource SectionTitle}" />
+                <ItemsControl ItemsSource="{Binding GoneGroups}">
+                  <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat='· {0}'}" Style="{StaticResource Value}" /></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </UniformGrid>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="센서 통계 (앱 실행 중 기록분)" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Sensors}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="지표" Binding="{Binding Metric, Mode=OneWay}" Width="*" />
+                  <DataGridTextColumn Header="이전 평균" Binding="{Binding BeforeMean, Mode=OneWay}" Width="80" />
+                  <DataGridTextColumn Header="이후 평균" Binding="{Binding AfterMean, Mode=OneWay}" Width="80" />
+                  <DataGridTextColumn Header="이전 최대" Binding="{Binding BeforeMax, Mode=OneWay}" Width="80" />
+                  <DataGridTextColumn Header="이후 최대" Binding="{Binding AfterMax, Mode=OneWay}" Width="80" />
+                  <DataGridTextColumn Header="샘플 (이전/이후)" Binding="{Binding Samples, Mode=OneWay}" Width="120" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="구성 차이 (기준선 시점 → 이후 구간 끝)" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding ConfigChanges}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="영역" Binding="{Binding Area, Mode=OneWay}" Width="110" />
+                  <DataGridTextColumn Header="항목" Binding="{Binding Item, Mode=OneWay}" Width="*" />
+                  <DataGridTextColumn Header="이전" Binding="{Binding Before, Mode=OneWay}" Width="*" />
+                  <DataGridTextColumn Header="이후" Binding="{Binding After, Mode=OneWay}" Width="*" />
+                  <DataGridTextColumn Header="구분" Binding="{Binding Kind, Mode=OneWay}" Width="50" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Text="같은 기간의 다른 변경 (함께 영향을 줬을 수 있음)" Style="{StaticResource CardTitle}" Margin="0,10,0,4" />
+              <ItemsControl ItemsSource="{Binding OtherChanges}">
+                <ItemsControl.ItemTemplate><DataTemplate><TextBlock Text="{Binding StringFormat='· {0}'}" Style="{StaticResource Value}" /></DataTemplate></ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="구성 스냅샷 비교 결과" Style="{StaticResource SectionTitle}" />
+            <DataGrid ItemsSource="{Binding SnapshotDiffRows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                      CanUserAddRows="False" CanUserDeleteRows="False" Background="Transparent" BorderThickness="0">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="영역" Binding="{Binding Area, Mode=OneWay}" Width="110" />
+                <DataGridTextColumn Header="항목" Binding="{Binding Item, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="이전" Binding="{Binding Before, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="이후" Binding="{Binding After, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="구분" Binding="{Binding Kind, Mode=OneWay}" Width="50" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

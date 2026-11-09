@@ -1,0 +1,27 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Microsoft-Windows-WHEA-Logger" Guid="{c26c4f3c-3f66-4e99-8f8a-39405cfed220}" />
+    <EventID>17</EventID>
+    <Version>0</Version>
+    <Level>3</Level>
+    <Task>0</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8000000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-28T08:15:00.0000000Z" />
+    <EventRecordID>46500</EventRecordID>
+    <Correlation />
+    <Execution ProcessID="4400" ThreadID="5100" />
+    <Channel>System</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security UserID="S-1-5-19" />
+  </System>
+  <EventData>
+    <Data Name="ErrorSource">4</Data>
+    <Data Name="ErrorType">1</Data>
+    <Data Name="Length">1192</Data>
+    <Data Name="PrimaryDeviceName">PCI\VEN_1022&amp;DEV_14DB&amp;SUBSYS_14531022&amp;REV_00</Data>
+    <Data Name="SecondaryDeviceName">PCI\VEN_10DE&amp;DEV_2C02&amp;SUBSYS_00000000&amp;REV_A1</Data>
+    <Data Name="VendorID">0x1022</Data>
+    <Data Name="DeviceID">0x14db</Data>
+  </EventData>
+</Event>

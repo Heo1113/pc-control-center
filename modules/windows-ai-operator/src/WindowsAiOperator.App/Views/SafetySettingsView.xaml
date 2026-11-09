@@ -1,0 +1,146 @@
+<UserControl x:Class="WindowsAiOperator.App.Views.SafetySettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="SafetyPage">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel>
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="저장" Command="{Binding SaveCommand}" Style="{StaticResource PrimaryButton}" AutomationProperties.AutomationId="SaveSafetyButton" />
+          <Button Content="다시 읽기" Command="{Binding LoadCommand}" Style="{StaticResource ToolButton}" />
+          <Button Content="기본값으로" Command="{Binding ResetDefaultsCommand}" Style="{StaticResource ToolButton}" />
+        </StackPanel>
+        <TextBlock Text="안전 설정" Style="{StaticResource PageTitle}" />
+      </DockPanel>
+      <Border Style="{StaticResource Banner}" Visibility="{Binding SaveResult, Converter={StaticResource NotEmptyToVisibility}}">
+        <TextBlock Text="{Binding SaveResult}" Style="{StaticResource Value}" />
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="허용 앱(이 목록의 프로그램만 읽고 조작합니다)" Style="{StaticResource SectionTitle}" />
+          <DataGrid ItemsSource="{Binding Apps}" SelectedItem="{Binding SelectedApp}" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" MaxHeight="320">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="사용">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding Enabled, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="ID" Binding="{Binding Id, UpdateSourceTrigger=PropertyChanged}" />
+              <DataGridTextColumn Header="이름" Binding="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" Width="180" />
+              <DataGridTextColumn Header="프로세스(쉼표 구분)" Binding="{Binding ProcessNames, UpdateSourceTrigger=PropertyChanged}" Width="180" />
+              <DataGridTextColumn Header="실행 명령(비우면 실행 안 함)" Binding="{Binding LaunchPath, UpdateSourceTrigger=PropertyChanged}" Width="180" />
+              <DataGridTemplateColumn Header="조작 허용">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding Interact, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" ToolTip="끄면 읽기 전용" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="실행 시 승인">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding RequireApprovalForLaunch, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="모든 조작 승인">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding RequireApprovalForAllActions, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="시스템 설정 앱">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate>
+                    <CheckBox IsChecked="{Binding IsSystemSettings, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <WrapPanel Margin="0,6,0,0">
+            <Button Content="앱 추가" Command="{Binding AddAppCommand}" Style="{StaticResource ToolButton}" />
+            <Button Content="선택 앱 제거" Command="{Binding RemoveAppCommand}" Style="{StaticResource ToolButton}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+      <UniformGrid Columns="2">
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="승인 규칙" Style="{StaticResource SectionTitle}" />
+            <CheckBox Content="AI 계획을 실행 전에 확인(권장)" IsChecked="{Binding RequirePlanReview}" Margin="0,2" />
+            <CheckBox Content="모든 조작마다 승인(가장 안전)" IsChecked="{Binding RequireApprovalForAll}" Margin="0,2" />
+            <CheckBox Content="확인·적용·예 버튼은 승인" IsChecked="{Binding ConfirmButtons}" Margin="0,2" />
+            <CheckBox Content="닫기·종료 버튼과 메뉴는 승인" IsChecked="{Binding CloseButtons}" Margin="0,2" />
+            <CheckBox Content="좌표 클릭은 승인(비전 — 꺼도 위치 확신도가 낮거나 없으면 승인)" IsChecked="{Binding CoordinateClicks}" Margin="0,2" />
+            <CheckBox Content="화면에 지시처럼 보이는 문구가 있으면 모든 변경을 승인" IsChecked="{Binding InjectionGuard}" Margin="0,2" />
+            <CheckBox Content="이미지를 지원하는 모델에 화면 스크린샷 사용(구조 정보가 없을 때만)" IsChecked="{Binding AllowVision}" Margin="0,2" />
+            <TextBlock Text="항상 적용(끌 수 없음)" Style="{StaticResource FieldLabel}" Margin="0,10,0,2" />
+            <ItemsControl ItemsSource="{Binding MandatoryRules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding StringFormat=· {0}}" Style="{StaticResource Caption}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0" Text="비밀번호 입력란에는 자동 입력하지 않습니다. 승인한 단계도 실행 직전에 대상을 다시 확인합니다." />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="실행 한도" Style="{StaticResource SectionTitle}" />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="110" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+              </Grid.RowDefinitions>
+              <TextBlock Grid.Row="0" Text="최대 실행 단계(1~100)" Style="{StaticResource Label}" /><TextBox Grid.Row="0" Grid.Column="1" Text="{Binding MaxSteps}" Margin="0,2" />
+              <TextBlock Grid.Row="1" Text="작업 제한 시간(초, 일시정지·승인 대기 제외)" Style="{StaticResource Label}" TextWrapping="Wrap" /><TextBox Grid.Row="1" Grid.Column="1" Text="{Binding TaskTimeout}" Margin="0,2" />
+              <TextBlock Grid.Row="2" Text="단계 제한 시간(초)" Style="{StaticResource Label}" /><TextBox Grid.Row="2" Grid.Column="1" Text="{Binding StepTimeout}" Margin="0,2" />
+              <TextBlock Grid.Row="3" Text="연속 실패 시 자동 중단(회)" Style="{StaticResource Label}" /><TextBox Grid.Row="3" Grid.Column="1" Text="{Binding MaxFailures}" Margin="0,2" />
+              <TextBlock Grid.Row="4" Text="재계획 한도(회)" Style="{StaticResource Label}" /><TextBox Grid.Row="4" Grid.Column="1" Text="{Binding MaxReplans}" Margin="0,2" />
+              <TextBlock Grid.Row="5" Text="모델 호출 한도(작업당)" Style="{StaticResource Label}" /><TextBox Grid.Row="5" Grid.Column="1" Text="{Binding MaxModelCalls}" Margin="0,2" />
+              <TextBlock Grid.Row="6" Text="승인 대기(초, 지나면 실행 안 함)" Style="{StaticResource Label}" /><TextBox Grid.Row="6" Grid.Column="1" Text="{Binding ApprovalTimeout}" Margin="0,2" />
+              <TextBlock Grid.Row="7" Text="입력 텍스트 상한(자)" Style="{StaticResource Label}" /><TextBox Grid.Row="7" Grid.Column="1" Text="{Binding MaxTextLength}" Margin="0,2" />
+              <TextBlock Grid.Row="8" Text="동작 사이 최소 간격(ms)" Style="{StaticResource Label}" /><TextBox Grid.Row="8" Grid.Column="1" Text="{Binding MinInterval}" Margin="0,2" />
+            </Grid>
+            <TextBlock Text="{Binding EmergencyHotkey, StringFormat=긴급 중단: {0}}" Style="{StaticResource Value}" Margin="0,10,0,0" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="목록 읽기를 허용한 폴더(파일 내용은 읽지 않음)" Style="{StaticResource SectionTitle}" />
+            <ItemsControl ItemsSource="{Binding Folders}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <DockPanel Margin="0,1">
+                    <Button DockPanel.Dock="Right" Content="빼기" Padding="6,0"
+                            Command="{Binding DataContext.RemoveFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    <TextBlock Text="{Binding}" Style="{StaticResource Value}" />
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="폴더 추가…" Command="{Binding AddFolderCommand}" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,6,0,0" />
+            <TextBlock Style="{StaticResource Caption}" Text="Windows·Program Files·AppData 등 시스템과 앱 데이터 폴더는 허용해도 읽지 않습니다." />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="차단 목록(허용 목록보다 우선)" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="기본 차단(변경 불가): 명령 실행·시스템 관리·보안·인증·암호 관리자·원격 제어 프로그램과 이 프로그램 자신" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding BlockedProcesses, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="120" VerticalScrollBarVisibility="Auto" FontSize="11" Margin="0,4" />
+            <TextBlock Text="추가 차단 프로세스(쉼표 구분)" Style="{StaticResource FieldLabel}" />
+            <TextBox Text="{Binding ExtraBlocked, UpdateSourceTrigger=PropertyChanged}" />
+          </StackPanel>
+        </Border>
+      </UniformGrid>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

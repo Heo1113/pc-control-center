@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PcControlCenter.exe: the single integrated window for projects A, B, C and E. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Same target as A, B and C's apps: SkiaSharp.Views.WPF (used by ScottPlot.WPF) ships assets for windows10.0.19041 only. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>PcControlCenter.App</RootNamespace>
+    <AssemblyName>PcControlCenter</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10 (same as A, B, C, E). -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="ScottPlot.WPF" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />
+    <!-- The modules' own views (unchanged XAML of A, B, C and E), compiled as view libraries. -->
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.App\LocalAiPerf.App.csproj" />
+    <ProjectReference Include="..\..\modules\gpu-profit-center\src\GpuProfit.App\GpuProfit.App.csproj" />
+    <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.App\WinDiag.App.csproj" />
+    <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.App\WindowsAiOperator.App.csproj" />
+  </ItemGroup>
+</Project>

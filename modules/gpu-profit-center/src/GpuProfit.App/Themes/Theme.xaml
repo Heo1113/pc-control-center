@@ -1,0 +1,119 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Copied from project C (WinDiag.App/Themes/Theme.xaml, commit 06cc9e5), which uses project A's validated dark palette.
+       Added for this app: FieldLabel, Field, WarningText, StatusLine. -->
+  <Color x:Key="PageColor">#121211</Color>
+  <Color x:Key="CardColor">#1a1a19</Color>
+  <SolidColorBrush x:Key="PageBrush" Color="{StaticResource PageColor}" />
+  <SolidColorBrush x:Key="CardBrush" Color="{StaticResource CardColor}" />
+  <SolidColorBrush x:Key="CardBorderBrush" Color="#2c2c2a" />
+  <SolidColorBrush x:Key="NavBrush" Color="#161615" />
+  <SolidColorBrush x:Key="TextPrimaryBrush" Color="#f0efec" />
+  <SolidColorBrush x:Key="TextSecondaryBrush" Color="#c3c2b7" />
+  <SolidColorBrush x:Key="TextMutedBrush" Color="#898781" />
+  <SolidColorBrush x:Key="AccentBrush" Color="#3987e5" />
+  <!-- Status colors: only for states, always next to a text label. -->
+  <SolidColorBrush x:Key="GoodBrush" Color="#0ca30c" />
+  <SolidColorBrush x:Key="WarningBrush" Color="#fab219" />
+  <SolidColorBrush x:Key="SeriousBrush" Color="#ec835a" />
+  <SolidColorBrush x:Key="CriticalBrush" Color="#d03b3b" />
+  <SolidColorBrush x:Key="MockBannerBrush" Color="#3a2f12" />
+  <SolidColorBrush x:Key="InfoBannerBrush" Color="#1f2733" />
+  <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#2f3d52" />
+
+  <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+  <Style x:Key="Card" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource CardBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="14,12" />
+    <Setter Property="Margin" Value="6" />
+  </Style>
+
+  <Style x:Key="PageTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="6,0,6,8" />
+  </Style>
+
+  <Style x:Key="SectionTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,0,0,8" />
+  </Style>
+
+  <Style x:Key="CardTitle" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+  </Style>
+
+  <Style x:Key="BigValue" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="24" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,4,0,4" />
+  </Style>
+
+  <Style x:Key="Label" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    <Setter Property="Margin" Value="0,2,10,2" />
+  </Style>
+
+  <Style x:Key="Value" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,2,0,2" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style x:Key="Caption" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Margin" Value="0,0,6,6" />
+    <Setter Property="Padding" Value="10,3" />
+  </Style>
+
+  <!-- DataGrids set their properties locally (no keyed style): the Fluent theme's implicit DataGrid style
+       lives in the application resources and a keyed style would replace it (same rule as project A). -->
+
+  <Style x:Key="FieldLabel" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+    <Setter Property="Margin" Value="0,6,0,2" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+
+  <Style x:Key="Field" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+    <Setter Property="Margin" Value="0,0,0,4" />
+    <Setter Property="MinWidth" Value="120" />
+  </Style>
+
+  <Style x:Key="WarningText" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource WarningBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="0,2" />
+  </Style>
+
+  <Style x:Key="StatusLine" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="6,4,6,4" />
+  </Style>
+
+  <Style x:Key="WrapCell" TargetType="TextBlock">
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="Margin" Value="2" />
+  </Style>
+</ResourceDictionary>

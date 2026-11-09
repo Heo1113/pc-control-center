@@ -1,0 +1,35 @@
+<UserControl x:Class="LocalAiPerf.App.Controls.ChartView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sp="clr-namespace:ScottPlot.WPF;assembly=ScottPlot.WPF"
+             MinHeight="160">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <DockPanel Margin="2,0,2,4">
+      <TextBlock x:Name="TitleText" Style="{StaticResource CardTitle}" DockPanel.Dock="Left" />
+      <TextBlock x:Name="UnitText" Style="{StaticResource Caption}" Margin="6,1,0,0" DockPanel.Dock="Left" />
+      <TextBlock x:Name="Readout" Style="{StaticResource Caption}" HorizontalAlignment="Right" TextAlignment="Right"
+                 Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+    </DockPanel>
+    <ItemsControl x:Name="LegendItems" Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,2" Focusable="False">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <StackPanel Orientation="Horizontal" Margin="6,0">
+            <Rectangle Width="14" Height="{Binding Thickness}" Fill="{Binding Brush}" VerticalAlignment="Center" Margin="0,0,5,0" />
+            <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}" Foreground="{StaticResource TextSecondaryBrush}" />
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+    <sp:WpfPlot x:Name="Plot" Grid.Row="2" MouseMove="OnPlotMouseMove" MouseLeave="OnPlotMouseLeave" />
+    <TextBlock x:Name="EmptyText" Grid.Row="2" Style="{StaticResource Caption}" HorizontalAlignment="Center"
+               VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
+  </Grid>
+</UserControl>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>GpuProfit.Export</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GpuProfit.Storage\GpuProfit.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GpuProfit.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- PC Control Center: was compiled from B/C's vendor copy of project A; now references A's single copy
+         (modules/local-ai-performance-center), so the sensor code exists once in the integrated app. -->
+    <ProjectReference Include="..\..\..\local-ai-performance-center\src\LocalAiPerf.Export\LocalAiPerf.Export.csproj" />
+  </ItemGroup>
+</Project>

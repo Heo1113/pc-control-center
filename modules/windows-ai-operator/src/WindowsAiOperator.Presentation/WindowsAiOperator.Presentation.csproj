@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- View models and app services without WPF types, so they are unit-tested on any OS. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WindowsAiOperator.Presentation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Core\WindowsAiOperator.Core.csproj" />
+    <ProjectReference Include="..\WindowsAiOperator.ModelProviders\WindowsAiOperator.ModelProviders.csproj" />
+    <ProjectReference Include="..\WindowsAiOperator.Storage\WindowsAiOperator.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WindowsAiOperator.Tests" />
+  </ItemGroup>
+</Project>

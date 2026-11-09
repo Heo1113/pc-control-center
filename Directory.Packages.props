@@ -1,0 +1,16 @@
+<Project>
+  <ItemGroup>
+    <!-- Runtime dependencies: the union of what projects A, B, C and E pin (same versions). See THIRD-PARTY-NOTICES.md. -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
+    <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <PackageVersion Include="ScottPlot" Version="5.1.59" />
+    <PackageVersion Include="ScottPlot.WPF" Version="5.1.59" />
+    <PackageVersion Include="System.Diagnostics.EventLog" Version="10.0.14" />
+    <PackageVersion Include="System.Management" Version="10.0.14" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.14" />
+    <!-- Test-only dependencies (not redistributed). A/B/C pinned 4.0.2, E 4.0.3: one version for the whole solution. -->
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+  </ItemGroup>
+</Project>

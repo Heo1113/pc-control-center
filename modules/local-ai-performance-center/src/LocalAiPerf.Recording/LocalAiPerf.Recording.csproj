@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>LocalAiPerf.Recording</RootNamespace>
+
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAiPerf.Core\LocalAiPerf.Core.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Telemetry\LocalAiPerf.Telemetry.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Runtimes\LocalAiPerf.Runtimes.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Storage\LocalAiPerf.Storage.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Analytics\LocalAiPerf.Analytics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LocalAiPerf.Tests" />
+  </ItemGroup>
+</Project>

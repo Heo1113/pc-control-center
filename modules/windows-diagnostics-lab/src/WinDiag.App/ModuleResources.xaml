@@ -1,0 +1,20 @@
+<!-- PC Control Center: everything this module's views expect from their old App.xaml and MainWindow.xaml
+     (theme, converters, view-model to view templates), merged into the shell's host for this module only. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:WinDiag.Presentation.ViewModels;assembly=WinDiag.Presentation"
+                    xmlns:views="clr-namespace:WinDiag.App.Views"
+                    xmlns:local="clr-namespace:WinDiag.App">
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="Themes/Theme.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+  <local:StatusBrushConverter x:Key="StatusBrush" />
+  <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+  <DataTemplate DataType="{x:Type vm:DashboardViewModel}"><views:DashboardView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:EventsViewModel}"><views:EventsView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:HardwareViewModel}"><views:HardwareView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:TimelineViewModel}"><views:TimelineView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:DiagnosticsViewModel}"><views:DiagnosticsView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:CompareViewModel}"><views:CompareView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView /></DataTemplate>
+</ResourceDictionary>

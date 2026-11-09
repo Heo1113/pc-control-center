@@ -1,0 +1,23 @@
+<!-- PC Control Center: everything this module's views expect from their old App.xaml and MainWindow.xaml
+     (theme, converters, view-model to view templates), merged into the shell's host for this module only. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:vm="clr-namespace:GpuProfit.Presentation.ViewModels;assembly=GpuProfit.Presentation"
+                    xmlns:views="clr-namespace:GpuProfit.App.Views"
+                    xmlns:local="clr-namespace:GpuProfit.App">
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="Themes/Theme.xaml" />
+  </ResourceDictionary.MergedDictionaries>
+  <local:OkBrushConverter x:Key="OkBrush" />
+  <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+  <local:BoolToVisibilityConverter x:Key="InverseBoolToVisibility" Invert="True" />
+  <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibility" />
+  <DataTemplate DataType="{x:Type vm:DashboardViewModel}"><views:DashboardView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:HardwareViewModel}"><views:HardwareView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:SessionsViewModel}"><views:SessionsView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:ProfitabilityViewModel}"><views:ProfitabilityView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:CompareViewModel}"><views:CompareView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:ScenariosViewModel}"><views:ScenariosView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:HistoryViewModel}"><views:HistoryView /></DataTemplate>
+  <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><views:SettingsView /></DataTemplate>
+</ResourceDictionary>
