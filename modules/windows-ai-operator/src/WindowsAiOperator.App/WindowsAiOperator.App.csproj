@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>WindowsAiOperator.App</RootNamespace>
+    <AssemblyName>WindowsAiOperator</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10 (same as the user's projects A/B). -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Presentation\WindowsAiOperator.Presentation.csproj" />
+    <ProjectReference Include="..\WindowsAiOperator.Automation.Windows\WindowsAiOperator.Automation.Windows.csproj" />
+  </ItemGroup>
+</Project>

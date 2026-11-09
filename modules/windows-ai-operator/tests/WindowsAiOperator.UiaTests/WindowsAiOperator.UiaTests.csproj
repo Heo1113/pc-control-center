@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Real GUI automation tests: run only on Windows with an interactive desktop (CI: windows-latest). -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>WindowsAiOperator.UiaTests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);xUnit1069</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WindowsAiOperator.Automation.Windows\WindowsAiOperator.Automation.Windows.csproj" />
+    <!-- Built first so the test app exists; it is started as a separate process. -->
+    <ProjectReference Include="..\..\src\WindowsAiOperator.TestTarget\WindowsAiOperator.TestTarget.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

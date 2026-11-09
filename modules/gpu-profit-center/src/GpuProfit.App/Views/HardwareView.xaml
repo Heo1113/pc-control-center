@@ -1,0 +1,76 @@
+<UserControl x:Class="GpuProfit.App.Views.HardwareView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:GpuProfit.App.Controls">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <TextBlock Text="하드웨어" Style="{StaticResource PageTitle}" />
+      <ComboBox ItemsSource="{Binding Windows}" SelectedItem="{Binding SelectedWindow}" MinWidth="140" Margin="12,0,0,8" VerticalAlignment="Center"
+                AutomationProperties.Name="차트 기간" />
+      <TextBlock Text="{Binding SamplingText}" Style="{StaticResource Caption}" VerticalAlignment="Center" Margin="12,0,0,8" />
+    </DockPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <Border Style="{StaticResource Card}" Background="{StaticResource InfoBannerBrush}">
+          <TextBlock Text="{Binding PowerNote}" Style="{StaticResource Value}" />
+        </Border>
+        <UniformGrid Columns="2">
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding PowerChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding UtilChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding TempChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding VramChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding ClockChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding CpuChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="250"><c:ChartView Data="{Binding RamChart}" /></Border>
+        </UniformGrid>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="현재 값" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Current}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
+                        AutomationProperties.Name="현재 센서 값">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="항목" Binding="{Binding Name}" />
+                  <DataGridTextColumn Header="값" Binding="{Binding Value}" />
+                  <DataGridTextColumn Header="참고" Binding="{Binding Note}" Width="*" ElementStyle="{StaticResource WrapCell}" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="장치 정보" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Info}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
+                        AutomationProperties.Name="장치 정보">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="항목" Binding="{Binding Name}" />
+                  <DataGridTextColumn Header="값" Binding="{Binding Value}" ElementStyle="{StaticResource WrapCell}" Width="*" />
+                  <DataGridTextColumn Header="참고" Binding="{Binding Note}" ElementStyle="{StaticResource WrapCell}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+
+            </StackPanel>
+          </Border>
+        </Grid>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="센서 지원 상태" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Capabilities}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
+                        AutomationProperties.Name="센서 지원 상태">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="지표" Binding="{Binding Metric}" />
+                  <DataGridTextColumn Header="출처" Binding="{Binding Source}" />
+                  <DataGridTextColumn Header="상태" Binding="{Binding Status}" />
+                  <DataGridTextColumn Header="설명" Binding="{Binding Detail}" Width="*" MinWidth="300" ElementStyle="{StaticResource WrapCell}" />
+                </DataGrid.Columns>
+              </DataGrid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDiag.Export</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDiag.Analysis\WinDiag.Analysis.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reused read-only from project A (vendor/local-ai-performance-center/manifest.json). -->
+    <Compile Include="$(VendorA)LocalAiPerf.Export/CsvWriter.cs" Link="Vendor/A/Export/CsvWriter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+  </ItemGroup>
+</Project>

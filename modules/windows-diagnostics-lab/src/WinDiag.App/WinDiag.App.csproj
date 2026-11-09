@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- SkiaSharp.Views.WPF (used by ScottPlot.WPF) ships its .NET assets for windows10.0.19041 only (same as project A). -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the notification-area icon and its balloon (System.Windows.Forms.NotifyIcon). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>WinDiag.App</RootNamespace>
+    <AssemblyName>WindowsDiagnosticsLab</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WPF types (Application, MessageBox, Button...) must not clash with Windows Forms ones. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="ScottPlot.WPF" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDiag.Presentation\WinDiag.Presentation.csproj" />
+  </ItemGroup>
+</Project>

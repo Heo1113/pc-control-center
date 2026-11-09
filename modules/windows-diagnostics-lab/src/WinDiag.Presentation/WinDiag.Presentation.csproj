@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDiag.Presentation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="ScottPlot" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDiag.Collection\WinDiag.Collection.csproj" />
+    <ProjectReference Include="..\WinDiag.Export\WinDiag.Export.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Chart model and renderer reused read-only from project A (vendor/local-ai-performance-center/manifest.json). -->
+    <Compile Include="$(VendorA)LocalAiPerf.Presentation/Charts/*.cs" Link="Vendor/A/Presentation/Charts/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+    <InternalsVisibleTo Include="WindowsDiagnosticsLab" />
+  </ItemGroup>
+</Project>

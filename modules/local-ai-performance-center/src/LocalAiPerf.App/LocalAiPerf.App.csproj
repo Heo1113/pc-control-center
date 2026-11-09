@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- SkiaSharp.Views.WPF (used by ScottPlot.WPF) ships its .NET assets for windows10.0.19041 only. -->
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>LocalAiPerf.App</RootNamespace>
+    <AssemblyName>LocalAiPerformanceCenter</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="ScottPlot.WPF" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAiPerf.Presentation\LocalAiPerf.Presentation.csproj" />
+  </ItemGroup>
+</Project>

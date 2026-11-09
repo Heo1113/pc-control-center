@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDiag.Collection</RootNamespace>
+    <!-- Project A's NVML binding uses unmanaged function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDiag.Core\WinDiag.Core.csproj" />
+    <ProjectReference Include="..\WinDiag.Storage\WinDiag.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Hardware sensors reused read-only from project A (NVML GPU, Windows CPU/RAM, mock providers). -->
+    <Compile Include="$(VendorA)LocalAiPerf.Telemetry/**/*.cs" Link="Vendor/A/Telemetry/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+  </ItemGroup>
+</Project>

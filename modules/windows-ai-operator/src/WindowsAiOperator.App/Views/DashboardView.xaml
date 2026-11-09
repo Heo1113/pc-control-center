@@ -1,0 +1,81 @@
+<UserControl x:Class="WindowsAiOperator.App.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="DashboardPage">
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="6">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="새로 고침" Command="{Binding RefreshCommand}" Style="{StaticResource ToolButton}" />
+        <TextBlock Text="대시보드" Style="{StaticResource PageTitle}" />
+      </DockPanel>
+      <ItemsControl ItemsSource="{Binding Warnings}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border Style="{StaticResource Banner}">
+              <TextBlock Text="{Binding}" Style="{StaticResource WarningText}" />
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <UniformGrid Columns="2">
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="데스크톱" Style="{StaticResource CardTitle}" />
+            <TextBlock Text="{Binding DesktopText}" Style="{StaticResource Value}" Foreground="{Binding DesktopTone, Converter={StaticResource ToneBrush}}" />
+            <TextBlock Text="활성 창" Style="{StaticResource FieldLabel}" />
+            <TextBlock Text="{Binding ForegroundText}" Style="{StaticResource Value}" />
+            <TextBlock Text="{Binding AllowedWindowsText}" Style="{StaticResource Caption}" />
+            <Button Content="창 검사기 열기" Command="{Binding GoCommand}" CommandParameter="inspector" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="모델" Style="{StaticResource CardTitle}" />
+            <TextBlock Text="{Binding ModelText}" Style="{StaticResource Value}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ModelDetail}" Style="{StaticResource Value}" Foreground="{Binding ModelTone, Converter={StaticResource ToneBrush}}" />
+            <Button Content="모델 연결 확인" Command="{Binding GoCommand}" CommandParameter="models" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="작업" Style="{StaticResource CardTitle}" />
+            <TextBlock Text="{Binding TaskText}" Style="{StaticResource Value}" Foreground="{Binding TaskTone, Converter={StaticResource ToneBrush}}" />
+            <Button Content="작업 실행 화면" Command="{Binding GoCommand}" CommandParameter="task-runner" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="안전 정책" Style="{StaticResource CardTitle}" />
+            <TextBlock Text="{Binding SafetyText}" Style="{StaticResource Value}" />
+            <Button Content="안전 설정" Command="{Binding GoCommand}" CommandParameter="safety" Style="{StaticResource ToolButton}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+          </StackPanel>
+        </Border>
+      </UniformGrid>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Content="전체 기록" Command="{Binding GoCommand}" CommandParameter="history" Style="{StaticResource ToolButton}" />
+            <TextBlock Text="최근 작업" Style="{StaticResource SectionTitle}" />
+          </DockPanel>
+          <TextBlock Text="아직 실행한 작업이 없습니다." Style="{StaticResource Caption}" Visibility="{Binding RecentTasks.Count, Converter={StaticResource EmptyToVisibility}}" />
+          <ItemsControl ItemsSource="{Binding RecentTasks}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,3">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150" />
+                    <ColumnDefinition Width="110" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding When}" Style="{StaticResource Caption}" />
+                  <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" />
+                  <TextBlock Grid.Column="2" Text="{Binding Request}" Style="{StaticResource Value}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

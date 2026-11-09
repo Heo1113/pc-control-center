@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- OpenAI-compatible and Strata model connections (HTTP only; no SDK dependency). Platform-neutral. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WindowsAiOperator.ModelProviders</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Core\WindowsAiOperator.Core.csproj" />
+  </ItemGroup>
+</Project>

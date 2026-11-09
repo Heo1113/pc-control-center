@@ -1,0 +1,121 @@
+<UserControl x:Class="WinDiag.App.Views.TimelineView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WinDiag.App">
+  <UserControl.Resources>
+    <local:StatusBrushConverter x:Key="StatusBrush" />
+    <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+    <local:NotEmptyToVisibilityConverter x:Key="NotEmpty" />
+  </UserControl.Resources>
+  <Grid>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="390" />
+    </Grid.ColumnDefinitions>
+    <DockPanel>
+      <TextBlock DockPanel.Dock="Top" Text="타임라인" Style="{StaticResource PageTitle}" />
+      <Border DockPanel.Dock="Top" Style="{StaticResource Card}">
+        <StackPanel>
+          <WrapPanel>
+            <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" DisplayMemberPath="Name" MinWidth="140" Margin="0,0,8,6" />
+            <ItemsControl ItemsSource="{Binding Kinds}">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate><CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" Margin="0,0,12,6" /></DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <CheckBox Content="부팅·절전 같은 일상 기록 숨기기" IsChecked="{Binding HideRoutine}" Margin="0,0,12,6" />
+          </WrapPanel>
+          <WrapPanel>
+            <Button Content="적용" Command="{Binding RefreshCommand}" Style="{StaticResource ToolButton}" />
+            <Button Content="CSV 내보내기" Command="{Binding ExportCsvCommand}" Style="{StaticResource ToolButton}" />
+            <Button Content="JSON 내보내기" Command="{Binding ExportJsonCommand}" Style="{StaticResource ToolButton}" />
+          </WrapPanel>
+          <TextBlock Text="{Binding StatusText}" Style="{StaticResource Caption}" />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <ListBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}" Background="Transparent" BorderThickness="0"
+                 HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled" VirtualizingPanel.IsVirtualizing="True">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <StackPanel>
+                <TextBlock Text="{Binding Day}" Style="{StaticResource SectionTitle}" Margin="0,8,0,4" Visibility="{Binding IsFirstOfDay, Converter={StaticResource BoolToVisibility}}" />
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="130" />
+                    <ColumnDefinition Width="*" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding Time}" Style="{StaticResource Value}" Foreground="{StaticResource TextSecondaryBrush}" />
+                  <StackPanel Grid.Column="1">
+                    <TextBlock Text="{Binding Kind}" Style="{StaticResource Value}" Foreground="{Binding Level, Converter={StaticResource StatusBrush}}" />
+                    <TextBlock Text="{Binding Flags}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Visibility="{Binding Flags, Converter={StaticResource NotEmpty}}" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Style="{StaticResource Value}"><Run Text="{Binding Title, Mode=OneWay}" /> <Run Text="{Binding CountText, Mode=OneWay}" FontWeight="SemiBold" /></TextBlock>
+                    <TextBlock Text="{Binding Source}" Style="{StaticResource Caption}" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+    </DockPanel>
+
+    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="선택한 항목" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="{Binding SelectedDetail}" Style="{StaticResource Value}" />
+            <WrapPanel Margin="0,8,0,0">
+              <Button Content="상세 열기" Command="{Binding OpenSelectedCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="전후 센서" Command="{Binding ShowSensorsCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="기준선으로 지정" Command="{Binding CreateBaselineCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="사용자 기록 삭제" Command="{Binding DeleteSelectedRecordCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="변경 기록 추가 (사용자 입력)" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="BIOS 설정, EXPO, 전압처럼 이 프로그램이 읽을 수 없는 변경을 직접 기록합니다. 실측값과 구분해 '사용자 입력'으로 표시됩니다." Style="{StaticResource Caption}" Margin="0,0,0,8" />
+            <TextBlock Text="종류" Style="{StaticResource Caption}" />
+            <ComboBox ItemsSource="{Binding RecordKinds}" SelectedItem="{Binding NewKind}" DisplayMemberPath="Name" Margin="0,2,0,6" />
+            <TextBlock Text="날짜와 시각 (HH:mm)" Style="{StaticResource Caption}" />
+            <DockPanel Margin="0,2,0,6">
+              <TextBox DockPanel.Dock="Right" Text="{Binding NewTime, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="6,0,0,0" />
+              <DatePicker SelectedDate="{Binding NewDate}" />
+            </DockPanel>
+            <TextBlock Text="제목" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,6" MaxLength="160" />
+            <TextBlock Text="설명 (선택)" Style="{StaticResource Caption}" />
+            <TextBox Text="{Binding NewDetail, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" Margin="0,2,0,6" />
+            <TextBlock Text="바뀐 값 (선택): 이름 / 이전 / 이후 / 단위" Style="{StaticResource Caption}" />
+            <Grid Margin="0,2,0,4">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="60" /><ColumnDefinition Width="60" /><ColumnDefinition Width="44" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <TextBox Text="{Binding NewValueName, UpdateSourceTrigger=PropertyChanged}" ToolTip="예: VDD, 메모리 속도" />
+              <TextBox Grid.Column="1" Text="{Binding NewValueBefore, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0" />
+              <TextBox Grid.Column="2" Text="{Binding NewValueAfter, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0" />
+              <TextBox Grid.Column="3" Text="{Binding NewValueUnit, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,0,0" />
+              <Button Grid.Column="4" Content="추가" Command="{Binding AddValueCommand}" Margin="4,0,0,0" Padding="6,0" />
+            </Grid>
+            <ItemsControl ItemsSource="{Binding NewValues}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <DockPanel Margin="0,1">
+                    <Button DockPanel.Dock="Right" Content="빼기" Padding="6,0" Command="{Binding DataContext.RemoveValueCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" />
+                    <TextBlock Style="{StaticResource Value}"><Run Text="{Binding Name, Mode=OneWay}" />: <Run Text="{Binding Before, Mode=OneWay}" /> → <Run Text="{Binding After, Mode=OneWay}" /> <Run Text="{Binding Unit, Mode=OneWay}" /></TextBlock>
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="기록 저장" Command="{Binding SaveRecordCommand}" HorizontalAlignment="Left" Margin="0,8,0,0" Style="{StaticResource ToolButton}" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

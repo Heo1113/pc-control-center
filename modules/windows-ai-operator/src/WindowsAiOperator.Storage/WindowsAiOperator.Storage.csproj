@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- SQLite task history, workflows, model comparison results, backup and crash recovery. Platform-neutral. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WindowsAiOperator.Storage</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Core\WindowsAiOperator.Core.csproj" />
+  </ItemGroup>
+</Project>

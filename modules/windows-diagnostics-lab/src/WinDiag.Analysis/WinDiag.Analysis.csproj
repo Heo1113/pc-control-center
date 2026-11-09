@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDiag.Analysis</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WinDiag.Core\WinDiag.Core.csproj" />
+    <ProjectReference Include="..\WinDiag.Storage\WinDiag.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Reused read-only from project A (vendor/local-ai-performance-center/manifest.json). -->
+    <Compile Include="$(VendorA)LocalAiPerf.Analytics/Statistics.cs" Link="Vendor/A/Analytics/Statistics.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+  </ItemGroup>
+</Project>

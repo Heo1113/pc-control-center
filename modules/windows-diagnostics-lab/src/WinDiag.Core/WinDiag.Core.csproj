@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>WinDiag.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Reused read-only from project A at a pinned commit (vendor/local-ai-performance-center/manifest.json). -->
+    <Compile Include="$(VendorA)LocalAiPerf.Core/Hardware/*.cs" Link="Vendor/A/Core/Hardware/%(Filename)%(Extension)" />
+    <Compile Include="$(VendorA)LocalAiPerf.Core/Metrics/*.cs" Link="Vendor/A/Core/Metrics/%(Filename)%(Extension)" />
+    <Compile Include="$(VendorA)LocalAiPerf.Core/Diagnostics/*.cs" Link="Vendor/A/Core/Diagnostics/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>LocalAiPerf.Export</RootNamespace>
+
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAiPerf.Core\LocalAiPerf.Core.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Storage\LocalAiPerf.Storage.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Analytics\LocalAiPerf.Analytics.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LocalAiPerf.Tests" />
+  </ItemGroup>
+</Project>
