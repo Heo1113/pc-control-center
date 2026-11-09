@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the engines of A, B and C (and later E's host client) as shell modules on the shared hardware reader.
+       Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Modules</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Core\PcControlCenter.Core.csproj" />
+    <ProjectReference Include="..\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Presentation\LocalAiPerf.Presentation.csproj" />
+    <ProjectReference Include="..\..\modules\gpu-profit-center\src\GpuProfit.Presentation\GpuProfit.Presentation.csproj" />
+    <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.Presentation\WinDiag.Presentation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

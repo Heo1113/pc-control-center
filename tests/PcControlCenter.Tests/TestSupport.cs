@@ -35,6 +35,7 @@ internal sealed class TempDir : IDisposable
 
     public void Dispose()
     {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try
         {
             Directory.Delete(Path, recursive: true);
