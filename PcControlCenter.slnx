@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PcControlCenter.App/PcControlCenter.App.csproj" />
     <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
     <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
     <Project Path="src/PcControlCenter.Modules/PcControlCenter.Modules.csproj" />

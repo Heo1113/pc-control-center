@@ -1,0 +1,45 @@
+<!-- Shell styles on top of project A's palette. Keys the modules' windows (prompt dialogs) expect from their old
+     application resources are defined here too, with the same values as in B, C and E. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="InfoBannerBrush" Color="#1f2733" />
+  <SolidColorBrush x:Key="InfoBannerBorderBrush" Color="#2f3d52" />
+  <SolidColorBrush x:Key="NavSelectedBrush" Color="#24303f" />
+  <SolidColorBrush x:Key="SectionBarBrush" Color="#191918" />
+  <SolidColorBrush x:Key="NotificationBrush" Color="#3a1d1d" />
+  <SolidColorBrush x:Key="NotificationBorderBrush" Color="#5a2a2a" />
+  <SolidColorBrush x:Key="OriginBrush" Color="#2a3442" />
+
+  <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Margin" Value="0,0,6,6" />
+    <Setter Property="Padding" Value="10,3" />
+  </Style>
+
+  <Style x:Key="TrimCell" TargetType="TextBlock">
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="Margin" Value="2" />
+    <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+  </Style>
+
+  <Style x:Key="StatusDot" TargetType="Ellipse">
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="Margin" Value="0,0,6,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style x:Key="CardValue" TargetType="TextBlock">
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+    <Setter Property="Margin" Value="0,2,0,2" />
+  </Style>
+
+  <Style x:Key="OriginTag" TargetType="Border">
+    <Setter Property="Background" Value="{StaticResource OriginBrush}" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="8,2" />
+    <Setter Property="Margin" Value="0,0,8,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+</ResourceDictionary>
