@@ -3,6 +3,7 @@
     <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
     <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
     <Project Path="src/PcControlCenter.Modules/PcControlCenter.Modules.csproj" />
+    <Project Path="src/PcControlCenter.Presentation/PcControlCenter.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PcControlCenter.Tests/PcControlCenter.Tests.csproj" />

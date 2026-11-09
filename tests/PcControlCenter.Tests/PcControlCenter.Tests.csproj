@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\PcControlCenter.Core\PcControlCenter.Core.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />
   </ItemGroup>
 </Project>
