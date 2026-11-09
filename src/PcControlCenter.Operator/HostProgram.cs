@@ -58,7 +58,19 @@ public static class HostProgram
         }
 
         using var ownedLog = fileLog;
-        var elevated = Environment.IsPrivilegedProcess;
+        bool elevated;
+        try
+        {
+            elevated = HostRights.HasAdministratorRights(out var rights);
+            log.Info("host", "rights: " + rights);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Unknown rights: treat as administrator, so nothing is automated (safe side).
+            log.Warn("host", "rights could not be determined; refusing changes", ex);
+            elevated = true;
+        }
+
         IDesktopAutomation desktop;
         string? refuseAll = null;
         try
@@ -76,7 +88,7 @@ public static class HostProgram
 
         if (elevated && !mock)
         {
-            // Project E never automates elevated windows; a host running as administrator could (no UIPI barrier).
+            // Project E never automates elevated windows; a host with administrator rights could (no UIPI barrier).
             refuseAll = "Operator 실행 프로세스가 관리자 권한으로 실행되어 화면을 조작하지 않습니다. PC Control Center를 일반 권한으로 실행하세요.";
         }
 
