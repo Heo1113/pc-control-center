@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
     <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
   </Folder>
   <Folder Name="/tests/">
