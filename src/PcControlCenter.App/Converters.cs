@@ -34,25 +34,36 @@ public sealed class LevelBrushConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
 }
 
+/// <summary>
+/// Shared at application level: the shell's views and, while they load, the modules' unchanged views use this key
+/// (a view resolves {StaticResource} before it is inside its module's container). It therefore accepts what A, B and C
+/// bind (true, or a count above zero, e.g. A's <c>Notices.Count</c>) and what E binds (true).
+/// </summary>
 public sealed class BoolToVisibilityConverter : IValueConverter
 {
     public bool Invert { get; set; }
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => (value is true) ^ Invert ? Visibility.Visible : Visibility.Collapsed;
+        => (value is true || value is int and > 0) ^ Invert ? Visibility.Visible : Visibility.Collapsed;
 
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }
 
+/// <summary>
+/// Shared at application level like <see cref="BoolToVisibilityConverter"/>. Hidden for null, an empty or blank text, a
+/// count of zero (E binds <c>Parameters.Count</c> and <c>Hints.Count</c>) and an empty collection; visible for anything
+/// else (A, B and C bind texts and objects). The one difference to A/B/C's own converter: a text of only spaces is hidden.
+/// </summary>
 public sealed class NotEmptyToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value switch
     {
         null => Visibility.Collapsed,
         string s => string.IsNullOrWhiteSpace(s) ? Visibility.Collapsed : Visibility.Visible,
+        int count => count > 0 ? Visibility.Visible : Visibility.Collapsed,
         ICollection c => c.Count == 0 ? Visibility.Collapsed : Visibility.Visible,
         _ => Visibility.Visible,
     };
 
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => throw new NotSupportedException();
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }

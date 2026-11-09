@@ -66,6 +66,19 @@ public partial class App : Application
 
         var log = _runtime.Log;
         RegisterExceptionHandlers(log);
+
+        // Before any window or module view exists: module keys their views look up while loading (see ModuleResourceScope).
+        Hosting.ModuleResourceScope.Install(Resources, (message, ex) =>
+        {
+            if (ex is null)
+            {
+                log.Info("app", message);
+            }
+            else
+            {
+                log.Error("app", message, ex);
+            }
+        });
         var dialogs = new ShellDialogs(() => MainWindow);
         if (Options.SmokeTest)
         {

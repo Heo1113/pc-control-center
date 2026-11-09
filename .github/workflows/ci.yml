@@ -20,6 +20,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
+# Test steps run after a successful build even when an earlier test step failed, so every run reports all results
+# (the job still fails if any step failed).
 jobs:
   linux:
     name: Linux - build (incl. WPF compile), module regression tests, integration tests
@@ -40,22 +42,31 @@ jobs:
       - name: Import manifest (modified/added files vs. the pinned A, B, C, E commits)
         run: python3 scripts/module-manifest.py verify
 
+      - name: XAML resources found while views load (module keys, shared converters)
+        run: python3 scripts/xaml-resource-check.py
+
       - name: Build
+        id: build
         run: dotnet build PcControlCenter.slnx -c Release
 
       - name: A regression tests (Local AI Performance Center)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project modules/local-ai-performance-center/tests/LocalAiPerf.Tests -c Release --no-build
 
       - name: B regression tests (GPU Profit & Compute Center)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project modules/gpu-profit-center/tests/GpuProfit.Tests -c Release --no-build
 
       - name: C regression tests (Windows Diagnostics Lab)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project modules/windows-diagnostics-lab/tests/WinDiag.Tests -c Release --no-build
 
       - name: E regression tests (Windows AI Operator)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project modules/windows-ai-operator/tests/WindowsAiOperator.Tests -c Release --no-build
 
       - name: Integration tests (shared sensor, modules, shell, data)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project tests/PcControlCenter.Tests -c Release --no-build
 
   windows:
@@ -72,37 +83,47 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Build
+        id: build
         run: dotnet build PcControlCenter.slnx -c Release
 
       - name: A regression tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 10
         run: dotnet test --project modules/local-ai-performance-center/tests/LocalAiPerf.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: B regression tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 10
         run: dotnet test --project modules/gpu-profit-center/tests/GpuProfit.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: C regression tests (incl. Windows event log integration)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 10
         run: dotnet test --project modules/windows-diagnostics-lab/tests/WinDiag.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: E regression tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 10
         run: dotnet test --project modules/windows-ai-operator/tests/WindowsAiOperator.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: E real UI Automation tests (test app and Notepad on the runner desktop)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 15
         run: dotnet test --project modules/windows-ai-operator/tests/WindowsAiOperator.UiaTests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: Integration tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 15
         run: dotnet test --project tests/PcControlCenter.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: Publish portable package (self-contained single-file EXE)
+        id: publish
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         shell: pwsh
         run: ./scripts/publish.ps1 -OutputDir dist
 
       - name: GUI smoke tests (published EXE - mock, real sensors without GPU, recovery after kill)
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         timeout-minutes: 30
         shell: pwsh
         run: ./scripts/smoke-gui.ps1 -Exe dist/PcControlCenter-win-x64/PcControlCenter.exe -ReportDir dist/smoke

@@ -30,14 +30,14 @@
       <StackPanel Margin="0,0,0,6">
         <Border Background="{StaticResource SectionBarBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,5">
           <WrapPanel VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding IsRecording, Converter={StaticResource StatusBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding IsRecording, Converter={StaticResource LocalAiStatusBrush}}" />
             <TextBlock Text="{Binding RecordingText}" Style="{StaticResource Value}" MaxWidth="420" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" VerticalAlignment="Center" />
             <Button Content="수동 기록 시작" Command="{Binding StartRecordingCommand}" Margin="10,0,0,0" Padding="10,2" AutomationProperties.AutomationId="LocalAiStartRecording" />
             <Button Content="기록 중지" Command="{Binding StopRecordingCommand}" Margin="6,0,18,0" Padding="10,2"
                     Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
-            <Ellipse Width="10" Height="10" Margin="12,0,6,0" VerticalAlignment="Center" Fill="{Binding Freshness, Converter={StaticResource StatusBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="12,0,6,0" VerticalAlignment="Center" Fill="{Binding Freshness, Converter={StaticResource LocalAiStatusBrush}}" />
             <TextBlock Text="{Binding FreshnessText}" Style="{StaticResource Value}" Margin="0,0,18,0" VerticalAlignment="Center" />
-            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding RuntimeState, Converter={StaticResource StatusBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding RuntimeState, Converter={StaticResource LocalAiStatusBrush}}" />
             <TextBlock Text="{Binding RuntimeStatusText}" Style="{StaticResource Value}" Margin="0,0,18,0" VerticalAlignment="Center" />
             <TextBlock Text="{Binding DatabaseText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
           </WrapPanel>
@@ -62,7 +62,7 @@
       <StackPanel Margin="0,0,0,6">
         <Border Background="{StaticResource SectionBarBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,5">
           <WrapPanel VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding SensorOk, Converter={StaticResource OkBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding SensorOk, Converter={StaticResource EconomicsOkBrush}}" />
             <TextBlock Text="{Binding SensorText}" Style="{StaticResource Value}" MaxWidth="460" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,0,18,0" VerticalAlignment="Center" />
             <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{StaticResource AccentBrush}" Visibility="{Binding IsRecording, Converter={StaticResource BoolToVisibility}}" />
             <TextBlock Text="{Binding RecordingText}" Style="{StaticResource Value}" MaxWidth="520" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,0,18,0" VerticalAlignment="Center" />
@@ -93,9 +93,9 @@
       <StackPanel Margin="0,0,0,6">
         <Border Background="{StaticResource SectionBarBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,5">
           <WrapPanel VerticalAlignment="Center">
-            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding CollectionLevel, Converter={StaticResource StatusBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding CollectionLevel, Converter={StaticResource DiagnosticsStatusBrush}}" />
             <TextBlock Text="{Binding CollectionText}" Style="{StaticResource Value}" MaxWidth="520" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,0,18,0" VerticalAlignment="Center" />
-            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding SensorLevel, Converter={StaticResource StatusBrush}}" />
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding SensorLevel, Converter={StaticResource DiagnosticsStatusBrush}}" />
             <TextBlock Text="{Binding SensorText}" Style="{StaticResource Value}" MaxWidth="420" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Margin="0,0,18,0" VerticalAlignment="Center" />
             <TextBlock Text="{Binding DatabaseText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
           </WrapPanel>

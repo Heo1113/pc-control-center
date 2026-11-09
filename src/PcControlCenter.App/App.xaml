@@ -3,17 +3,22 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:PcControlCenter.App"
              xmlns:e="clr-namespace:WindowsAiOperator.App;assembly=WindowsAiOperator.App"
+             xmlns:lapc="clr-namespace:LocalAiPerf.App;assembly=LocalAiPerf.App"
+             xmlns:gpc="clr-namespace:GpuProfit.App;assembly=GpuProfit.App"
+             xmlns:wdl="clr-namespace:WinDiag.App;assembly=WinDiag.App"
              ThemeMode="Dark"
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <!-- Project A's validated dark palette is the base for every page; each module's own theme, converters and
-             view templates are merged again around that module's pages only (see Hosting/ModulePageHost.cs). -->
+             view templates are merged again around that module's pages, and keys its views look up while loading are
+             added here at startup (Hosting/ModuleResourceScope.cs). -->
         <ResourceDictionary Source="pack://application:,,,/LocalAiPerf.App;component/Themes/Theme.xaml" />
         <ResourceDictionary Source="Themes/Shell.xaml" />
       </ResourceDictionary.MergedDictionaries>
       <local:LevelBrushConverter x:Key="LevelBrush" />
+      <!-- Also used by the modules' views while they load: these accept every way A, B, C and E bind them (Converters.cs). -->
       <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
       <local:BoolToVisibilityConverter x:Key="InverseBoolToVisibility" Invert="True" />
       <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibility" />
@@ -22,6 +27,11 @@
       <e:NotEmptyToVisibilityConverter x:Key="EmptyToVisibility" Invert="True" />
       <e:PngToImageConverter x:Key="PngToImage" />
       <e:BoolToFontWeightConverter x:Key="BoolToFontWeight" />
+      <!-- The modules' own status colors for their status strips in MainWindow.xaml. A and C both call theirs
+           "StatusBrush" (different value types), so the shell names them explicitly. -->
+      <lapc:StatusBrushConverter x:Key="LocalAiStatusBrush" />
+      <gpc:OkBrushConverter x:Key="EconomicsOkBrush" />
+      <wdl:StatusBrushConverter x:Key="DiagnosticsStatusBrush" />
       <!-- A shell tab: the module's status strip (its old status bar) above the page. Used by Hosting/ModulePageHost. -->
       <DataTemplate x:Key="ShellTabTemplate">
         <DockPanel>
