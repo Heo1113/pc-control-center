@@ -17,5 +17,8 @@
     <ProjectReference Include="..\..\src\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.Operator\PcControlCenter.Operator.csproj" />
+    <!-- Built first; started as a separate process by the supervisor tests (mock desktop only). -->
+    <ProjectReference Include="..\PcControlCenter.MockOperatorHost\PcControlCenter.MockOperatorHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

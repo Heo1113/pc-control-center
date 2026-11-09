@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PcControlCenter.OperatorHost.exe: the separate, non-elevated process in which project E's desktop automation
+       (FlaUI UIA3 + Win32 input, screen capture, program start) runs. No window; talks only to the shell that started it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>PcControlCenter.OperatorHost</RootNamespace>
+    <AssemblyName>PcControlCenter.OperatorHost</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Operator\PcControlCenter.Operator.csproj" />
+    <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.Automation.Windows\WindowsAiOperator.Automation.Windows.csproj" />
+  </ItemGroup>
+</Project>

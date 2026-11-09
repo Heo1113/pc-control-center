@@ -257,6 +257,8 @@ public static class BuiltInBlockList
         "mstsc", "AnyDesk", "TeamViewer", "vncviewer", "msra", "quickassist",
         // This program itself (its own approval buttons must never be pressed by automation).
         AppInfo.ExecutableName, "wao",
+        // PC Control Center: the integrated window (it shows these approval buttons now) and its Operator host process.
+        "PcControlCenter", "PcControlCenter.OperatorHost",
     };
 
     public static bool IsBlocked(string processName, IEnumerable<string>? extra = null)

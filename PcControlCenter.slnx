@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PcControlCenter.Operator/PcControlCenter.Operator.csproj" />
+    <Project Path="src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj" />
     <Project Path="src/PcControlCenter.App/PcControlCenter.App.csproj" />
     <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
     <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
@@ -7,6 +9,7 @@
     <Project Path="src/PcControlCenter.Presentation/PcControlCenter.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PcControlCenter.MockOperatorHost/PcControlCenter.MockOperatorHost.csproj" />
     <Project Path="tests/PcControlCenter.Tests/PcControlCenter.Tests.csproj" />
   </Folder>
   <Folder Name="/modules/gpu-profit-center/">
