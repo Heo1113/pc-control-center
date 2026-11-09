@@ -1,0 +1,54 @@
+<Solution>
+  <Folder Name="/src/">
+  </Folder>
+  <Folder Name="/tests/">
+  </Folder>
+  <Folder Name="/modules/gpu-profit-center/">
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Accounting/GpuProfit.Accounting.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.App/GpuProfit.App.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Cli/GpuProfit.Cli.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Core/GpuProfit.Core.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Export/GpuProfit.Export.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Presentation/GpuProfit.Presentation.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Recording/GpuProfit.Recording.csproj" />
+    <Project Path="modules/gpu-profit-center/src/GpuProfit.Storage/GpuProfit.Storage.csproj" />
+    <Project Path="modules/gpu-profit-center/tests/GpuProfit.Tests/GpuProfit.Tests.csproj" />
+  </Folder>
+  <Folder Name="/modules/local-ai-performance-center/">
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Analytics/LocalAiPerf.Analytics.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.App/LocalAiPerf.App.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Cli/LocalAiPerf.Cli.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Core/LocalAiPerf.Core.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Export/LocalAiPerf.Export.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Presentation/LocalAiPerf.Presentation.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Recording/LocalAiPerf.Recording.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Runtimes/LocalAiPerf.Runtimes.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Storage/LocalAiPerf.Storage.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Telemetry/LocalAiPerf.Telemetry.csproj" />
+    <Project Path="modules/local-ai-performance-center/tests/LocalAiPerf.MockStrata/LocalAiPerf.MockStrata.csproj" />
+    <Project Path="modules/local-ai-performance-center/tests/LocalAiPerf.Tests/LocalAiPerf.Tests.csproj" />
+  </Folder>
+  <Folder Name="/modules/windows-ai-operator/">
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.App/WindowsAiOperator.App.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.Automation.Windows/WindowsAiOperator.Automation.Windows.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.Cli/WindowsAiOperator.Cli.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.Core/WindowsAiOperator.Core.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.ModelProviders/WindowsAiOperator.ModelProviders.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.Presentation/WindowsAiOperator.Presentation.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.Storage/WindowsAiOperator.Storage.csproj" />
+    <Project Path="modules/windows-ai-operator/src/WindowsAiOperator.TestTarget/WindowsAiOperator.TestTarget.csproj" />
+    <Project Path="modules/windows-ai-operator/tests/WindowsAiOperator.Tests/WindowsAiOperator.Tests.csproj" />
+    <Project Path="modules/windows-ai-operator/tests/WindowsAiOperator.UiaTests/WindowsAiOperator.UiaTests.csproj" />
+  </Folder>
+  <Folder Name="/modules/windows-diagnostics-lab/">
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Analysis/WinDiag.Analysis.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.App/WinDiag.App.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Cli/WinDiag.Cli.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Collection/WinDiag.Collection.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Core/WinDiag.Core.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Export/WinDiag.Export.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Presentation/WinDiag.Presentation.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/src/WinDiag.Storage/WinDiag.Storage.csproj" />
+    <Project Path="modules/windows-diagnostics-lab/tests/WinDiag.Tests/WinDiag.Tests.csproj" />
+  </Folder>
+</Solution>

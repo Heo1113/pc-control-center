@@ -68,12 +68,14 @@ public sealed class FileAppLogger : IAppLogger, IDisposable
     private readonly int _maxFiles;
     private readonly LogLevel _minimum;
     private readonly TimeProvider _time;
+    private readonly string _filePrefix;
     private StreamWriter? _writer;
     private string? _currentPath;
 
-    public FileAppLogger(string directory, LogLevel minimum = LogLevel.Info, long maxBytesPerFile = 10 * 1024 * 1024, int maxFiles = 14, TimeProvider? time = null)
+    public FileAppLogger(string directory, LogLevel minimum = LogLevel.Info, long maxBytesPerFile = 10 * 1024 * 1024, int maxFiles = 14, TimeProvider? time = null, string filePrefix = "lapc")
     {
         _directory = directory;
+        _filePrefix = filePrefix;
         _minimum = minimum;
         _maxBytesPerFile = maxBytesPerFile;
         _maxFiles = maxFiles;
@@ -127,7 +129,7 @@ public sealed class FileAppLogger : IAppLogger, IDisposable
 
     private StreamWriter EnsureWriter(DateTimeOffset now)
     {
-        var path = Path.Combine(_directory, $"lapc-{now:yyyyMMdd}.log");
+        var path = Path.Combine(_directory, $"{_filePrefix}-{now:yyyyMMdd}.log");
         if (_writer is not null && _currentPath == path && _writer.BaseStream.Length < _maxBytesPerFile)
         {
             return _writer;
@@ -136,7 +138,7 @@ public sealed class FileAppLogger : IAppLogger, IDisposable
         _writer?.Dispose();
         if (File.Exists(path) && new FileInfo(path).Length >= _maxBytesPerFile)
         {
-            var rotated = Path.Combine(_directory, $"lapc-{now:yyyyMMdd}-{now:HHmmss}.log");
+            var rotated = Path.Combine(_directory, $"{_filePrefix}-{now:yyyyMMdd}-{now:HHmmss}.log");
             File.Move(path, rotated, overwrite: true);
             PruneOldFiles();
         }
@@ -151,7 +153,7 @@ public sealed class FileAppLogger : IAppLogger, IDisposable
     {
         try
         {
-            var files = new DirectoryInfo(_directory).GetFiles("lapc-*.log").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
+            var files = new DirectoryInfo(_directory).GetFiles(_filePrefix + "-*.log").OrderByDescending(f => f.LastWriteTimeUtc).ToList();
             foreach (var old in files.Skip(_maxFiles))
             {
                 old.Delete();

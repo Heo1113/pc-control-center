@@ -28,6 +28,10 @@ public sealed class HardwareMonitor : IDisposable
     private readonly ISystemSensorProvider _system;
     private readonly TimeProvider _time;
     private readonly IAppLogger _log;
+    private readonly IHardwareSnapshotSource? _shared;
+    private readonly Lock _sharedGate = new();
+    private long _sharedSequence;
+    private HardwareInfo _info;
 
     public HardwareMonitor(IGpuSensorProvider gpu, ISystemSensorProvider system, TimeProvider? time = null, IAppLogger? log = null, bool isMock = false)
     {
@@ -36,11 +40,32 @@ public sealed class HardwareMonitor : IDisposable
         _time = time ?? TimeProvider.System;
         _log = log ?? NullLogger.Instance;
         IsMock = isMock;
-        Info = BuildInfo();
+        _info = BuildInfo();
     }
 
+    /// <summary>
+    /// PC Control Center: a view over a shared reader. It never opens a sensor itself; <see cref="Sample"/> returns the
+    /// next reading of <paramref name="source"/> with its original timestamp, so several consumers share one reader.
+    /// </summary>
+    private HardwareMonitor(IHardwareSnapshotSource source, TimeProvider? time, IAppLogger? log)
+    {
+        _shared = source;
+        _gpu = new SharedGpuProviderView(source);
+        _system = new SharedSystemProviderView(source);
+        _time = time ?? TimeProvider.System;
+        _log = log ?? NullLogger.Instance;
+        IsMock = source.IsMock;
+        _info = source.Info;
+    }
+
+    /// <summary>PC Control Center: creates a consumer view over a shared hardware reader (see <see cref="IHardwareSnapshotSource"/>).</summary>
+    public static HardwareMonitor Shared(IHardwareSnapshotSource source, TimeProvider? time = null, IAppLogger? log = null) => new(source, time, log);
+
     public bool IsMock { get; }
-    public HardwareInfo Info { get; private set; }
+    public HardwareInfo Info => _shared?.Info ?? _info;
+
+    /// <summary>PC Control Center: true for a view over a shared reader.</summary>
+    public bool IsSharedView => _shared is not null;
     public IGpuSensorProvider Gpu => _gpu;
     public ISystemSensorProvider System => _system;
 
@@ -84,6 +109,21 @@ public sealed class HardwareMonitor : IDisposable
 
     public HardwareSnapshot Sample()
     {
+        if (_shared is not null)
+        {
+            // Each view hands out every shared reading at most once, in order; it never repeats an old value.
+            lock (_sharedGate)
+            {
+                var next = _shared.NextAfter(_sharedSequence);
+                if (!next.IsStale)
+                {
+                    _sharedSequence = next.Sequence;
+                }
+
+                return next.Snapshot;
+            }
+        }
+
         var issues = new List<SensorIssue>();
         var timestamp = _time.GetUtcNow();
         SystemSample system;
@@ -110,9 +150,9 @@ public sealed class HardwareMonitor : IDisposable
             gpus = [];
         }
 
-        if (gpus.Count > 0 && Info.Gpus.Count == 0)
+        if (gpus.Count > 0 && _info.Gpus.Count == 0)
         {
-            Info = BuildInfo();
+            _info = BuildInfo();
         }
 
         return new HardwareSnapshot { Timestamp = timestamp, System = system, Gpus = gpus, Issues = issues, IsMock = IsMock };
@@ -120,6 +160,7 @@ public sealed class HardwareMonitor : IDisposable
 
     public void Dispose()
     {
+        // A shared view's providers are facades (no-op dispose); the shared reader owns the devices.
         _gpu.Dispose();
         _system.Dispose();
     }

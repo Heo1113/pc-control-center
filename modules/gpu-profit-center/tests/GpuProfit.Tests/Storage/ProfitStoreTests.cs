@@ -3,6 +3,7 @@ using GpuProfit.Storage;
 using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Storage;
 using Microsoft.Data.Sqlite;
+using RetentionResult = GpuProfit.Storage.RetentionResult; // PC Control Center: A's storage is now a referenced assembly
 
 namespace GpuProfit.Tests.Storage;
 

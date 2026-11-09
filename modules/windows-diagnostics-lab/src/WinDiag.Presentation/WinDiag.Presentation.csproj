@@ -12,11 +12,13 @@
     <ProjectReference Include="..\WinDiag.Export\WinDiag.Export.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Chart model and renderer reused read-only from project A (vendor/local-ai-performance-center/manifest.json). -->
-    <Compile Include="$(VendorA)LocalAiPerf.Presentation/Charts/*.cs" Link="Vendor/A/Presentation/Charts/%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="WinDiag.Tests" />
+    <!-- PC Control Center: the view library is now named WinDiag.App (was the WindowsDiagnosticsLab EXE). -->
+    <InternalsVisibleTo Include="WinDiag.App" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="WinDiag.Tests" />
-    <InternalsVisibleTo Include="WindowsDiagnosticsLab" />
+    <!-- PC Control Center: was compiled from B/C's vendor copy of project A; now references A's single copy
+         (modules/local-ai-performance-center), so the sensor code exists once in the integrated app. -->
+    <ProjectReference Include="..\..\..\local-ai-performance-center\src\LocalAiPerf.Presentation\LocalAiPerf.Presentation.csproj" />
   </ItemGroup>
 </Project>

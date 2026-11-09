@@ -1,7 +1,7 @@
 using System.Globalization;
 using LocalAiPerf.Core.Diagnostics;
 using LocalAiPerf.Core.Hardware;
-using LocalAiPerf.Core.Settings;
+using SamplingSettings = LocalAiPerf.Core.Settings.SamplingSettings; // PC Control Center: A's real type (the shim was removed)
 using LocalAiPerf.Telemetry;
 using WinDiag.Collection.Crash;
 using WinDiag.Collection.Notifications;
@@ -43,6 +43,12 @@ public sealed record EngineOptions
     public bool RecordSensors { get; init; } = true;
 
     public PrivacyMasker? Masker { get; init; }
+
+    /// <summary>
+    /// PC Control Center: the hardware monitor to use (for example a view over the shared sensor reader, so that this
+    /// engine does not open NVML a second time). Null = HardwareMonitor.Create as in project C.
+    /// </summary>
+    public HardwareMonitor? Monitor { get; init; }
     public TimeProvider? Time { get; init; }
     public IAppLogger? Log { get; init; }
 }
@@ -129,7 +135,7 @@ public sealed class DiagnosticsEngine : IAsyncDisposable
             }
 
             var settings = options.Settings;
-            var hardware = HardwareMonitor.Create(
+            var hardware = options.Monitor ?? HardwareMonitor.Create(
                 new SamplingSettings { GpuEnabled = settings.Sensors.GpuEnabled, SystemEnabled = settings.Sensors.SystemEnabled },
                 options.UseMockSensors, time, log);
             var runId = store.StartRun(time.GetUtcNow(), AppInfo.Version, options.UseMockSensors, settings.Sensors.IntervalSeconds * 1000,

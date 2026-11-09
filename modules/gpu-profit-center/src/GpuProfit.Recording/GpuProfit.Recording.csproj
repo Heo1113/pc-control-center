@@ -9,10 +9,11 @@
     <ProjectReference Include="..\GpuProfit.Storage\GpuProfit.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Hardware sensors reused read-only from project A (NVML GPU, Windows CPU/RAM, mock providers). -->
-    <Compile Include="$(VendorA)LocalAiPerf.Telemetry/**/*.cs" Link="Vendor/A/Telemetry/%(RecursiveDir)%(Filename)%(Extension)" />
+    <InternalsVisibleTo Include="GpuProfit.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="GpuProfit.Tests" />
+    <!-- PC Control Center: was compiled from B/C's vendor copy of project A; now references A's single copy
+         (modules/local-ai-performance-center), so the sensor code exists once in the integrated app. -->
+    <ProjectReference Include="..\..\..\local-ai-performance-center\src\LocalAiPerf.Telemetry\LocalAiPerf.Telemetry.csproj" />
   </ItemGroup>
 </Project>

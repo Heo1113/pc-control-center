@@ -4,7 +4,7 @@ using GpuProfit.Core.Settings;
 using GpuProfit.Storage;
 using LocalAiPerf.Core.Diagnostics;
 using LocalAiPerf.Core.Hardware;
-using LocalAiPerf.Core.Settings;
+using SamplingSettings = LocalAiPerf.Core.Settings.SamplingSettings; // PC Control Center: A's real type (the shim was removed)
 using LocalAiPerf.Telemetry;
 
 namespace GpuProfit.Recording;

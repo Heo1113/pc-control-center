@@ -20,6 +20,12 @@ public sealed record MonitoringOptions
 
     /// <summary>Overrides the auto-record setting for this run (null = use the setting).</summary>
     public bool? AutoRecord { get; init; }
+
+    /// <summary>
+    /// PC Control Center: creates the hardware monitor (for example a view over the shared sensor reader, so that this
+    /// service does not open NVML a second time). Null = <see cref="HardwareMonitor.Create"/> as in project A.
+    /// </summary>
+    public Func<HardwareMonitor>? HardwareFactory { get; init; }
 }
 
 /// <summary>
@@ -306,7 +312,7 @@ public sealed class MonitoringService : IAsyncDisposable
 
     private void BuildPipeline()
     {
-        _hardware = HardwareMonitor.Create(Settings.Sampling, _options.UseMockSensors, _time, _log);
+        _hardware = _options.HardwareFactory?.Invoke() ?? HardwareMonitor.Create(Settings.Sampling, _options.UseMockSensors, _time, _log);
         _runtime = RuntimeAdapterFactory.Create(Settings, _time, _log);
         var recorderOptions = new RecorderOptions(Settings.Sampling.IntervalMs, Settings.Recording.AutoSplitOnRuntimeChange,
             _runtime?.Kind, _runtime?.EndpointDisplay, _options.UseMockSensors);

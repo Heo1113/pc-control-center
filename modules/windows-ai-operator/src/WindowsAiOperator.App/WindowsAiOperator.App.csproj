@@ -1,12 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- PC Control Center: a view library hosted by the integrated shell (was this program's own EXE). -->
+    <OutputType>Library</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>WindowsAiOperator.App</RootNamespace>
-    <AssemblyName>WindowsAiOperator</AssemblyName>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AssemblyName>WindowsAiOperator.App</AssemblyName>
     <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10 (same as the user's projects A/B). -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
@@ -16,5 +15,13 @@
   <ItemGroup>
     <ProjectReference Include="..\WindowsAiOperator.Presentation\WindowsAiOperator.Presentation.csproj" />
     <ProjectReference Include="..\WindowsAiOperator.Automation.Windows\WindowsAiOperator.Automation.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- PC Control Center: the program's own window, startup and smoke test are replaced by the shell (src/PcControlCenter.App).
+         The files stay in the tree unchanged for reference; views, controls, converters, themes and services are reused. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Remove="App.xaml;MainWindow.xaml" />
+    <Compile Remove="App.xaml.cs;MainWindow.xaml.cs;SmokeTestRunner.cs;StartupOptions.cs" />
+    <None Include="App.xaml;MainWindow.xaml;app.manifest" />
   </ItemGroup>
 </Project>

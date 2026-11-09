@@ -266,13 +266,10 @@ public sealed class DpapiSecretStore(string path, IOperatorLog log) : ISecretSto
 
 public sealed class AppHost(IOperatorLog log) : IAppHost
 {
-    public void ApplyFontScale(double scale)
-    {
-        if (Application.Current?.MainWindow is MainWindow main)
-        {
-            main.ApplyScale(scale);
-        }
-    }
+    /// <summary>PC Control Center: the integrated shell window applies the scale (E's own MainWindow is not compiled).</summary>
+    public static Action<double>? ScaleHandler { get; set; }
+
+    public void ApplyFontScale(double scale) => ScaleHandler?.Invoke(scale);
 
     public void ApplyTheme(string theme)
     {

@@ -5,6 +5,7 @@ using WinDiag.Core.Events;
 using WinDiag.Core.Records;
 using WinDiag.Core.Snapshots;
 using WinDiag.Storage;
+using EventCategories = WinDiag.Core.Events.EventCategories; // PC Control Center: A's storage is now a referenced assembly
 
 namespace WinDiag.Tests.Storage;
 

@@ -103,32 +103,21 @@ public class SettingsTests
     }
 }
 
-/// <summary>Project A's code is reused unchanged except for documented patches; this keeps it that way.</summary>
+/// <summary>
+/// PC Control Center: C used to compile project A's files from its vendor copy (checked here against a manifest). In the
+/// integrated repository C references A's single copy, so this test now checks that the sensor types C uses come from
+/// A's assemblies and are not compiled into C a second time.
+/// </summary>
 public class VendorIntegrityTests
 {
     [Fact]
-    public void Vendored_files_match_the_manifest()
+    public void Project_A_code_is_referenced_once_not_compiled_into_C()
     {
-        var root = Path.Combine(Fixtures.RepositoryRoot(), "vendor", "local-ai-performance-center");
-        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "manifest.json")));
-        Assert.Equal("5b6aae12c28efbdbebe9a7df280c02f5494b037e", manifest.RootElement.GetProperty("source").GetProperty("commit").GetString());
-        var files = manifest.RootElement.GetProperty("files").EnumerateArray().ToList();
-        Assert.NotEmpty(files);
-        foreach (var file in files)
+        Assert.Equal("LocalAiPerf.Core", typeof(LocalAiPerf.Core.Hardware.HardwareSnapshot).Assembly.GetName().Name);
+        Assert.Equal("LocalAiPerf.Telemetry", typeof(LocalAiPerf.Telemetry.HardwareMonitor).Assembly.GetName().Name);
+        foreach (var assembly in new[] { typeof(WinDiag.Core.AppPaths).Assembly, typeof(WinDiag.Collection.DiagnosticsEngine).Assembly, typeof(WinDiag.Storage.DiagnosticsStore).Assembly })
         {
-            var path = Path.Combine(root, file.GetProperty("path").GetString()!);
-            var actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant();
-            Assert.Equal(file.GetProperty("currentSha256").GetString(), actual);
-            var status = file.GetProperty("status").GetString();
-            if (status == "unchanged")
-            {
-                Assert.Equal(file.GetProperty("sourceSha256").GetString(), actual);
-            }
-            else
-            {
-                Assert.Equal("modified", status);
-                Assert.True(File.Exists(Path.Combine(root, file.GetProperty("patch").GetString()!)));
-            }
+            Assert.DoesNotContain(assembly.GetTypes(), t => t.Namespace?.StartsWith("LocalAiPerf.", StringComparison.Ordinal) == true);
         }
     }
 }

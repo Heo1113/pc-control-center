@@ -196,39 +196,24 @@ public class SettingsTests
     }
 }
 
+/// <summary>
+/// PC Control Center: B used to compile 18 files from its vendor copy of project A (checked here against a manifest).
+/// In the integrated repository B references A's single copy instead, so this test now checks that the sensor, log,
+/// storage, statistics, CSV and chart types B uses come from A's assemblies and are not compiled into B a second time.
+/// </summary>
 public class VendorIntegrityTests
 {
     [Fact]
-    public void Vendored_files_match_the_manifest()
+    public void Project_A_code_is_referenced_once_not_compiled_into_B()
     {
-        var root = FindRepoRoot();
-        var vendor = Path.Combine(root, "vendor", "local-ai-performance-center");
-        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(vendor, "manifest.json")));
-        Assert.Equal("5b6aae12c28efbdbebe9a7df280c02f5494b037e", manifest.RootElement.GetProperty("source").GetProperty("commit").GetString());
-        var files = manifest.RootElement.GetProperty("files").EnumerateArray().ToList();
-        Assert.Equal(18, files.Count);
-        foreach (var f in files)
+        Assert.Equal("LocalAiPerf.Core", typeof(LocalAiPerf.Core.Hardware.HardwareSnapshot).Assembly.GetName().Name);
+        Assert.Equal("LocalAiPerf.Core", typeof(LocalAiPerf.Core.Diagnostics.FileAppLogger).Assembly.GetName().Name);
+        Assert.Equal("LocalAiPerf.Telemetry", typeof(LocalAiPerf.Telemetry.HardwareMonitor).Assembly.GetName().Name);
+        Assert.Equal("LocalAiPerf.Analytics", typeof(LocalAiPerf.Analytics.Statistics).Assembly.GetName().Name);
+        Assert.Equal("LocalAiPerf.Presentation", typeof(LocalAiPerf.Presentation.Charts.ChartRenderer).Assembly.GetName().Name);
+        foreach (var assembly in new[] { typeof(GpuProfit.Core.AppPaths).Assembly, typeof(GpuProfit.Recording.ProfitEngine).Assembly, typeof(GpuProfit.Storage.ProfitStore).Assembly })
         {
-            var path = Path.Combine(vendor, f.GetProperty("path").GetString()!);
-            var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
-            Assert.Equal(f.GetProperty("currentSha256").GetString(), hash);
-            var unchanged = f.GetProperty("status").GetString() == "unchanged";
-            Assert.Equal(unchanged, f.GetProperty("sourceSha256").GetString() == hash);
-            if (!unchanged)
-            {
-                Assert.True(File.Exists(Path.Combine(vendor, f.GetProperty("patch").GetString()!)));
-            }
+            Assert.DoesNotContain(assembly.GetTypes(), t => t.Namespace?.StartsWith("LocalAiPerf.", StringComparison.Ordinal) == true);
         }
-    }
-
-    internal static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "GpuProfitCenter.slnx")))
-        {
-            dir = dir.Parent;
-        }
-
-        return dir?.FullName ?? throw new DirectoryNotFoundException("저장소 루트를 찾을 수 없습니다.");
     }
 }

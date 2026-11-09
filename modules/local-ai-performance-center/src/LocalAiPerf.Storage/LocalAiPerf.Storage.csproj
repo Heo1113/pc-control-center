@@ -12,5 +12,10 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="LocalAiPerf.Tests" />
+    <!-- PC Control Center: B and C used to compile this internal helper from their vendor copy; they now reference this project. -->
+    <InternalsVisibleTo Include="GpuProfit.Storage" />
+    <InternalsVisibleTo Include="WinDiag.Storage" />
+    <InternalsVisibleTo Include="GpuProfit.Tests" />
+    <InternalsVisibleTo Include="WinDiag.Tests" />
   </ItemGroup>
 </Project>

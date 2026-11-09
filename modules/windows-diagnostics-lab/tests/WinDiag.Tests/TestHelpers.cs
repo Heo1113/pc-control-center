@@ -11,11 +11,14 @@ internal static class Fixtures
 
     public static RawEvent Event(string name) => EventXmlParser.Parse(Text("events", name));
 
-    /// <summary>The repository root (contains vendor/), found by walking up from the test binaries.</summary>
+    /// <summary>
+    /// The project C root (contains docs/EVENT_CATALOG.md), found by walking up from the test binaries.
+    /// PC Control Center: C now lives in modules/windows-diagnostics-lab and has no vendor/ folder any more.
+    /// </summary>
     public static string RepositoryRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(System.IO.Path.Combine(dir.FullName, "vendor", "local-ai-performance-center", "manifest.json")))
+        while (dir is not null && !File.Exists(System.IO.Path.Combine(dir.FullName, "docs", "EVENT_CATALOG.md")))
         {
             dir = dir.Parent;
         }

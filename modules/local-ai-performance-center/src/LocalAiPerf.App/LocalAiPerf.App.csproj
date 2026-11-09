@@ -1,14 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- PC Control Center: a view library hosted by the integrated shell (was this program's own EXE). -->
+    <OutputType>Library</OutputType>
     <!-- SkiaSharp.Views.WPF (used by ScottPlot.WPF) ships its .NET assets for windows10.0.19041 only. -->
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <RootNamespace>LocalAiPerf.App</RootNamespace>
-    <AssemblyName>LocalAiPerformanceCenter</AssemblyName>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AssemblyName>LocalAiPerf.App</AssemblyName>
     <!-- WPF Fluent theme (ThemeMode) is marked experimental in .NET 9/10. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
@@ -18,5 +17,13 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\LocalAiPerf.Presentation\LocalAiPerf.Presentation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- PC Control Center: the program's own window, startup and smoke test are replaced by the shell (src/PcControlCenter.App).
+         The files stay in the tree unchanged for reference; views, controls, converters, themes and services are reused. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Remove="App.xaml;MainWindow.xaml" />
+    <Compile Remove="App.xaml.cs;MainWindow.xaml.cs;SmokeTestRunner.cs;StartupOptions.cs" />
+    <None Include="App.xaml;MainWindow.xaml;app.manifest" />
   </ItemGroup>
 </Project>

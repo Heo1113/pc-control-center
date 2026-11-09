@@ -8,10 +8,11 @@
     <ProjectReference Include="..\WinDiag.Storage\WinDiag.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Reused read-only from project A (vendor/local-ai-performance-center/manifest.json). -->
-    <Compile Include="$(VendorA)LocalAiPerf.Analytics/Statistics.cs" Link="Vendor/A/Analytics/Statistics.cs" />
+    <InternalsVisibleTo Include="WinDiag.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="WinDiag.Tests" />
+    <!-- PC Control Center: was compiled from B/C's vendor copy of project A; now references A's single copy
+         (modules/local-ai-performance-center), so the sensor code exists once in the integrated app. -->
+    <ProjectReference Include="..\..\..\local-ai-performance-center\src\LocalAiPerf.Analytics\LocalAiPerf.Analytics.csproj" />
   </ItemGroup>
 </Project>
