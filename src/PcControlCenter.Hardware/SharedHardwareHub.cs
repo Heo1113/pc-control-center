@@ -199,7 +199,27 @@ public sealed class SharedHardwareHub : IHardwareSnapshotSource, IAsyncDisposabl
             _cts = new CancellationTokenSource();
             _state = HubState.Running;
             var token = _cts.Token;
-            _loop = Task.Run(() => LoopAsync(token), CancellationToken.None);
+            var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // A thread of its own, not the thread pool: the module recorders park pool threads while they wait for the
+            // next reading, and pool timers fire late when the pool is busy (startup, many modules). The readings must
+            // stay on time regardless, otherwise consumers would record "not measured" placeholders for nothing.
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    Loop(token);
+                }
+                finally
+                {
+                    finished.TrySetResult();
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "PcControlCenter shared sensor reader",
+            };
+            _loop = finished.Task;
+            thread.Start();
         }
     }
 
@@ -329,43 +349,67 @@ public sealed class SharedHardwareHub : IHardwareSnapshotSource, IAsyncDisposabl
         }
     }
 
-    private async Task LoopAsync(CancellationToken ct)
+    private void Loop(CancellationToken ct)
     {
-        ReadNow();
         TimeSpan interval;
         lock (_gate)
         {
             interval = _interval;
         }
 
-        using var timer = new PeriodicTimer(interval, _time);
+        // The schedule runs on real time (an OS wait on this thread, no timer callback on the pool). Skipped ticks are
+        // counted on the hub's clock, which is what the timestamps of the readings use.
+        var next = Stopwatch.GetTimestamp();
         var last = _time.GetTimestamp();
+        var first = true;
         while (true)
         {
-            try
-            {
-                if (!await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
-                {
-                    return;
-                }
-            }
-            catch (OperationCanceledException)
+            var remaining = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), next);
+            if (remaining > TimeSpan.Zero ? ct.WaitHandle.WaitOne(remaining) : ct.IsCancellationRequested)
             {
                 return;
             }
 
-            var now = _time.GetTimestamp();
-            var skipped = Math.Max(0, (long)Math.Round(_time.GetElapsedTime(last, now) / interval) - 1);
-            last = now;
-            if (skipped > 0)
+            if (first)
             {
-                lock (_gate)
+                first = false;
+            }
+            else
+            {
+                var now = _time.GetTimestamp();
+                var skipped = Math.Max(0, (long)Math.Round(_time.GetElapsedTime(last, now) / interval) - 1);
+                last = now;
+                if (skipped > 0)
                 {
-                    _skippedTicks += skipped;
+                    lock (_gate)
+                    {
+                        _skippedTicks += skipped;
+                    }
                 }
             }
 
-            ReadNow();
+            try
+            {
+                ReadNow();
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // ReadNow already guards the reader and the handlers; this keeps the thread alive whatever happens.
+                lock (_gate)
+                {
+                    _loopErrors++;
+                    _lastError = ex.Message;
+                }
+            }
+
+            // Like PeriodicTimer: fixed ticks; ticks missed while a reading took too long are dropped, never queued.
+            var ticks = (long)(interval.TotalSeconds * Stopwatch.Frequency);
+            next += ticks;
+            var behind = Stopwatch.GetTimestamp() - next;
+            if (behind > 0)
+            {
+                next += (behind / ticks + 1) * ticks;
+            }
         }
     }
 
