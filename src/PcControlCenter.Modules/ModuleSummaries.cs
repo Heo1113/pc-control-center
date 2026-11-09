@@ -202,3 +202,11 @@ public sealed record OperatorSummary
     public string? Model { get; init; }
     public string? Problem { get; init; }
 }
+
+/// <summary>Stops and starts one module of the shell (used when its data is replaced by an import).</summary>
+public sealed class SupervisorModuleRestarter(PcControlCenter.Core.ModuleSupervisor supervisor) : PcControlCenter.Migration.IModuleRestarter
+{
+    public Task StopAsync(string moduleId) => supervisor.Find(moduleId)?.StopAsync() ?? Task.CompletedTask;
+
+    public Task StartAsync(string moduleId) => supervisor.Find(moduleId)?.StartAsync(CancellationToken.None) ?? Task.CompletedTask;
+}

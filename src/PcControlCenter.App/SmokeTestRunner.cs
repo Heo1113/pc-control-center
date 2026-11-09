@@ -137,6 +137,7 @@ internal sealed class SmokeTestRunner(
             }
 
             await RunOperatorAsync(checks, details);
+            await RunMigrationAsync(checks, details);
 
             shell.Navigate(SectionKeys.Dashboard);
             shell.Dashboard.Invalidate();
@@ -268,6 +269,52 @@ internal sealed class SmokeTestRunner(
             await controls.ResumeCommand.ExecuteAsync(null);
             checks["operator-resume"] = !host.EmergencyLatched;
         }
+    }
+
+    /// <summary>
+    /// --smoke-migrate-from: the data page rehearses an original program's folder (byte copy, hashes, checks on the copy)
+    /// and applies it after the (unattended) confirmation; the folder must be byte-identical afterwards.
+    /// </summary>
+    private async Task RunMigrationAsync(Dictionary<string, bool> checks, Dictionary<string, string> details)
+    {
+        if (options.SmokeMigrateFrom is not { } folder)
+        {
+            return;
+        }
+
+        var location = PcControlCenter.Migration.LegacyMigrator.FromFolder(folder);
+        if (location is null)
+        {
+            checks["migration-source"] = false;
+            details["migration-source"] = "no database in " + folder;
+            return;
+        }
+
+        static Dictionary<string, string> Hashes(string dir) => Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
+            .ToDictionary(f => f, f => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(f))));
+
+        var before = Hashes(location.Directory);
+        shell.Navigate(SectionKeys.Settings, "settings/data");
+        var row = new LegacySourceRow(location);
+        shell.Data.Sources.Add(row);
+        shell.Data.RefreshCommand.Execute(null);
+        await shell.Data.RehearseCommand.ExecuteAsync(row);
+        await WaitUntil(() => row.Rehearsal is not null, TimeSpan.FromSeconds(60));
+        checks["migration-rehearsal"] = row.Rehearsal?.Passed == true;
+        details["migration-rehearsal"] = string.Join(" | ", shell.Data.Checks.Select(c => $"{c.State} {c.Name}: {c.Detail}"));
+        await Capture("settings-data-rehearsal");
+        if (row.Rehearsal?.Passed == true)
+        {
+            await shell.Data.ApplyCommand.ExecuteAsync(row);
+            await WaitUntil(() => row.State == "가져옴" || row.State.StartsWith("적용 실패", StringComparison.Ordinal), TimeSpan.FromSeconds(120));
+            checks["migration-apply"] = row.State == "가져옴";
+            details["migration-apply"] = shell.Data.StatusText;
+            var module = runtime.Supervisor.Find(location.ModuleId);
+            checks["migration-module-restarted"] = await WaitUntil(() => module?.Status.IsUsable == true, TimeSpan.FromSeconds(60));
+            await Capture("settings-data-applied");
+        }
+
+        checks["migration-original-unchanged"] = Hashes(location.Directory).SequenceEqual(before);
     }
 
     private bool Expect(string name, TaskRun? run, TaskRunStatus expected)

@@ -57,11 +57,14 @@ function Invoke-Smoke([string]$Name, [string]$Data, [string[]]$Extra) {
     return $parsed
 }
 
-$mock = Invoke-Smoke 'mock' (Join-Path $temp "pcc-smoke-mock-$(Get-Random)") @('--mock-sensors', '--demo-data', '--mock-desktop', '--mock-model')
+$mockData = Join-Path $temp "pcc-smoke-mock-$(Get-Random)"
+$mock = Invoke-Smoke 'mock' $mockData @('--mock-sensors', '--demo-data', '--mock-desktop', '--mock-model')
 if ($mock -and -not $mock.sensor.isMock) { $failures.Add('mock: the run did not use mock sensors') }
 
-$real = Invoke-Smoke 'real' (Join-Path $temp "pcc-smoke-real-$(Get-Random)") @('--mock-model')
+# The real run also rehearses and imports B data written by the mock run (stands in for an original program's folder).
+$real = Invoke-Smoke 'real' (Join-Path $temp "pcc-smoke-real-$(Get-Random)") @('--mock-model', '--smoke-migrate-from', (Join-Path $mockData 'modules\gpu-economics'))
 if ($real -and -not $real.checks.'operator-real-uia-workflow') { $failures.Add('real: the Operator workflow on the real desktop did not complete') }
+if ($real -and -not $real.checks.'migration-apply') { $failures.Add('real: the data import rehearsal/apply did not pass') }
 if ($real -and $real.sensor.isMock) { $failures.Add('real: the run used mock sensors') }
 
 # Abnormal end while every module records.

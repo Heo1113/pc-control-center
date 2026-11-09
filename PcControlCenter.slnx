@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PcControlCenter.Migration/PcControlCenter.Migration.csproj" />
     <Project Path="src/PcControlCenter.History/PcControlCenter.History.csproj" />
     <Project Path="src/PcControlCenter.Operator/PcControlCenter.Operator.csproj" />
     <Project Path="src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj" />

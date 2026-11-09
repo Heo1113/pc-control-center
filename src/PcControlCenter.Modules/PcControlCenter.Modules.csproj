@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.Presentation\WinDiag.Presentation.csproj" />
     <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.Presentation\WindowsAiOperator.Presentation.csproj" />
     <ProjectReference Include="..\PcControlCenter.Operator\PcControlCenter.Operator.csproj" />
+    <ProjectReference Include="..\PcControlCenter.Migration\PcControlCenter.Migration.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="PcControlCenter.Tests" />

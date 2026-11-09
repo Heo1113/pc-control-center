@@ -16,6 +16,9 @@ internal sealed record StartupOptions
     public string? SmokeReportDirectory { get; init; }
     public string? StartSection { get; init; }
 
+    /// <summary>Smoke test only: an original program's data folder to rehearse and import through the data page.</summary>
+    public string? SmokeMigrateFrom { get; init; }
+
     public static StartupOptions Parse(IReadOnlyList<string> args)
     {
         var options = new StartupOptions();
@@ -32,6 +35,7 @@ internal sealed record StartupOptions
                 "--smoke-test" => options with { SmokeTest = true },
                 "--smoke-report" => options with { SmokeReportDirectory = Next() },
                 "--section" => options with { StartSection = Next() },
+                "--smoke-migrate-from" => options with { SmokeMigrateFrom = Next() },
                 _ => options,
             };
         }

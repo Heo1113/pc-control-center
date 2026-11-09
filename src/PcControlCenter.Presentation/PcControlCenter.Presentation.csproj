@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />
     <ProjectReference Include="..\PcControlCenter.History\PcControlCenter.History.csproj" />
+    <ProjectReference Include="..\PcControlCenter.Migration\PcControlCenter.Migration.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="PcControlCenter.Tests" />

@@ -16,6 +16,7 @@
     <DataTemplate DataType="{x:Type p:SharedSensorsViewModel}"><views:SharedSensorsView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:ShellSettingsViewModel}"><views:ShellSettingsView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:HistoryViewModel}"><views:HistoryView /></DataTemplate>
+    <DataTemplate DataType="{x:Type p:DataMigrationViewModel}"><views:DataMigrationView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:ModuleUnavailableViewModel}"><views:ModuleUnavailableView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:PendingPageViewModel}">
       <Border Style="{StaticResource Card}" HorizontalAlignment="Left" MaxWidth="760">
