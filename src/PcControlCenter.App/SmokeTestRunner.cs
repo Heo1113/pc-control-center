@@ -179,7 +179,7 @@ internal sealed class SmokeTestRunner(
                 requests = runtime.Intervals.Requests.ToDictionary(r => r.Key, r => r.Value.TotalSeconds),
             },
             modules = runtime.Supervisor.Modules.Select(m => new { m.Id, state = m.Status.State.ToString(), m.Status.Summary, m.Status.Detail }),
-            operatorHost = runtime.Operator?.Host is { } host ? new { state = host.State.ToString(), pid = host.ProcessId, shellPid = Environment.ProcessId, host.Restarts, mock = host.ExpectMock, reason = host.UnavailableReason } : null,
+            operatorHost = runtime.Operator?.Host is { } host ? new { state = host.State.ToString(), pid = host.ProcessId, shellPid = Environment.ProcessId, shellElevated = Environment.IsPrivilegedProcess, deElevated = host.HostDeElevated, host.Restarts, mock = host.ExpectMock, reason = host.UnavailableReason } : null,
             operatorRuns = _operatorRuns,
             strata = runtime.LocalAi.Service?.LatestRuntime?.State.ToString(),
             screenshots = _screens,

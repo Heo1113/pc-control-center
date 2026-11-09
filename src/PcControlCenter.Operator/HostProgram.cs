@@ -3,6 +3,7 @@ using System.Globalization;
 using WindowsAiOperator.Core.Automation;
 using WindowsAiOperator.Core.Automation.Mock;
 using WindowsAiOperator.Core.Diagnostics;
+using WindowsAiOperator.Core.Security;
 
 namespace PcControlCenter.Operator;
 
@@ -42,7 +43,21 @@ public static class HostProgram
             return 2;
         }
 
-        using var log = new FileOperatorLog(logDirectory ?? Path.Combine(AppContext.BaseDirectory, "logs"));
+        IOperatorLog log;
+        FileOperatorLog? fileLog = null;
+        try
+        {
+            log = fileLog = new FileOperatorLog(logDirectory ?? Path.Combine(AppContext.BaseDirectory, "logs"));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // For example a host started with a normal-user token by an elevated shell, in a folder only administrators may
+            // write. Logging must never stop the host: lines go to stderr, which the shell writes into its own log.
+            log = new StandardErrorLog();
+            log.Warn("host", $"file log unavailable ({ex.Message}); logging through the shell");
+        }
+
+        using var ownedLog = fileLog;
         var elevated = Environment.IsPrivilegedProcess;
         IDesktopAutomation desktop;
         string? refuseAll = null;
@@ -81,25 +96,61 @@ public static class HostProgram
     }
 
     /// <summary>Ends the host if the shell disappears without closing the pipe (the job object normally does this first).</summary>
-    private static Timer WatchParent(int parentPid, IOperatorLog log) => new(_ =>
+    private static Timer WatchParent(int parentPid, IOperatorLog log)
     {
-        bool gone;
-        try
+        Timer? timer = null;
+        timer = new Timer(_ =>
         {
-            using var parent = Process.GetProcessById(parentPid);
-            gone = parent.HasExited;
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-        {
-            gone = true;
-        }
+            bool gone;
+            try
+            {
+                using var parent = Process.GetProcessById(parentPid);
+                gone = parent.HasExited;
+            }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+            {
+                gone = true;
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                // A host with a normal-user token may not open an elevated shell. Its pipe closes and the job object
+                // ends it when the shell ends, so stop watching instead of guessing.
+                log.Warn("host", "cannot watch the shell process (" + ex.Message + "); relying on the pipe and the job object");
+                timer?.Dispose();
+                return;
+            }
 
-        if (gone)
+            if (gone)
+            {
+                log.Warn("host", "the shell process is gone; exiting");
+                Environment.Exit(3);
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+        return timer;
+    }
+}
+
+/// <summary>Host log lines on stderr (the shell copies them into its log) when no log file can be written.</summary>
+internal sealed class StandardErrorLog : IOperatorLog
+{
+    private readonly Lock _gate = new();
+
+    public void Write(LogLevel level, string category, string message, Exception? exception = null)
+    {
+        var line = $"{level.ToString().ToUpperInvariant()} [{category}] {Redactor.OneLine(message, 2000)}" +
+                   (exception is null ? "" : $" | {exception.GetType().Name}: {Redactor.OneLine(exception.Message, 500)}");
+        lock (_gate)
         {
-            log.Warn("host", "the shell process is gone; exiting");
-            Environment.Exit(3);
+            try
+            {
+                Console.Error.WriteLine(line);
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                // The shell is gone.
+            }
         }
-    }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
 }
 
 /// <summary>Placeholder desktop when UI Automation can not start: reports why and does nothing else.</summary>

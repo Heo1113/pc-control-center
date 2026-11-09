@@ -31,10 +31,11 @@ public enum HostState
 }
 
 /// <summary>
-/// Starts PcControlCenter.OperatorHost.exe as a separate process (never elevated by this app; normal user rights;
-/// on Windows inside a job object that kills it with the shell and forbids shutting down Windows or changing system
-/// parameters, display settings or desktops), connects to it, restarts it a limited number of times when it dies, and
-/// implements the emergency stop: latch, cancel, and kill the process when input may be in flight.
+/// Starts PcControlCenter.OperatorHost.exe as a separate process with normal user rights (if the shell itself runs
+/// elevated, the host gets a normal-user token: <see cref="RestrictedHostLauncher"/>; on Windows inside a job object that
+/// kills it with the shell and forbids shutting down Windows or changing system parameters, display settings or
+/// desktops), connects to it, restarts it a limited number of times when it dies, and implements the emergency stop:
+/// latch, cancel, and kill the process when input may be in flight.
 /// </summary>
 public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDisposable
 {
@@ -44,6 +45,7 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
     private readonly Lock _stateGate = new();
     private WindowsJob? _job;
     private Process? _process;
+    private object? _restricted;
     private HostConnection? _connection;
     private int _actionsInFlight;
     private int _restarts;
@@ -74,6 +76,9 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
     public bool ExpectMock => _options.MockDesktop;
     public int Restarts => _restarts;
     public int? ProcessId => _process is { HasExited: false } p ? p.Id : null;
+
+    /// <summary>True when the shell runs elevated and the host was started with a normal-user token instead.</summary>
+    public bool HostDeElevated { get; private set; }
 
     /// <summary>Raised on any thread when the state, the latch or the connection changed.</summary>
     public event Action? Changed;
@@ -174,6 +179,7 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
                 _connection = null;
             }
 
+            DisposeRestricted();
             SetState(HostState.Stopped, "Operator 실행 프로세스를 종료했습니다.");
         }
         finally
@@ -185,6 +191,7 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        DisposeRestricted();
         _job?.Dispose();
         _job = null;
     }
@@ -199,71 +206,111 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
         }
 
         var useDotnet = _options.HostPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase);
-        var info = new ProcessStartInfo(useDotnet ? DotnetHost() : _options.HostPath)
-        {
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            StandardOutputEncoding = new UTF8Encoding(false),
-            StandardErrorEncoding = new UTF8Encoding(false),
-            WorkingDirectory = Path.GetDirectoryName(_options.HostPath)!,
-        };
+        var executable = useDotnet ? DotnetHost() : _options.HostPath;
+        var arguments = new List<string>();
         if (useDotnet)
         {
-            info.ArgumentList.Add(_options.HostPath);
+            arguments.Add(_options.HostPath);
         }
 
-        info.ArgumentList.Add("--parent-pid");
-        info.ArgumentList.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        info.ArgumentList.Add("--log-dir");
-        info.ArgumentList.Add(_options.LogDirectory);
+        arguments.Add("--parent-pid");
+        arguments.Add(Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        arguments.Add("--log-dir");
+        arguments.Add(_options.LogDirectory);
         if (_options.MockDesktop)
         {
-            info.ArgumentList.Add("--mock-desktop");
+            arguments.Add("--mock-desktop");
         }
 
+        var workingDirectory = Path.GetDirectoryName(_options.HostPath)!;
+        DisposeRestricted();
         Process process;
-        try
+        Stream fromHost;
+        Stream toHost;
+        Action? resume = null;
+        Stream? errors = null;
+        if (OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess
+            && TryStartRestricted(executable, arguments, workingDirectory) is { } restricted)
         {
-            process = Process.Start(info) ?? throw new InvalidOperationException("프로세스를 시작하지 못했습니다.");
+            process = restricted.Process;
+            fromHost = restricted.FromHost;
+            toHost = restricted.ToHost;
+            errors = restricted.Errors;
+            resume = restricted.Resume;
+            _restricted = restricted;
+            HostDeElevated = true;
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        else
         {
-            _log.Error("supervisor", "host start failed", ex);
-            SetState(HostState.Failed, "Operator 실행 프로세스를 시작하지 못했습니다: " + ex.Message);
-            return;
-        }
+            var info = new ProcessStartInfo(executable)
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = new UTF8Encoding(false),
+                StandardErrorEncoding = new UTF8Encoding(false),
+                WorkingDirectory = workingDirectory,
+            };
+            foreach (var argument in arguments)
+            {
+                info.ArgumentList.Add(argument);
+            }
 
-        if (OperatingSystem.IsWindows())
-        {
             try
             {
-                _job ??= WindowsJob.Create();
-                _job.Assign(process);
+                process = Process.Start(info) ?? throw new InvalidOperationException("프로세스를 시작하지 못했습니다.");
             }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
             {
-                // The host still runs as a normal user and watches the shell's process id; log and continue.
-                _log.Warn("supervisor", "host could not be placed in a job object", ex);
+                _log.Error("supervisor", "host start failed", ex);
+                SetState(HostState.Failed, "Operator 실행 프로세스를 시작하지 못했습니다: " + ex.Message);
+                return;
             }
+
+            AssignToJob(process.Handle);
+            fromHost = process.StandardOutput.BaseStream;
+            toHost = process.StandardInput.BaseStream;
+            HostDeElevated = false;
         }
 
         process.EnableRaisingEvents = true;
-        process.ErrorDataReceived += (_, e) =>
+        if (errors is null)
         {
-            if (!string.IsNullOrWhiteSpace(e.Data))
+            process.ErrorDataReceived += (_, e) =>
             {
-                _log.Warn("host-stderr", e.Data);
-            }
-        };
-        process.BeginErrorReadLine();
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                {
+                    _log.Warn("host-stderr", e.Data);
+                }
+            };
+            process.BeginErrorReadLine();
+        }
+        else
+        {
+            _ = Task.Run(() => PumpErrorsAsync(errors), CancellationToken.None);
+        }
+
         process.Exited += OnProcessExited;
         _process = process;
+        if (resume is not null)
+        {
+            try
+            {
+                resume();
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                _log.Error("supervisor", "host could not be resumed", ex);
+                await KillAsync("시작 실패").ConfigureAwait(false);
+                SetState(HostState.Failed, "Operator 실행 프로세스를 시작하지 못했습니다: " + ex.Message);
+                return;
+            }
+        }
         try
         {
-            var connection = await HostConnection.OpenAsync(process.StandardOutput.BaseStream, process.StandardInput.BaseStream, _options.HelloTimeout,
+            var connection = await HostConnection.OpenAsync(fromHost, toHost, _options.HelloTimeout,
                 cancellationToken).ConfigureAwait(false);
             connection.Closed += reason => _log.Warn("supervisor", "connection closed: " + reason);
             _connection = connection;
@@ -273,7 +320,8 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
             }
 
             var hello = connection.Hello;
-            _log.Info("supervisor", $"host pid {hello.ProcessId}: desktop '{hello.DesktopName}', mock={hello.IsMock}, elevated={hello.HostElevated}, status={hello.Status.Description}");
+            _log.Info("supervisor", $"host pid {hello.ProcessId}: desktop '{hello.DesktopName}', mock={hello.IsMock}, elevated={hello.HostElevated}, " +
+                $"de-elevated by the shell={HostDeElevated}, status={hello.Status.Description}");
             SetState(HostState.Connected, hello.Status.Available ? "연결됨" : hello.Status.Description);
         }
         catch (Exception ex) when (ex is HostUnavailableException or TimeoutException or HostCallException or OperationCanceledException)
@@ -356,6 +404,8 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
             await _connection.DisposeAsync().ConfigureAwait(false);
             _connection = null;
         }
+
+        DisposeRestricted();
     }
 
     private void SetState(HostState state, string reason)
@@ -378,6 +428,73 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.Warn("supervisor", "state handler failed", ex);
+        }
+    }
+
+    private RestrictedHostLauncher.LaunchedHost? TryStartRestricted(string executable, IReadOnlyList<string> arguments, string workingDirectory)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        try
+        {
+            var launched = RestrictedHostLauncher.Start(executable, arguments, workingDirectory, AssignToJob);
+            _log.Info("supervisor", "the shell runs elevated: host started with a normal-user token (medium integrity)");
+            return launched;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or ArgumentException)
+        {
+            // Safe fallback: started normally, the host runs elevated and therefore refuses to change anything.
+            _log.Warn("supervisor", "could not start the host with a normal-user token; it will refuse to change the screen while elevated", ex);
+            return null;
+        }
+    }
+
+    private void AssignToJob(nint processHandle)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            _job ??= WindowsJob.Create();
+            _job.Assign(processHandle);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            // The host still runs with normal user rights and watches its pipe and the shell's process id; log and continue.
+            _log.Warn("supervisor", "host could not be placed in a job object", ex);
+        }
+    }
+
+    private async Task PumpErrorsAsync(Stream errors)
+    {
+        try
+        {
+            using var reader = new StreamReader(errors, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+            while (await reader.ReadLineAsync().ConfigureAwait(false) is { } line)
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    _log.Warn("host-stderr", line);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+        {
+            // The host ended.
+        }
+    }
+
+    private void DisposeRestricted()
+    {
+        if (Interlocked.Exchange(ref _restricted, null) is IDisposable restricted)
+        {
+            restricted.Dispose();
         }
     }
 
@@ -444,9 +561,9 @@ internal sealed partial class WindowsJob : IDisposable
         return job;
     }
 
-    public void Assign(Process process)
+    public void Assign(nint processHandle)
     {
-        if (!AssignProcessToJobObject(_handle, process.Handle))
+        if (!AssignProcessToJobObject(_handle, processHandle))
         {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
         }
