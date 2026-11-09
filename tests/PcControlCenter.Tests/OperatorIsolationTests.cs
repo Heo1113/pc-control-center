@@ -256,6 +256,12 @@ public class OperatorSupervisorTests
         var first = supervisor.ProcessId!.Value;
         Assert.NotEqual(Environment.ProcessId, first);
 
+        // On Windows the host never runs elevated: an elevated test process (the CI runner) starts it with a normal-user
+        // token. Elsewhere it simply has the test process's rights (root in a container, for example).
+        Assert.Equal(OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess, supervisor.HostDeElevated);
+        var expectedHostElevated = !OperatingSystem.IsWindows() && Environment.IsPrivilegedProcess;
+        Assert.Equal(expectedHostElevated, supervisor.Current!.Hello.HostElevated);
+
         using (var process = System.Diagnostics.Process.GetProcessById(first))
         {
             process.Kill();
@@ -264,6 +270,7 @@ public class OperatorSupervisorTests
         Assert.True(await Eventually(() => supervisor.State == HostState.Connected && supervisor.ProcessId is { } p && p != first, TimeSpan.FromSeconds(30)), supervisor.UnavailableReason);
         Assert.Equal(1, supervisor.Restarts);
         Assert.NotEmpty(remote.ListWindows());
+        Assert.Equal(expectedHostElevated, supervisor.Current!.Hello.HostElevated);
     }
 
     [Fact(Timeout = 120_000)]

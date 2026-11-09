@@ -129,7 +129,8 @@ public sealed class OperatorModule(ModuleContext context, OperatorModuleOptions 
     public static string HostText(OperatorHostSupervisor host) => host.State switch
     {
         HostState.Connected when host.EmergencyLatched => "긴급 중단 상태 — [재개] 전에는 화면을 조작하지 않음",
-        HostState.Connected => $"실행 프로세스 연결됨 (PID {host.ProcessId?.ToString() ?? "-"}){(host.ExpectMock ? " · MOCK 데스크톱" : "")}",
+        HostState.Connected => $"실행 프로세스 연결됨 (PID {host.ProcessId?.ToString() ?? "-"})" +
+                               (host.HostDeElevated ? " · 일반 사용자 권한으로 실행" : "") + (host.ExpectMock ? " · MOCK 데스크톱" : ""),
         HostState.Starting => "실행 프로세스 시작 중",
         HostState.Restarting => host.UnavailableReason,
         HostState.Failed => host.UnavailableReason,

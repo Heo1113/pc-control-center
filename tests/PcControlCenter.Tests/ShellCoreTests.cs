@@ -120,15 +120,14 @@ public class ModuleSupervisorTests
     [Fact]
     public async Task A_failing_or_hanging_module_does_not_stop_the_others()
     {
-        var previous = ShellModuleBase.StartTimeout;
-        ShellModuleBase.StartTimeout = TimeSpan.FromMilliseconds(300);
-        try
+        // The timeout is per module: changing it here never shortens the modules of tests running in parallel.
+        var timeout = TimeSpan.FromMilliseconds(300);
         {
             var supervisor = new ModuleSupervisor(NullLogger.Instance);
-            var ok = supervisor.Add(new TestModule("ok", _ => Task.CompletedTask));
-            var throws = supervisor.Add(new TestModule("throws", _ => throw new InvalidOperationException("db locked")));
-            var hangs = supervisor.Add(new TestModule("hangs", _ => Task.Delay(Timeout.Infinite)));
-            var off = supervisor.Add(new TestModule("off", _ => Task.CompletedTask, enabled: false));
+            var ok = supervisor.Add(new TestModule("ok", _ => Task.CompletedTask) { StartTimeout = timeout });
+            var throws = supervisor.Add(new TestModule("throws", _ => throw new InvalidOperationException("db locked")) { StartTimeout = timeout });
+            var hangs = supervisor.Add(new TestModule("hangs", _ => Task.Delay(Timeout.Infinite)) { StartTimeout = timeout });
+            var off = supervisor.Add(new TestModule("off", _ => Task.CompletedTask, enabled: false) { StartTimeout = timeout });
 
             await supervisor.StartAllAsync(TestContext.Current.CancellationToken);
 
@@ -142,10 +141,6 @@ public class ModuleSupervisorTests
             await supervisor.StopAllAsync();
             Assert.Equal(ModuleState.Stopped, ok.Status.State);
             Assert.Equal(ModuleState.Failed, throws.Status.State);
-        }
-        finally
-        {
-            ShellModuleBase.StartTimeout = previous;
         }
     }
 

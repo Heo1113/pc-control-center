@@ -66,8 +66,13 @@ public abstract class ShellModuleBase(string id, IAppLogger log, TimeProvider? t
     public string Id { get; } = id;
     protected IAppLogger Log { get; } = log;
 
-    public static TimeSpan StartTimeout { get; set; } = TimeSpan.FromSeconds(90);
-    public static TimeSpan StopTimeout { get; set; } = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan DefaultStartTimeout = TimeSpan.FromSeconds(90);
+    public static readonly TimeSpan DefaultStopTimeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>Per module (not shared): a module that has not started after this long is marked failed and cleaned up.</summary>
+    public TimeSpan StartTimeout { get; init; } = DefaultStartTimeout;
+
+    public TimeSpan StopTimeout { get; init; } = DefaultStopTimeout;
 
     public ModuleStatus Status
     {
