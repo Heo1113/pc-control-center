@@ -105,6 +105,7 @@ public sealed partial class ShellViewModel : ObservableObject
             key => Navigate(key), _time);
         Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
+        History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Settings = new ShellSettingsViewModel(runtime.SettingsStore, runtime.Settings, runtime.Paths, dialogs);
         foreach (var id in ModuleIds.All)
         {
@@ -123,6 +124,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 "dashboard" => Dashboard,
                 "hardware/shared" => SharedSensors,
                 "settings/common" => Settings,
+                "history/timeline" => History,
                 _ when plan.ModuleId is { } id => new ModuleUnavailableViewModel(id, plan.Title, StatusOf(id), _restarts.GetValueOrDefault(id)),
                 _ => new PendingPageViewModel(plan.Title),
             };
@@ -159,6 +161,7 @@ public sealed partial class ShellViewModel : ObservableObject
     public ObservableCollection<string> Notices { get; } = [];
     public DashboardViewModel Dashboard { get; }
     public SharedSensorsViewModel SharedSensors { get; }
+    public HistoryViewModel History { get; }
     public ShellSettingsViewModel Settings { get; }
 
     /// <summary>Emergency stop, resume and host restart of the Operator, or null when the Operator is not part of this run.</summary>

@@ -310,7 +310,8 @@ public class OperatorSupervisorTests
 
             if (i == 0)
             {
-                Assert.True(await Eventually(() => supervisor.State == HostState.Connected && supervisor.ProcessId != pid, TimeSpan.FromSeconds(30)));
+                // Wait for the replacement process, not just for the old one to disappear.
+                Assert.True(await Eventually(() => supervisor.State == HostState.Connected && supervisor.ProcessId is int next && next != pid, TimeSpan.FromSeconds(30)));
             }
         }
 

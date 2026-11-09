@@ -77,7 +77,17 @@ public class ShellViewModelTests
             ui.Post(shell.Tick);
             return shell.Dashboard.RecentErrors.Count > 0 && shell.Dashboard.EconomicsSessions != Text.NA;
         }, TimeSpan.FromSeconds(20)), $"{shell.Dashboard.DiagnosticsNote} / {shell.Dashboard.EconomicsNote}");
-        Assert.All(shell.Dashboard.RecentErrors, e => Assert.True(e.IsVirtual));
+        if (!OperatingSystem.IsWindows())
+        {
+            // Without a Windows event log the only events are C's labelled demo scenario.
+            Assert.All(shell.Dashboard.RecentErrors, e => Assert.True(e.IsVirtual));
+        }
+        else
+        {
+            // On Windows C also collects the real event log: real events must not be labelled as test data.
+            var stored = runtime.Diagnostics.Engine!.Store.QueryEvents(new WinDiag.Storage.EventQuery { MinSeverity = WinDiag.Core.Events.DiagSeverity.Error, Limit = 500 });
+            Assert.All(shell.Dashboard.RecentErrors, line => Assert.Contains(stored, e => e.Title == line.Title && e.IsVirtual == line.IsVirtual));
+        }
         Assert.Contains("추정", shell.Dashboard.EconomicsNote, StringComparison.Ordinal);
 
         // Status rows: A, B, C usable (C is limited on Linux: no Windows event log), E reported separately.
