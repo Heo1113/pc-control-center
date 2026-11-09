@@ -1,7 +1,9 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PcControlCenter.Tests/PcControlCenter.Tests.csproj" />
   </Folder>
   <Folder Name="/modules/gpu-profit-center/">
     <Project Path="modules/gpu-profit-center/src/GpuProfit.Accounting/GpuProfit.Accounting.csproj" />

@@ -32,9 +32,9 @@ public interface IHardwareSnapshotSource
     SharedHardwareSample? Latest { get; }
 
     /// <summary>
-    /// Returns the first reading with a sequence greater than <paramref name="afterSequence"/>, waiting a bounded time for
-    /// it. When no new reading arrives in time, returns a stale placeholder (timestamp = now, no values, one issue that
-    /// says why) instead of repeating an old value. Never throws.
+    /// Returns the newest reading when its sequence is greater than <paramref name="afterSequence"/>; otherwise waits a
+    /// bounded time for the next reading. When none arrives in time, returns a stale placeholder (timestamp = now, no
+    /// values, one issue that says why) instead of repeating an old value. Never throws.
     /// </summary>
     SharedHardwareSample NextAfter(long afterSequence);
 }
