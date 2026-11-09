@@ -23,7 +23,10 @@ env:
 jobs:
   linux:
     name: Linux - build (incl. WPF compile), module regression tests, integration tests
-    runs-on: ubuntu-latest
+    # Pinned: A, B, C and E were validated on Ubuntu 24.04 (ICU 74). On ubuntu-latest = 26.04 (newer ICU), C's test
+    # Event_6008_localized_time_is_parsed_only_when_plausible fails because ko-KR date parsing changed; the same test
+    # passes on the Windows job. Recorded in docs/VERIFICATION.md (known issue of C, not changed by the integration).
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout

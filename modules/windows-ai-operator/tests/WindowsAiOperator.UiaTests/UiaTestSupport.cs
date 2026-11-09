@@ -41,14 +41,15 @@ internal sealed class TestTargetApp : IDisposable
 
         var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "WindowsAiOperator.slnx")))
+        // PC Control Center: E now lives in modules/windows-ai-operator (no WindowsAiOperator.slnx); find its src folder instead.
+        while (directory is not null && !Directory.Exists(Path.Combine(directory.FullName, "src", "WindowsAiOperator.TestTarget")))
         {
             directory = directory.Parent;
         }
 
         if (directory is null)
         {
-            throw new FileNotFoundException("저장소 루트(WindowsAiOperator.slnx)를 찾지 못했습니다.");
+            throw new FileNotFoundException("프로젝트 E 폴더(src/WindowsAiOperator.TestTarget)를 찾지 못했습니다.");
         }
 
         var path = Path.Combine(directory.FullName, "src", "WindowsAiOperator.TestTarget", "bin", configuration, "net10.0-windows", "OperatorTestTarget.exe");
