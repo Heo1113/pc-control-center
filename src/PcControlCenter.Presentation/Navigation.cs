@@ -116,7 +116,9 @@ public sealed partial class ModuleUnavailableViewModel : ObservableObject
         StateText = ModuleStateText.ToKorean(status.State);
         Message = status.State switch
         {
-            ModuleState.Disabled => $"{ModuleName} 모듈이 설정에서 꺼져 있습니다. 설정 › 공통에서 켤 수 있습니다 (다시 시작 필요).",
+            ModuleState.Disabled => status.Summary == "이번 실행에서는 사용하지 않습니다."
+                ? $"{ModuleName} 모듈은 이번 실행에서 사용하지 않습니다."
+                : $"{ModuleName} 모듈이 설정에서 꺼져 있습니다. 설정 › 공통에서 켤 수 있습니다 (다시 시작 필요).",
             ModuleState.Starting or ModuleState.NotStarted => $"{ModuleName} 모듈을 시작하는 중입니다.",
             ModuleState.Failed => $"{ModuleName} 모듈이 동작하지 않습니다: {status.Summary}. 다른 모듈은 계속 동작합니다.",
             _ => $"{ModuleName} 모듈: {status.Summary}",

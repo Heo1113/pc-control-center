@@ -6,6 +6,12 @@ internal sealed record StartupOptions
     public string? DataDirectory { get; init; }
     public bool MockSensors { get; init; }
     public bool DemoData { get; init; }
+
+    /// <summary>Operator: E's simulated desktop in the host process (nothing on the real screen is touched).</summary>
+    public bool MockDesktop { get; init; }
+
+    /// <summary>Operator: E's MOCK model profile (no model server needed; fixed example requests only).</summary>
+    public bool MockModel { get; init; }
     public bool SmokeTest { get; init; }
     public string? SmokeReportDirectory { get; init; }
     public string? StartSection { get; init; }
@@ -21,6 +27,8 @@ internal sealed record StartupOptions
                 "--data-dir" => options with { DataDirectory = Next() },
                 "--mock-sensors" => options with { MockSensors = true },
                 "--demo-data" => options with { DemoData = true },
+                "--mock-desktop" => options with { MockDesktop = true },
+                "--mock-model" => options with { MockModel = true },
                 "--smoke-test" => options with { SmokeTest = true },
                 "--smoke-report" => options with { SmokeReportDirectory = Next() },
                 "--section" => options with { StartSection = Next() },

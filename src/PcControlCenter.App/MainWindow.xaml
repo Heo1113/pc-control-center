@@ -117,6 +117,34 @@
         </ItemsControl>
       </StackPanel>
     </DataTemplate>
+    <!-- E: its status line and the always-available Operator controls (resources from E's ModuleResources.xaml). -->
+    <DataTemplate DataType="{x:Type hosting:OperatorHeader}">
+      <StackPanel Margin="0,0,0,6">
+        <Border Background="{StaticResource MockBannerBrush}" Padding="12,6" Margin="0,0,0,4" Visibility="{Binding Main.IsMock, Converter={StaticResource BoolToVisibility}}">
+          <TextBlock Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap"
+                     Text="MOCK 데스크톱 모드: 실제 Windows 창을 조작하지 않는 가상 화면입니다. 여기서의 성공은 실제 GUI 자동화 성공이 아닙니다." />
+        </Border>
+        <Border Background="{StaticResource SectionBarBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,5">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Button Content="재개" Command="{Binding Controls.ResumeCommand}" Margin="6,0,0,0" Padding="10,3"
+                      Visibility="{Binding Controls.IsLatched, Converter={StaticResource BoolToVisibility}}" AutomationProperties.AutomationId="OperatorResume" />
+              <Button Content="실행 프로세스 다시 시작" Command="{Binding Controls.RestartHostCommand}" Margin="6,0,0,0" Padding="10,3" />
+              <Button Content="긴급 중단 (Ctrl+Alt+F12)" Command="{Binding Controls.EmergencyStopCommand}" Style="{StaticResource DangerButton}" Margin="6,0,0,0"
+                      AutomationProperties.AutomationId="OperatorEmergencyStop" />
+            </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+              <StackPanel Orientation="Horizontal">
+                <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Controls.HostLevel, Converter={StaticResource LevelBrush}}" />
+                <TextBlock Text="{Binding Controls.HostText}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <TextBlock Text="{Binding Main.StatusLine}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="16,2,0,0" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+        <TextBlock Text="{Binding Controls.IsolationText}" Style="{StaticResource Caption}" Margin="4,4,4,0" />
+      </StackPanel>
+    </DataTemplate>
   </Window.Resources>
 
   <Grid x:Name="Root">
@@ -145,6 +173,9 @@
             </ItemsControl>
           </StackPanel>
           <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+            <Button Content="Operator 긴급 중단" Command="{Binding Operator.EmergencyStopCommand}" Style="{StaticResource DangerButton}" Margin="0,0,14,0" Padding="10,2"
+                    Visibility="{Binding HasOperator, Converter={StaticResource BoolToVisibility}}" ToolTip="Ctrl+Alt+F12 — 실행 중인 Operator 작업을 즉시 멈추고 열린 승인 요청을 거부합니다."
+                    AutomationProperties.AutomationId="GlobalEmergencyStop" />
             <TextBlock Text="{Binding DataRootText}" Style="{StaticResource Label}" MaxWidth="420" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
             <TextBlock Text="{Binding ClockText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
           </StackPanel>

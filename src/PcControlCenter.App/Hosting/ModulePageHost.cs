@@ -21,6 +21,7 @@ public sealed class ModulePageHost : Grid
         [ModuleIds.LocalAi] = new Uri("pack://application:,,,/LocalAiPerf.App;component/ModuleResources.xaml"),
         [ModuleIds.GpuEconomics] = new Uri("pack://application:,,,/GpuProfit.App;component/ModuleResources.xaml"),
         [ModuleIds.Diagnostics] = new Uri("pack://application:,,,/WinDiag.App;component/ModuleResources.xaml"),
+        [ModuleIds.Operator] = new Uri("pack://application:,,,/WindowsAiOperator.App;component/ModuleResources.xaml"),
     };
 
     private readonly Dictionary<string, ContentControl> _containers = [];

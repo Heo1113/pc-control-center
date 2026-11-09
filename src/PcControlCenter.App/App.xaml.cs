@@ -23,6 +23,8 @@ public partial class App : Application
     private LocalAiBinder? _localAi;
     private GpuEconomicsBinder? _economics;
     private DiagnosticsBinder? _diagnostics;
+    private OperatorBinder? _operator;
+    private WindowsAiOperator.App.Services.HotkeyService? _hotkey;
     private bool _closing;
 
     internal StartupOptions Options { get; private set; } = new();
@@ -41,6 +43,13 @@ public partial class App : Application
                 MockSensors = Options.MockSensors,
                 DemoData = Options.DemoData,
                 Unattended = Options.SmokeTest,
+                Operator = new OperatorModuleOptions
+                {
+                    HostPath = OperatorHostPath(),
+                    MockDesktop = Options.MockDesktop,
+                    MockModel = Options.MockModel,
+                    SecretStore = (paths, log) => new WindowsAiOperator.App.Services.DpapiSecretStore(paths.SecretsPath, log),
+                },
             });
         }
         catch (ShellStartException ex)
@@ -75,7 +84,24 @@ public partial class App : Application
         _localAi = new LocalAiBinder(_shell, _runtime.LocalAi, Dispatcher, () => MainWindow, Options.SmokeTest, log);
         _economics = new GpuEconomicsBinder(_shell, _runtime.Economics, Dispatcher, () => MainWindow, Options.SmokeTest, reportDirectory, window.ApplyScale, log);
         _diagnostics = new DiagnosticsBinder(_shell, _runtime.Diagnostics, Dispatcher, () => MainWindow, Options.SmokeTest, reportDirectory, log);
+        if (_runtime.Operator is { } operatorModule && _shell.Operator is { } controls)
+        {
+            _operator = new OperatorBinder(_shell, operatorModule, controls, Dispatcher, log);
+        }
+
+        WindowsAiOperator.App.Services.AppHost.ScaleHandler = window.ApplyScale;
         window.Show();
+        if (_shell.Operator is { } operatorControls)
+        {
+            // Same global emergency hotkey as project E, registered on the integrated window.
+            _hotkey = new WindowsAiOperator.App.Services.HotkeyService();
+            if (!_hotkey.Register(window, () => operatorControls.EmergencyStopCommand.Execute(null)))
+            {
+                log.Warn("app", "emergency hotkey could not be registered");
+                _shell.Notices.Add("Operator 긴급 중단 단축키 Ctrl+Alt+F12를 등록하지 못했습니다(다른 프로그램이 사용 중일 수 있음). 화면 아래 [Operator 긴급 중단] 버튼을 사용하세요.");
+            }
+        }
+
         if (Options.StartSection is { } section)
         {
             _shell.Navigate(section);
@@ -91,7 +117,7 @@ public partial class App : Application
         if (Options.SmokeTest)
         {
             Directory.CreateDirectory(reportDirectory);
-            _smoke = new SmokeTestRunner(window, _shell, _runtime, _localAi, _economics, _diagnostics, dialogs, reportDirectory);
+            _smoke = new SmokeTestRunner(window, _shell, _runtime, _localAi, _economics, _diagnostics, _operator, dialogs, reportDirectory, Options);
             _smoke.Start();
         }
     }
@@ -143,6 +169,8 @@ public partial class App : Application
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _timer?.Stop();
+        _hotkey?.Dispose();
+        _operator?.Dispose();
         _localAi?.Dispose();
         _economics?.Dispose();
         _diagnostics?.Dispose();
@@ -173,6 +201,24 @@ public partial class App : Application
         }
 
         base.OnSessionEnding(e);
+    }
+
+    /// <summary>
+    /// PcControlCenter.OperatorHost.exe next to PcControlCenter.exe (portable package). In a development build the host's
+    /// own output folder is used.
+    /// </summary>
+    private static string OperatorHostPath()
+    {
+        var packaged = Path.Combine(AppContext.BaseDirectory, "PcControlCenter.OperatorHost.exe");
+        if (File.Exists(packaged))
+        {
+            return packaged;
+        }
+
+        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
+        var development = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "PcControlCenter.OperatorHost", "bin", configuration, "net10.0-windows",
+            "PcControlCenter.OperatorHost.exe"));
+        return File.Exists(development) ? development : packaged;
     }
 
     private void RegisterExceptionHandlers(IAppLogger log)

@@ -1,9 +1,11 @@
 <#
 .SYNOPSIS
   GUI smoke test of the published PcControlCenter.exe (same shape as the original programs' smoke-gui.ps1).
-  1) mock: MOCK sensors + labelled demo data of B and C — every section and page, an A session, a B session, a C poll.
+  1) mock: MOCK sensors + labelled demo data of B and C + E's simulated desktop and MOCK model — every section and page,
+     an A session, a B session, a C poll, an Operator natural-language task and a denied approval through the host process.
   2) real: the real sensor providers of the machine (on a CI runner: no NVIDIA GPU, so GPU values must be N/A, never
-     invented) and the real Windows event log.
+     invented), the real Windows event log, and E's built-in workflow on the real desktop against OperatorTestTarget.exe,
+     executed by the separate Operator host process.
   3) after-kill: the app is killed while every module records; the next start must recover each module from its own
      database (A closes the open session, B closes the run and its interrupted sessions, C ends the run) and pass.
   Each run saves screenshots and a JSON report and must exit with 0.
@@ -55,16 +57,17 @@ function Invoke-Smoke([string]$Name, [string]$Data, [string[]]$Extra) {
     return $parsed
 }
 
-$mock = Invoke-Smoke 'mock' (Join-Path $temp "pcc-smoke-mock-$(Get-Random)") @('--mock-sensors', '--demo-data')
+$mock = Invoke-Smoke 'mock' (Join-Path $temp "pcc-smoke-mock-$(Get-Random)") @('--mock-sensors', '--demo-data', '--mock-desktop', '--mock-model')
 if ($mock -and -not $mock.sensor.isMock) { $failures.Add('mock: the run did not use mock sensors') }
 
-$real = Invoke-Smoke 'real' (Join-Path $temp "pcc-smoke-real-$(Get-Random)") @()
+$real = Invoke-Smoke 'real' (Join-Path $temp "pcc-smoke-real-$(Get-Random)") @('--mock-model')
+if ($real -and -not $real.checks.'operator-real-uia-workflow') { $failures.Add('real: the Operator workflow on the real desktop did not complete') }
 if ($real -and $real.sensor.isMock) { $failures.Add('real: the run used mock sensors') }
 
 # Abnormal end while every module records.
 $killData = Join-Path $temp "pcc-smoke-kill-$(Get-Random)"
 Write-Host "Abnormal end test: starting the app, killing it after $SecondsBeforeKill s..."
-$app = Start-Process -FilePath $exePath -ArgumentList @('--data-dir', $killData, '--mock-sensors') -PassThru
+$app = Start-Process -FilePath $exePath -ArgumentList @('--data-dir', $killData, '--mock-sensors', '--mock-desktop') -PassThru
 $null = $app.Handle
 Start-Sleep -Seconds $SecondsBeforeKill
 if ($app.HasExited) {
@@ -73,7 +76,11 @@ if ($app.HasExited) {
 else {
     Stop-Process -Id $app.Id -Force
     $null = $app.WaitForExit(30000)
-    $after = Invoke-Smoke 'after-kill' $killData @('--mock-sensors')
+    # The Operator host must not outlive the killed window (job object), and every module recovers from its own database.
+    Start-Sleep -Seconds 3
+    $orphans = Get-Process -Name 'PcControlCenter.OperatorHost' -ErrorAction SilentlyContinue
+    if ($orphans) { $failures.Add("after-kill: $($orphans.Count) Operator host process(es) survived the killed window") }
+    $after = Invoke-Smoke 'after-kill' $killData @('--mock-sensors', '--mock-desktop')
     if ($after -and -not $after.ok) { $failures.Add('after-kill: the restart after the kill did not pass') }
 }
 

@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-  Builds the portable Windows x64 package of PC Control Center: PcControlCenter.exe (the one integrated window) as a
-  self-contained single-file EXE (no .NET install needed). Same approach as the original programs' publish.ps1.
+  Builds the portable Windows x64 package of PC Control Center: PcControlCenter.exe (the one integrated window),
+  PcControlCenter.OperatorHost.exe (the Operator's separate desktop automation process, started by the window only) and
+  OperatorTestTarget.exe (E's safe test app), self-contained single-file EXEs (no .NET install needed). Same approach as the original programs' publish.ps1.
   The original programs' own EXEs and command-line tools are not part of the package.
 .EXAMPLE
   ./scripts/publish.ps1 -OutputDir dist
@@ -20,10 +21,13 @@ if (Test-Path $appOut) { Remove-Item -Recurse -Force $appOut }
 
 $common = @('-c', $Configuration, '-r', 'win-x64', '--self-contained', 'true',
     '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:EnableCompressionInSingleFile=true', '-o', $appOut)
-$projects = @('src/PcControlCenter.App/PcControlCenter.App.csproj')
-if (Test-Path (Join-Path $root 'src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj')) {
-    $projects += 'src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj'
-}
+# PcControlCenter.exe (the window), PcControlCenter.OperatorHost.exe (E's desktop automation, separate process) and
+# OperatorTestTarget.exe (project E's safe test app: it only changes its own window, used by E's built-in workflow).
+$projects = @(
+    'src/PcControlCenter.App/PcControlCenter.App.csproj',
+    'src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj',
+    'modules/windows-ai-operator/src/WindowsAiOperator.TestTarget/WindowsAiOperator.TestTarget.csproj'
+)
 foreach ($project in $projects) {
     dotnet publish (Join-Path $root $project) @common
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $project ($LASTEXITCODE)" }
@@ -42,7 +46,9 @@ Set-Content -Path (Join-Path $appOut 'portable.txt') -Value $marker -Encoding ut
 foreach ($exe in Get-ChildItem $appOut -Filter *.exe) {
     "$((Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower())  $($exe.Name)" | Set-Content "$($exe.FullName).sha256" -Encoding ascii
 }
-if (-not (Test-Path (Join-Path $appOut 'PcControlCenter.exe'))) { throw 'PcControlCenter.exe was not produced' }
+foreach ($required in @('PcControlCenter.exe', 'PcControlCenter.OperatorHost.exe', 'OperatorTestTarget.exe')) {
+    if (-not (Test-Path (Join-Path $appOut $required))) { throw "$required was not produced" }
+}
 
 $zip = Join-Path $OutputDir "$name.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }

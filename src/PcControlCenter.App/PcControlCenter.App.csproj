@@ -19,9 +19,10 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />
-    <!-- The modules' own views (unchanged XAML of A, B and C), compiled as view libraries. -->
+    <!-- The modules' own views (unchanged XAML of A, B, C and E), compiled as view libraries. -->
     <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.App\LocalAiPerf.App.csproj" />
     <ProjectReference Include="..\..\modules\gpu-profit-center\src\GpuProfit.App\GpuProfit.App.csproj" />
     <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.App\WinDiag.App.csproj" />
+    <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.App\WindowsAiOperator.App.csproj" />
   </ItemGroup>
 </Project>

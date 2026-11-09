@@ -100,8 +100,10 @@ public sealed partial class ShellViewModel : ObservableObject
             }
         }
 
-        Dashboard = new DashboardViewModel(runtime.Hub, runtime.LocalAi, runtime.Economics, runtime.Diagnostics, operatorSummary ?? (() => null), ui,
+        operatorSummary ??= runtime.Operator is { } operatorModule ? operatorModule.Summary : () => null;
+        Dashboard = new DashboardViewModel(runtime.Hub, runtime.LocalAi, runtime.Economics, runtime.Diagnostics, operatorSummary, ui,
             key => Navigate(key), _time);
+        Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
         Settings = new ShellSettingsViewModel(runtime.SettingsStore, runtime.Settings, runtime.Paths, dialogs);
         foreach (var id in ModuleIds.All)
@@ -158,6 +160,11 @@ public sealed partial class ShellViewModel : ObservableObject
     public DashboardViewModel Dashboard { get; }
     public SharedSensorsViewModel SharedSensors { get; }
     public ShellSettingsViewModel Settings { get; }
+
+    /// <summary>Emergency stop, resume and host restart of the Operator, or null when the Operator is not part of this run.</summary>
+    public OperatorControlViewModel? Operator { get; }
+
+    public bool HasOperator => Operator is not null;
 
     [ObservableProperty]
     public partial ShellSection? CurrentSection { get; set; }
@@ -309,8 +316,7 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     private ModuleStatus StatusOf(string id) => _runtime.Supervisor.Find(id)?.Status
-                                                ?? new ModuleStatus(id, ModuleState.NotStarted, id == ModuleIds.Operator ? "Operator 호스트 연결 전" : "등록되지 않음",
-                                                    _time.GetUtcNow());
+                                                ?? new ModuleStatus(id, ModuleState.Disabled, "이번 실행에서는 사용하지 않습니다.", _time.GetUtcNow());
 
     private void OnModuleStatus(ModuleStatus status)
     {

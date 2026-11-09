@@ -13,6 +13,9 @@ public sealed record ShellOptions
     public bool Unattended { get; init; }
     public IReadOnlyList<LegacyLocation>? LegacyLocations { get; init; }
     public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>The Operator (E) module; null leaves the Operator out of this run (it then shows as not available).</summary>
+    public OperatorModuleOptions? Operator { get; init; }
 }
 
 /// <summary>
@@ -53,6 +56,10 @@ public sealed class ShellRuntime : IAsyncDisposable
         LocalAi = Supervisor.Add(new LocalAiModule(context));
         Economics = Supervisor.Add(new GpuEconomicsModule(context));
         Diagnostics = Supervisor.Add(new DiagnosticsModule(context));
+        if (options.Operator is { } operatorOptions)
+        {
+            Operator = Supervisor.Add(new OperatorModule(context, operatorOptions));
+        }
     }
 
     public ShellPaths Paths { get; }
@@ -69,6 +76,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     public LocalAiModule LocalAi { get; }
     public GpuEconomicsModule Economics { get; }
     public DiagnosticsModule Diagnostics { get; }
+    public OperatorModule? Operator { get; }
 
     /// <summary>
     /// Prepares the data root and the sensor reader. Throws <see cref="ShellStartException"/> for problems the user must

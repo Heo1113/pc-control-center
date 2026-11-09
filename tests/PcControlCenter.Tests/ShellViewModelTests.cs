@@ -128,3 +128,62 @@ public class ShellViewModelTests
         Assert.Equal(ShellStartProblem.AlreadyRunning, ex.Problem);
     }
 }
+
+public class OperatorModuleTests
+{
+    private static string MockHostPath()
+    {
+        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ? "Release" : "Debug";
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "PcControlCenter.MockOperatorHost", "bin", configuration, "net10.0",
+            "PcControlCenter.MockOperatorHost.dll"));
+    }
+
+    [Fact(Timeout = 180_000)]
+    public async Task The_operator_runs_e_in_the_shell_with_its_desktop_in_a_separate_process()
+    {
+        using var temp = new TempDir();
+        await using var runtime = ShellRuntime.Create(new ShellOptions
+        {
+            DataDirectory = temp.Sub("data"),
+            ExecutableDirectory = temp.Path,
+            MockSensors = true,
+            Unattended = true,
+            LegacyLocations = [],
+            Operator = new OperatorModuleOptions
+            {
+                HostPath = MockHostPath(),
+                MockDesktop = true,
+                MockModel = true,
+                SecretStore = (_, _) => new WindowsAiOperator.Core.Settings.InMemorySecretStore(),
+            },
+        });
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var shell = new ShellViewModel(runtime, new LockedDispatcher(), new RecordingShellDialogs());
+        var module = runtime.Operator!;
+
+        Assert.True(module.Status.IsUsable, module.Status.Summary);
+        Assert.NotNull(module.Context);
+        Assert.True(module.Context.Desktop.IsMock);
+        Assert.NotEqual(Environment.ProcessId, module.Host!.ProcessId);
+        Assert.True(File.Exists(runtime.Paths.ModuleDatabasePath(ModuleIds.Operator)));
+        Assert.NotNull(shell.Operator);
+        Assert.NotEmpty(module.Context.Desktop.ListWindows());
+
+        // E's executor in the shell, the desktop in the host: a built-in workflow on the simulated test app.
+        var workflow = module.Context.Workflows.List().First(w => w.Id == "builtin-test-counter");
+        Assert.NotNull(workflow);
+
+        await shell.Operator!.EmergencyStopCommand.ExecuteAsync(null);
+        Assert.True(module.Host.EmergencyLatched);
+        Assert.Equal(ModuleState.Degraded, module.Status.State);
+        Assert.Contains("긴급 중단", shell.Operator.HostText, StringComparison.Ordinal);
+        await shell.Operator.ResumeCommand.ExecuteAsync(null);
+        Assert.False(module.Host.EmergencyLatched);
+        Assert.Equal(ModuleState.Running, module.Status.State);
+
+        // The dashboard reads the Operator state (without E's task runner bound: host state only).
+        var summary = module.Summary();
+        Assert.True(summary.HostConnected);
+        Assert.True(summary.IsMockDesktop);
+    }
+}

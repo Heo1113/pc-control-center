@@ -15,7 +15,7 @@ namespace PcControlCenter.App.Hosting;
 /// not used. When the module stops or fails, the shell shows placeholders and the view model is dropped.
 /// </summary>
 internal abstract class ModuleBinder<TViewModel> : IDisposable
-    where TViewModel : class, INotifyPropertyChanged, IDisposable
+    where TViewModel : class, INotifyPropertyChanged
 {
     private TViewModel? _viewModel;
 
@@ -52,6 +52,13 @@ internal abstract class ModuleBinder<TViewModel> : IDisposable
 
     protected abstract void Tick(TViewModel viewModel);
 
+    /// <summary>The header shown above this module's pages; by default the module's main view model (its status strip).</summary>
+    protected virtual object Header(TViewModel viewModel) => viewModel;
+
+    protected virtual void Dropped(TViewModel viewModel)
+    {
+    }
+
     public void Dispose()
     {
         Shell.ModuleUnbound -= OnUnbound;
@@ -80,7 +87,7 @@ internal abstract class ModuleBinder<TViewModel> : IDisposable
         _viewModel = vm;
         foreach (var (key, page) in Pages(vm))
         {
-            Shell.BindModulePage(key, page, vm, () =>
+            Shell.BindModulePage(key, page, Header(vm), () =>
             {
                 if (!ReferenceEquals(CurrentPage(vm), page))
                 {
@@ -131,7 +138,8 @@ internal abstract class ModuleBinder<TViewModel> : IDisposable
         Shell.RemoveTickHandler(TickCurrent);
         try
         {
-            vm.Dispose();
+            (vm as IDisposable)?.Dispose();
+            Dropped(vm);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -379,5 +387,100 @@ internal sealed class DiagnosticsBinder : ModuleBinder<WinDiag.Presentation.View
         {
             Dialogs.Error("복원 실패", ex.Message);
         }
+    }
+}
+
+/// <summary>E's status strip plus the shell's Operator controls (host process state, emergency stop, resume, host restart).</summary>
+public sealed record OperatorHeader(WindowsAiOperator.Presentation.ViewModels.MainViewModel Main, OperatorControlViewModel Controls);
+
+/// <summary>
+/// Project E's pages: overview, task runner (request, plan review, live steps, approvals, pause/resume/stop), window
+/// inspector, workflows, history, model connection, safety settings, settings. E's view models run unchanged on E's
+/// OperatorContext; its desktop is the remote one, so every screen action happens in the Operator host process.
+/// </summary>
+internal sealed class OperatorBinder : ModuleBinder<WindowsAiOperator.Presentation.ViewModels.MainViewModel>
+{
+    private readonly OperatorModule _module;
+    private readonly OperatorControlViewModel _controls;
+
+    public OperatorBinder(ShellViewModel shell, OperatorModule module, OperatorControlViewModel controls, Dispatcher dispatcher, IAppLogger log)
+        : base(shell, module.Id, dispatcher, log)
+    {
+        _module = module;
+        _controls = controls;
+        Presenter = new WindowsAiOperator.App.Services.ApprovalPresenter();
+        module.ContextReady += RequestBind;
+        if (module.Context is not null)
+        {
+            RequestBind();
+        }
+    }
+
+    /// <summary>E's approval and plan-review windows (the smoke test answers through its Shown event).</summary>
+    public WindowsAiOperator.App.Services.ApprovalPresenter Presenter { get; }
+
+    protected override WindowsAiOperator.Presentation.ViewModels.MainViewModel? Create()
+    {
+        if (_module.Context is not { } context)
+        {
+            return null;
+        }
+
+        var vm = new WindowsAiOperator.Presentation.ViewModels.MainViewModel(context, new WindowsAiOperator.App.Services.WpfDispatcher(Dispatcher),
+            new WindowsAiOperator.App.Services.WpfDialogService(), Presenter, new WindowsAiOperator.App.Services.OverlayHighlighter(),
+            new WindowsAiOperator.App.Services.AppHost(context.Log));
+        _controls.StopRunningTask = vm.EmergencyStop;
+        _module.SummaryProvider = () => Summarize(vm, context);
+        return vm;
+    }
+
+    protected override void Dropped(WindowsAiOperator.Presentation.ViewModels.MainViewModel viewModel)
+    {
+        viewModel.Runner.StopAll("Operator 모듈 종료");
+        _controls.StopRunningTask = null;
+        _module.SummaryProvider = null;
+    }
+
+    protected override IEnumerable<(string, object)> Pages(WindowsAiOperator.Presentation.ViewModels.MainViewModel vm) =>
+    [
+        ("operator/overview", vm.Dashboard),
+        ("operator/run", vm.Runner),
+        ("operator/inspector", vm.Inspector),
+        ("operator/workflows", vm.Workflows),
+        ("operator/history", vm.History),
+        ("operator/models", vm.Models),
+        ("settings/operator-safety", vm.Safety),
+        ("settings/operator", vm.Settings),
+    ];
+
+    protected override object Header(WindowsAiOperator.Presentation.ViewModels.MainViewModel viewModel) => new OperatorHeader(viewModel, _controls);
+
+    protected override object CurrentPage(WindowsAiOperator.Presentation.ViewModels.MainViewModel vm) => vm.CurrentPage;
+
+    protected override void SetCurrentPage(WindowsAiOperator.Presentation.ViewModels.MainViewModel vm, object page)
+        => vm.CurrentPage = (WindowsAiOperator.Presentation.ViewModels.PageViewModel)page;
+
+    /// <summary>E's pages refresh themselves; the shell has nothing to tick.</summary>
+    protected override void Tick(WindowsAiOperator.Presentation.ViewModels.MainViewModel vm)
+    {
+    }
+
+    private OperatorSummary Summarize(WindowsAiOperator.Presentation.ViewModels.MainViewModel vm, WindowsAiOperator.Presentation.OperatorContext context)
+    {
+        var runner = vm.Runner;
+        var host = _module.Host;
+        var last = runner.LastRun;
+        return new OperatorSummary
+        {
+            StateText = host is null ? _module.Status.Summary : OperatorModule.HostText(host),
+            HostConnected = host?.State == PcControlCenter.Operator.HostState.Connected,
+            IsMockDesktop = context.Desktop.IsMock,
+            CurrentTask = runner.IsRunning ? (string.IsNullOrWhiteSpace(runner.RequestText) ? runner.StatusText : runner.RequestText) : null,
+            CurrentStep = runner.IsRunning ? runner.Progress : null,
+            AwaitingApproval = runner.PendingApproval is not null || runner.PendingPlanReview is not null,
+            IsPaused = runner.IsPaused,
+            LastResult = last is null ? null : $"최근 작업: {last.Status} — {last.StatusMessage}",
+            Model = context.Settings.ActiveProfile is { } profile ? $"{profile.Name} ({profile.Model})" : null,
+        };
     }
 }

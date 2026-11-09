@@ -6,6 +6,11 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PcControlCenter.App.Hosting;
+using PcControlCenter.Operator;
+using WindowsAiOperator.Core.Actions;
+using WindowsAiOperator.Core.Automation;
+using WindowsAiOperator.Core.Execution;
+using WindowsAiOperator.Presentation.ViewModels;
 using PcControlCenter.Core;
 using PcControlCenter.Modules;
 using PcControlCenter.Presentation;
@@ -26,8 +31,10 @@ internal sealed class SmokeTestRunner(
     LocalAiBinder localAi,
     GpuEconomicsBinder economics,
     DiagnosticsBinder diagnostics,
+    OperatorBinder? operatorBinder,
     ShellDialogs dialogs,
-    string reportDirectory)
+    string reportDirectory,
+    StartupOptions options)
 {
     private readonly List<string> _exceptions = [];
     private readonly List<string> _screens = [];
@@ -37,8 +44,16 @@ internal sealed class SmokeTestRunner(
 
     public int? ExitCode { get; private set; }
 
+    private Func<ApprovalViewModel, bool> _approve = _ => false;
+    private readonly List<object> _operatorRuns = [];
+
     public void Start()
     {
+        if (operatorBinder is not null)
+        {
+            operatorBinder.Presenter.Shown += OnOperatorDialogShown;
+        }
+
         PresentationTraceSources.Refresh();
         PresentationTraceSources.DataBindingSource.Listeners.Add(_bindings);
         PresentationTraceSources.DataBindingSource.Switch.Level = SourceLevels.Error;
@@ -121,6 +136,8 @@ internal sealed class SmokeTestRunner(
                 details["diagnostics-poll"] = poll is null ? diag.EventCollectionUnavailableReason ?? diag.LastPollError ?? "-" : $"read {poll.Read}, inserted {poll.Inserted} events";
             }
 
+            await RunOperatorAsync(checks, details);
+
             shell.Navigate(SectionKeys.Dashboard);
             shell.Dashboard.Invalidate();
             await Task.Delay(3000);
@@ -161,6 +178,8 @@ internal sealed class SmokeTestRunner(
                 requests = runtime.Intervals.Requests.ToDictionary(r => r.Key, r => r.Value.TotalSeconds),
             },
             modules = runtime.Supervisor.Modules.Select(m => new { m.Id, state = m.Status.State.ToString(), m.Status.Summary, m.Status.Detail }),
+            operatorHost = runtime.Operator?.Host is { } host ? new { state = host.State.ToString(), pid = host.ProcessId, shellPid = Environment.ProcessId, host.Restarts, mock = host.ExpectMock, reason = host.UnavailableReason } : null,
+            operatorRuns = _operatorRuns,
             strata = runtime.LocalAi.Service?.LatestRuntime?.State.ToString(),
             screenshots = _screens,
             exceptions = _exceptions,
@@ -173,6 +192,120 @@ internal sealed class SmokeTestRunner(
         File.WriteAllText(Path.Combine(reportDirectory, "smoke-report.json"),
             JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
         window.Close();
+    }
+
+    /// <summary>
+    /// E through the separate host process: with --mock-desktop the natural-language pipeline (MOCK model) and a denied
+    /// approval on E's simulated desktop; without it, E's built-in workflow on the real desktop against the safe test app
+    /// (OperatorTestTarget.exe, packaged next to the EXE). Then the emergency stop latches and resume releases it.
+    /// </summary>
+    private async Task RunOperatorAsync(Dictionary<string, bool> checks, Dictionary<string, string> details)
+    {
+        if (runtime.Operator is not { } module || operatorBinder?.ViewModel is not { } e || module.Host is not { } host || module.Context is not { } context)
+        {
+            if (runtime.Operator is not null)
+            {
+                checks["operator-ready"] = false;
+            }
+
+            return;
+        }
+
+        checks["operator-host-process"] = host.State == HostState.Connected && host.ProcessId is int pid && pid != Environment.ProcessId;
+        details["operator-host-process"] = $"shell {Environment.ProcessId}, host {host.ProcessId}, desktop {context.Desktop.Name}";
+        shell.Navigate(SectionKeys.Operator, "operator/run");
+        if (options.MockDesktop)
+        {
+            if (options.MockModel)
+            {
+                e.Runner.RequestText = "메모장을 열고 \"스모크 테스트 문장\"을 입력해 줘.";
+                await e.Runner.RunCommand.ExecuteAsync(null);
+                checks["operator-mock-nl-task"] = Expect("mock-nl-notepad", e.Runner.LastRun, TaskRunStatus.Completed);
+            }
+
+            _approve = _ => false;
+            var deletePlan = PlanParser.Parse("""
+                {"steps":[
+                  {"action":"select","window":{"app":"test-target"},"element":{"control_type":"ListItem","name":"항목 1"}},
+                  {"action":"click","element":{"automation_id":"DeleteItemButton"}}]}
+                """).Plan!;
+            var denied = await e.Runner.RunStaticPlanAsync(deletePlan, "[스모크] 삭제 버튼 — 승인 거부 경로", TaskSource.Manual);
+            checks["operator-approval-denied"] = Expect("mock-approval-denied", denied, TaskRunStatus.PartiallyCompleted) && denied?.Steps.LastOrDefault()?.Performed == false;
+        }
+        else
+        {
+            var before = Process.GetProcessesByName("OperatorTestTarget").Select(p => p.Id).ToHashSet();
+            try
+            {
+                var workflow = context.Workflows.List().First(w => w.Id == "builtin-test-counter");
+                var run = await e.Runner.RunWorkflowAsync(workflow, new Dictionary<string, string> { ["text"] = "실제 UIA 스모크 테스트 문장" }, []);
+                checks["operator-real-uia-workflow"] = Expect("real-uia-workflow", run, TaskRunStatus.Completed);
+                await Capture("operator-real-uia-workflow");
+            }
+            finally
+            {
+                foreach (var process in Process.GetProcessesByName("OperatorTestTarget").Where(p => !before.Contains(p.Id)))
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                }
+            }
+        }
+
+        // Emergency stop from the shell: latched until resume, the desktop refuses changes in the meantime.
+        if (shell.Operator is { } controls)
+        {
+            await controls.EmergencyStopCommand.ExecuteAsync(null);
+            await WaitUntil(() => host.State == HostState.Connected, TimeSpan.FromSeconds(30));
+            var refused = await context.Desktop.PerformAsync(new ActionRequest { Action = PrimitiveAction.Focus, WindowHandle = 1 }, CancellationToken.None);
+            checks["operator-emergency-latch"] = host.EmergencyLatched && !refused.Performed;
+            await Capture("operator-emergency-stopped");
+            await controls.ResumeCommand.ExecuteAsync(null);
+            checks["operator-resume"] = !host.EmergencyLatched;
+        }
+    }
+
+    private bool Expect(string name, TaskRun? run, TaskRunStatus expected)
+    {
+        _operatorRuns.Add(new
+        {
+            name,
+            status = run?.Status.ToString(),
+            message = run?.StatusMessage,
+            steps = run?.Steps.Select(s => $"{s.Sequence}. {s.Step.Action} {s.Status} {s.Method} {s.Message}").ToArray(),
+        });
+        return run?.Status == expected;
+    }
+
+    private void OnOperatorDialogShown(object viewModel, Window dialog)
+    {
+        _ = dialog.Dispatcher.InvokeAsync(async () =>
+        {
+            await Task.Delay(400);
+            await dialog.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+            switch (viewModel)
+            {
+                case PlanReviewViewModel review:
+                    review.StartCommand.Execute(null);
+                    break;
+                case ApprovalViewModel approval:
+                    if (_approve(approval))
+                    {
+                        approval.ApproveCommand.Execute(null);
+                    }
+                    else
+                    {
+                        approval.DenyCommand.Execute(null);
+                    }
+
+                    break;
+            }
+        });
     }
 
     private async Task<bool> WaitUntil(Func<bool> condition, TimeSpan timeout)
