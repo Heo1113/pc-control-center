@@ -179,9 +179,12 @@ public sealed partial class DataMigrationViewModel : ObservableObject
             _ui.Post(() =>
             {
                 ShowChecks(result.Checks);
-                row.State = result.Applied ? "가져옴" : "적용 실패 (이전 데이터로 되돌림)";
+                row.State = result.Applied ? "가져옴"
+                    : result.RestoreFailed ? "적용 실패 · 자동 되돌리기 실패 (직접 복구 필요)"
+                    : "적용 실패 (이전 데이터로 되돌림)";
                 row.Level = result.Applied ? Level.Good : Level.Error;
-                StatusText = result.Message + (result.PreviousDatabaseKeptAt is { } kept ? $" 이전 데이터: {kept}" : "");
+                StatusText = result.Message + (result.PreviousDatabaseKeptAt is { } kept ? $" 이전 데이터: {kept}" : "")
+                             + (result.RestoreFailed && result.PreviousSettingsKeptAt is { } keptSettings ? $" 이전 설정: {keptSettings}" : "");
                 if (result.Applied)
                 {
                     row.Rehearsal = null;
