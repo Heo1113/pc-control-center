@@ -149,6 +149,34 @@ public class OperatorIsolationTests
     }
 
     [Fact(Timeout = 60_000)]
+    public async Task The_host_refuses_input_to_a_window_it_cannot_identify()
+    {
+        await using var host = await InProcessHost.StartAsync();
+        var remote = new RemoteDesktop(host, Environment.ProcessId);
+        var target = host.Desktop.Windows.First(w => w.ProcessName == "OperatorTestTarget");
+        var increment = remote.FindElements(target.Handle, new ElementQuery { AutomationId = "IncrementButton" }, TestContext.Current.CancellationToken).Single();
+        host.Desktop.CloseWindow(target.Handle);
+
+        // Bypasses E's policy on purpose: a handle that is not a window, and a window that closed after it was resolved.
+        // The host can not check what it can not identify, so it refuses on its own (not only the desktop implementation).
+        var requests = new[]
+        {
+            new ActionRequest { Action = PrimitiveAction.ClickPoint, WindowHandle = 424242, Point = new PixelPoint(10, 10) },
+            new ActionRequest { Action = PrimitiveAction.Invoke, WindowHandle = target.Handle, RuntimeId = increment.RuntimeId },
+        };
+        foreach (var request in requests)
+        {
+            var outcome = await remote.PerformAsync(request, TestContext.Current.CancellationToken);
+            Assert.False(outcome.Performed);
+            Assert.Equal(ExecutionErrorKind.PolicyDenied, outcome.Error);
+        }
+
+        Assert.False(remote.FocusWindow(424242));
+        Assert.NotNull(new HostGuard([]).CheckTarget(null));
+        Assert.Empty(host.Desktop.ActionLog);
+    }
+
+    [Fact(Timeout = 60_000)]
     public async Task Emergency_latch_refuses_every_change_until_resume()
     {
         await using var host = await InProcessHost.StartAsync();

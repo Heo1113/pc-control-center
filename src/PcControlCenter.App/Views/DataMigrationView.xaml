@@ -16,10 +16,10 @@
                   <DataTemplate><Ellipse Style="{StaticResource StatusDot}" Fill="{Binding Level, Converter={StaticResource LevelBrush}}" /></DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Header="원래 프로그램" Binding="{Binding Program}" Width="230" />
-              <DataGridTextColumn Header="폴더 (읽기 전용)" Binding="{Binding Folder}" Width="*" ElementStyle="{StaticResource TrimCell}" />
-              <DataGridTextColumn Header="상태" Binding="{Binding State}" Width="300" ElementStyle="{StaticResource WrapCell}" />
-              <DataGridTemplateColumn Header="" Width="210">
+              <DataGridTextColumn Header="원래 프로그램" Binding="{Binding Program}" Width="Auto" MinWidth="150" />
+              <DataGridTextColumn Header="폴더 (읽기 전용)" Binding="{Binding Folder}" Width="1.2*" MinWidth="140" ElementStyle="{StaticResource TrimCell}" />
+              <DataGridTextColumn Header="상태" Binding="{Binding State}" Width="*" MinWidth="120" ElementStyle="{StaticResource WrapCell}" />
+              <DataGridTemplateColumn Header="" Width="Auto">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate>
                     <StackPanel Orientation="Horizontal">

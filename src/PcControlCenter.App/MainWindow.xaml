@@ -136,11 +136,14 @@
                       AutomationProperties.AutomationId="OperatorEmergencyStop" />
             </StackPanel>
             <StackPanel VerticalAlignment="Center">
-              <StackPanel Orientation="Horizontal">
-                <Ellipse Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Controls.HostLevel, Converter={StaticResource LevelBrush}}" />
-                <TextBlock Text="{Binding Controls.HostText}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-              </StackPanel>
-              <TextBlock Text="{Binding Main.StatusLine}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="16,2,0,0" />
+              <!-- A DockPanel, not a horizontal StackPanel: the text gets the width left of the buttons and trims there. -->
+              <DockPanel>
+                <Ellipse DockPanel.Dock="Left" Width="10" Height="10" Margin="0,0,6,0" VerticalAlignment="Center" Fill="{Binding Controls.HostLevel, Converter={StaticResource LevelBrush}}" />
+                <TextBlock Text="{Binding Controls.HostText}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Controls.HostText}" />
+              </DockPanel>
+              <TextBlock Text="{Binding Main.StatusLine}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" Margin="16,2,0,0"
+                         ToolTip="{Binding Main.StatusLine}" />
             </StackPanel>
           </DockPanel>
         </Border>
@@ -153,8 +156,15 @@
     <DockPanel>
       <!-- Common status bar: the shared sensor reader and every module, whatever page is open. -->
       <Border DockPanel.Dock="Bottom" Background="{StaticResource NavBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,1,0,0" Padding="12,6">
-        <DockPanel LastChildFill="False">
-          <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+        <!-- The data folder is the only part that shrinks (ellipsis, full path in the tooltip); everything else keeps its size. -->
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
             <Ellipse Style="{StaticResource StatusDot}" Fill="{Binding SensorStatusLevel, Converter={StaticResource LevelBrush}}" />
             <TextBlock Text="{Binding SensorStatusText}" Style="{StaticResource Value}" Margin="0,0,18,0" TextWrapping="NoWrap" VerticalAlignment="Center"
                        AutomationProperties.AutomationId="SensorStatus" />
@@ -174,32 +184,48 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
-          <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-            <Button Content="Operator 긴급 중단" Command="{Binding Operator.EmergencyStopCommand}" Style="{StaticResource DangerButton}" Margin="0,0,14,0" Padding="10,2"
-                    Visibility="{Binding HasOperator, Converter={StaticResource BoolToVisibility}}" ToolTip="Ctrl+Alt+F12 — 실행 중인 Operator 작업을 즉시 멈추고 열린 승인 요청을 거부합니다."
-                    AutomationProperties.AutomationId="GlobalEmergencyStop" />
-            <TextBlock Text="{Binding DataRootText}" Style="{StaticResource Label}" MaxWidth="420" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding ClockText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
-          </StackPanel>
-        </DockPanel>
+          <TextBlock Grid.Column="1" Text="{Binding DataRootText}" Style="{StaticResource Label}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,0,14,0" ToolTip="{Binding DataRootText}" />
+          <Button Grid.Column="2" Content="Operator 긴급 중단" Command="{Binding Operator.EmergencyStopCommand}" Style="{StaticResource DangerButton}" Margin="0,0,14,0" Padding="10,2"
+                  Visibility="{Binding HasOperator, Converter={StaticResource BoolToVisibility}}" ToolTip="Ctrl+Alt+F12 — 실행 중인 Operator 작업을 즉시 멈추고 열린 승인 요청을 거부합니다."
+                  AutomationProperties.AutomationId="GlobalEmergencyStop" />
+          <TextBlock Grid.Column="3" Text="{Binding ClockText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
+        </Grid>
       </Border>
 
       <!-- Navigation: one menu for all four programs -->
-      <Border DockPanel.Dock="Left" Width="212" Background="{StaticResource NavBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,0,1,0">
+      <!-- Below MainWindow.CompactBelow the menu shows icons only (names in the tooltip and for screen readers). -->
+      <Border DockPanel.Dock="Left" Background="{StaticResource NavBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="0,0,1,0">
+        <Border.Style>
+          <Style TargetType="Border">
+            <Setter Property="Width" Value="212" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding CompactNavigation, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                <Setter Property="Width" Value="60" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Border.Style>
         <DockPanel>
-          <StackPanel DockPanel.Dock="Top" Margin="16,18,12,16">
+          <StackPanel DockPanel.Dock="Top" Margin="16,18,12,16"
+                      Visibility="{Binding CompactNavigation, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibility}}">
             <TextBlock Text="PC Control Center" FontSize="18" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
             <TextBlock Text="로컬 AI · GPU 경제성 · 진단 · Operator" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
           </StackPanel>
           <TextBlock DockPanel.Dock="Bottom" Margin="16,8,12,14" Style="{StaticResource Caption}"
-                     Text="관리자 권한 없이 동작합니다. 시스템 설정·BIOS를 바꾸지 않으며, 기존 프로그램의 데이터는 읽기만 합니다." />
+                     Text="관리자 권한 없이 동작합니다. 시스템 설정·BIOS를 바꾸지 않으며, 기존 프로그램의 데이터는 읽기만 합니다."
+                     Visibility="{Binding CompactNavigation, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibility}}" />
           <ListBox x:Name="SectionList" ItemsSource="{Binding Sections}" SelectedItem="{Binding CurrentSection}" Background="Transparent" BorderThickness="0"
-                   AutomationProperties.Name="메뉴" AutomationProperties.AutomationId="ShellNavigation">
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="메뉴" AutomationProperties.AutomationId="ShellNavigation">
             <ListBox.ItemTemplate>
               <DataTemplate>
-                <StackPanel Orientation="Horizontal" Margin="6,8" ToolTip="{Binding Description}">
+                <StackPanel Orientation="Horizontal" Margin="6,8" AutomationProperties.Name="{Binding Title}">
+                  <StackPanel.ToolTip>
+                    <TextBlock><Run Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" /><LineBreak /><Run Text="{Binding Description, Mode=OneWay}" /></TextBlock>
+                  </StackPanel.ToolTip>
                   <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="16" Width="26" VerticalAlignment="Center" />
-                  <TextBlock Text="{Binding Title}" FontSize="14" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Title}" FontSize="14" VerticalAlignment="Center"
+                             Visibility="{Binding CompactNavigation, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibility}}" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -231,27 +257,39 @@
 
       <!-- Section: title, its pages as tabs, the selected page -->
       <DockPanel Margin="12,10,12,6">
-        <StackPanel DockPanel.Dock="Top" Margin="6,0,6,4">
-          <TextBlock Text="{Binding CurrentSection.Title}" Style="{StaticResource PageTitle}" Margin="0,0,0,2" />
-          <TextBlock Text="{Binding CurrentSection.Description}" Style="{StaticResource Caption}" />
-        </StackPanel>
-        <DockPanel DockPanel.Dock="Top" Margin="0,6,0,8">
-          <Border DockPanel.Dock="Right" Style="{StaticResource OriginTag}"
+        <DockPanel DockPanel.Dock="Top" Margin="6,0,6,4">
+          <!-- Which original program the page comes from: on the title row, so the tabs keep one line at 1024 px. -->
+          <Border DockPanel.Dock="Right" Style="{StaticResource OriginTag}" VerticalAlignment="Top" Margin="12,6,0,0"
                   Visibility="{Binding CurrentSection.SelectedTab.Origin, Converter={StaticResource NotEmptyToVisibility}}">
             <TextBlock Text="{Binding CurrentSection.SelectedTab.Origin, StringFormat='출처: {0}'}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
           </Border>
-          <ListBox x:Name="TabList" ItemsSource="{Binding CurrentSection.Tabs}" SelectedItem="{Binding CurrentSection.SelectedTab}" Background="Transparent" BorderThickness="0"
-                   AutomationProperties.Name="화면" AutomationProperties.AutomationId="ShellTabs" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-            <ListBox.ItemsPanel>
-              <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <TextBlock Text="{Binding Title}" FontSize="13" Margin="4,2" />
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
+          <StackPanel>
+            <TextBlock Text="{Binding CurrentSection.Title}" Style="{StaticResource PageTitle}" Margin="0,0,0,2" />
+            <TextBlock Text="{Binding CurrentSection.Description}" Style="{StaticResource Caption}" />
+          </StackPanel>
         </DockPanel>
+        <ListBox x:Name="TabList" DockPanel.Dock="Top" Margin="0,6,0,8" ItemsSource="{Binding CurrentSection.Tabs}" SelectedItem="{Binding CurrentSection.SelectedTab}"
+                 Background="Transparent" BorderThickness="0" AutomationProperties.Name="화면" AutomationProperties.AutomationId="ShellTabs"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+          <ListBox.Style>
+            <Style TargetType="ListBox" BasedOn="{StaticResource {x:Type ListBox}}">
+              <Style.Triggers>
+                <!-- A section with a single page (dashboard, history) needs no tab strip. -->
+                <DataTrigger Binding="{Binding CurrentSection.Tabs.Count}" Value="1">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </ListBox.Style>
+          <ListBox.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+          </ListBox.ItemsPanel>
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Title}" FontSize="13" Margin="4,2" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
         <hosting:ModulePageHost x:Name="PageHost" Tab="{Binding CurrentSection.SelectedTab}" />
       </DockPanel>
     </DockPanel>

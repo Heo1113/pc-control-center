@@ -34,7 +34,10 @@ public sealed record MigrationRehearsal(
     IReadOnlyDictionary<string, long> TableCounts,
     DateTimeOffset At);
 
-public sealed record MigrationResult(bool Applied, string Message, string? PreviousDatabaseKeptAt, string? PreviousSettingsKeptAt, IReadOnlyList<MigrationCheck> Checks);
+/// <param name="RestoreFailed">A failed apply could not put the module's previous files back. The module was left stopped
+/// (never started on files that may not be its own); the kept paths say where the previous files are.</param>
+public sealed record MigrationResult(bool Applied, string Message, string? PreviousDatabaseKeptAt, string? PreviousSettingsKeptAt,
+    IReadOnlyList<MigrationCheck> Checks, bool RestoreFailed = false);
 
 /// <summary>Stops and starts the integrated module whose data is being replaced (the shell's module supervisor).</summary>
 public interface IModuleRestarter
@@ -52,8 +55,9 @@ public interface IModuleRestarter
 /// check, schema version (never newer than the module supports), the module's own backup validator, an exported final
 /// copy through SQLite's backup API, and identical row counts in every table.</item>
 /// <item>Apply (only on explicit request): the module stops, its current database and settings are moved aside (kept),
-/// the verified copy takes their place (A/B/C through their own RestoreFrom), the module starts again and the counts are
-/// checked once more; on any failure the previous files are put back.</item>
+/// the verified copy takes their place (A/B/C through their own RestoreFrom), the counts are checked once more and the
+/// module starts again. On any failure the previous files (database, -wal, -shm, settings) are put back and checked; if
+/// that is not possible the result says so and the module stays stopped.</item>
 /// </list>
 /// The original program's folder is never written: no SQLite connection is opened on the original files.
 /// </summary>
@@ -241,7 +245,8 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
     /// <summary>
     /// Replaces the integrated module's data with a passed rehearsal. Only call this after the user confirmed. The module's
     /// current database (and settings when <paramref name="includeSettings"/>) are moved aside and kept; on any failure they
-    /// are put back and the module is started again with them.
+    /// are put back and the module is started again with them. If they cannot all be put back, nothing is deleted, the
+    /// module is not started and the result reports <see cref="MigrationResult.RestoreFailed"/>.
     /// </summary>
     public async Task<MigrationResult> ApplyAsync(MigrationRehearsal rehearsal, IModuleRestarter modules, bool includeSettings)
     {
@@ -259,23 +264,30 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
         var target = paths.ModuleDatabasePath(rehearsal.ModuleId);
         var targetSettings = Path.Combine(paths.ModuleDirectory(rehearsal.ModuleId), "settings.json");
         var stamp = _time.GetUtcNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        string? keptDb = null;
+        var replace = new ReplaceProgress();
         string? keptSettings = null;
+        var settingsPlaced = false;
         await modules.StopAsync(rehearsal.ModuleId).ConfigureAwait(false);
+
+        // What the module left once it closed its database: a rollback must bring back exactly these files.
+        SqliteConnection.ClearAllPools();
+        var before = DatabaseFiles.Where(s => File.Exists(target + s)).ToList();
+        var hadSettings = File.Exists(targetSettings);
         try
         {
-            SqliteConnection.ClearAllPools();
-            keptDb = Replace(rehearsal.ModuleId, final, target, stamp);
-            checks.Add(new MigrationCheck("데이터베이스 교체", CheckState.Passed, keptDb is null ? "새로 놓음 (이전 파일 없음)" : $"이전 파일 보관: {Path.GetFileName(keptDb)}"));
+            Replace(rehearsal.ModuleId, final, target, stamp, replace);
+            checks.Add(new MigrationCheck("데이터베이스 교체", CheckState.Passed, replace.Kept is null ? "새로 놓음 (이전 파일 없음)" : $"이전 파일 보관: {Path.GetFileName(replace.Kept)}"));
             if (includeSettings && rehearsal.SettingsFile is { } settings && File.Exists(settings))
             {
-                if (File.Exists(targetSettings))
+                if (hadSettings)
                 {
-                    keptSettings = Path.Combine(Path.GetDirectoryName(targetSettings)!, $"settings.before-import-{stamp}.json");
-                    File.Move(targetSettings, keptSettings);
+                    var aside = UniqueAside(targetSettings, $"before-import-{stamp}");
+                    File.Move(targetSettings, aside);
+                    keptSettings = aside;
                 }
 
                 File.Copy(settings, targetSettings);
+                settingsPlaced = true;
                 checks.Add(new MigrationCheck("설정 교체", CheckState.Passed, keptSettings is null ? "새로 놓음" : $"이전 설정 보관: {Path.GetFileName(keptSettings)}"));
             }
 
@@ -293,80 +305,214 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
             SqliteConnection.ClearAllPools();
             await modules.StartAsync(rehearsal.ModuleId).ConfigureAwait(false);
             var result = new MigrationResult(true, $"{ModuleIds.DisplayName(rehearsal.ModuleId)} 데이터를 가져왔습니다. 원본은 그대로이고, 통합 앱의 이전 데이터는 보관했습니다.",
-                keptDb, keptSettings, checks);
+                replace.Kept, keptSettings, checks);
             TryWriteReport(rehearsal.StagingDirectory, result, "apply-report.json");
             return result;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SqliteException or InvalidOperationException)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Put the previous files back, then start the module with them.
+            // Any failure (including InvalidDataException from a module's own restore): put the previous files back.
             SqliteConnection.ClearAllPools();
-            TryRevert(target, keptDb, targetSettings, keptSettings);
-            checks.Add(new MigrationCheck("되돌리기", CheckState.Warning, "실패하여 통합 앱의 이전 데이터와 설정을 되돌렸습니다."));
-            await modules.StartAsync(rehearsal.ModuleId).ConfigureAwait(false);
-            var result = new MigrationResult(false, "적용하지 못했습니다: " + ex.Message, null, null, checks);
-            TryWriteReport(rehearsal.StagingDirectory, result, "apply-report.json");
-            return result;
+            var failures = RestoreDatabase(target, before, replace);
+            failures.AddRange(RestoreSettings(targetSettings, hadSettings, keptSettings, settingsPlaced));
+            if (failures.Count == 0)
+            {
+                checks.Add(new MigrationCheck("되돌리기", CheckState.Passed, "통합 앱의 이전 데이터와 설정을 그대로 되돌렸습니다(데이터베이스·WAL·SHM 파일 확인)."));
+                try
+                {
+                    await modules.StartAsync(rehearsal.ModuleId).ConfigureAwait(false);
+                }
+                catch (Exception restartError) when (restartError is not OutOfMemoryException)
+                {
+                    checks.Add(new MigrationCheck("모듈 재시작", CheckState.Failed, restartError.Message));
+                }
+
+                var reverted = new MigrationResult(false, $"적용하지 못했습니다: {ex.Message} 통합 앱의 이전 데이터로 되돌렸습니다.", null, null, checks);
+                TryWriteReport(rehearsal.StagingDirectory, reverted, "apply-report.json");
+                return reverted;
+            }
+
+            // Never claim the previous state is back, and never start the module on files that may not be its own.
+            var kept = string.Join(", ", new[] { replace.Kept, keptSettings }.OfType<string>());
+            checks.Add(new MigrationCheck("되돌리기", CheckState.Failed, string.Join(" / ", failures) + (kept.Length > 0 ? $" (보관 파일: {kept})" : "")));
+            var failed = new MigrationResult(false,
+                $"적용하지 못했고, 통합 앱의 이전 데이터도 자동으로 되돌리지 못했습니다: {ex.Message} " +
+                $"{ModuleIds.DisplayName(rehearsal.ModuleId)} 모듈은 멈춘 채로 두었습니다. 보관 파일로 직접 복구한 뒤 모듈을 다시 시작하세요(아무 파일도 삭제하지 않았습니다).",
+                replace.Kept, keptSettings, checks, RestoreFailed: true);
+            TryWriteReport(rehearsal.StagingDirectory, failed, "apply-report.json");
+            return failed;
         }
     }
 
-    private static string? Replace(string moduleId, string final, string target, string stamp)
+    /// <summary>A SQLite database and the files that belong to it.</summary>
+    private static readonly string[] DatabaseFiles = ["", "-wal", "-shm"];
+
+    /// <summary>Where <see cref="Replace"/> moved the module's files, recorded as each step happens.</summary>
+    internal sealed class ReplaceProgress
     {
-        // A, B, C: their own restore (validates the file, moves the current database aside, copies, keeps the aside path).
+        /// <summary>Path the module's previous database was moved to (its -wal/-shm next to it with the same suffixes).</summary>
+        public string? Kept { get; set; }
+
+        /// <summary>Which of "", "-wal", "-shm" were moved to <see cref="Kept"/>.</summary>
+        public List<string> Moved { get; } = [];
+
+        /// <summary>The new database is at the target path (every previous file had been moved aside before).</summary>
+        public bool Placed { get; set; }
+    }
+
+    private static void Replace(string moduleId, string final, string target, string stamp, ReplaceProgress progress)
+    {
+        // A, B, C: their own restore validates the file, moves the current database and its -wal/-shm aside, copies, and
+        // puts the previous files back itself if the copy fails.
+        string? aside = null;
         switch (moduleId)
         {
             case ModuleIds.LocalAi:
-                return LocalAiPerf.Storage.TelemetryStore.RestoreFrom(final, target);
+                aside = LocalAiPerf.Storage.TelemetryStore.RestoreFrom(final, target);
+                break;
             case ModuleIds.GpuEconomics:
-                return GpuProfit.Storage.ProfitStore.RestoreFrom(final, target);
+                aside = GpuProfit.Storage.ProfitStore.RestoreFrom(final, target);
+                break;
             case ModuleIds.Diagnostics:
-                return WinDiag.Storage.DiagnosticsStore.RestoreFrom(final, target);
+                aside = WinDiag.Storage.DiagnosticsStore.RestoreFrom(final, target);
+                break;
+            default:
+                ReplaceByHand(final, target, stamp, progress);
+                return;
         }
 
-        // E has no file-level restore (its restore runs inside the open store): same rule by hand — move aside, copy in.
-        string? kept = null;
-        if (File.Exists(target))
-        {
-            kept = Path.Combine(Path.GetDirectoryName(target)!, $"{Path.GetFileNameWithoutExtension(target)}.before-import-{stamp}.db");
-            File.Move(target, kept);
-            foreach (var suffix in new[] { "-wal", "-shm" })
-            {
-                if (File.Exists(target + suffix))
-                {
-                    File.Move(target + suffix, kept + suffix);
-                }
-            }
-        }
-
-        File.Copy(final, target);
-        return kept;
+        progress.Kept = aside;
+        progress.Moved.AddRange(aside is null ? [] : DatabaseFiles.Where(s => File.Exists(aside + s)));
+        progress.Placed = true;
     }
 
-    private static void TryRevert(string target, string? keptDb, string targetSettings, string? keptSettings)
+    /// <summary>
+    /// E has no file-level restore (its restore runs inside the open store). The new database is copied next to the target
+    /// first, so a copy that fails leaves the module's files untouched; then the current files are moved aside one at a
+    /// time (each move recorded) and the copy is renamed into place.
+    /// </summary>
+    private static void ReplaceByHand(string final, string target, string stamp, ReplaceProgress progress)
     {
+        var incoming = $"{target}.incoming-{Guid.NewGuid():N}";
         try
         {
-            if (keptDb is not null && File.Exists(keptDb))
+            File.Copy(final, incoming);
+            var existing = DatabaseFiles.Where(s => File.Exists(target + s)).ToList();
+            if (existing.Count > 0)
             {
-                foreach (var suffix in new[] { "-wal", "-shm" })
+                progress.Kept = UniqueAside(target, $"before-import-{stamp}");
+                foreach (var suffix in existing)
+                {
+                    File.Move(target + suffix, progress.Kept + suffix);
+                    progress.Moved.Add(suffix);
+                }
+            }
+
+            File.Move(incoming, target);
+            progress.Placed = true;
+        }
+        finally
+        {
+            if (File.Exists(incoming))
+            {
+                File.Delete(incoming); // our own staged copy that was not placed
+            }
+        }
+    }
+
+    /// <summary>
+    /// Puts the module's previous database files back exactly as they were, whatever step failed, and checks the result:
+    /// every file that existed before must be back and no file of the new database may remain. Returns the problems.
+    /// </summary>
+    internal static List<string> RestoreDatabase(string target, IReadOnlyCollection<string> before, ReplaceProgress progress)
+    {
+        var failures = new List<string>();
+        try
+        {
+            if (progress.Placed)
+            {
+                // Every previous file was moved aside before the new database was placed: what is at the target now is new.
+                foreach (var suffix in DatabaseFiles)
                 {
                     if (File.Exists(target + suffix))
                     {
                         File.Delete(target + suffix);
                     }
                 }
-
-                File.Move(keptDb, target, overwrite: true);
             }
 
-            if (keptSettings is not null && File.Exists(keptSettings))
+            // Only what was moved goes back. If a move stopped half way, files that were not moved are still the module's
+            // own (for example its -wal) and are left exactly as they are.
+            if (progress.Kept is { } kept)
             {
-                File.Move(keptSettings, targetSettings, overwrite: true);
+                foreach (var suffix in progress.Moved)
+                {
+                    File.Move(kept + suffix, target + suffix);
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // The kept files are still in the module folder; nothing is deleted.
+            failures.Add("데이터베이스 파일을 되돌리지 못했습니다: " + ex.Message);
+        }
+
+        var missing = before.Where(s => !File.Exists(target + s)).ToList();
+        if (missing.Count > 0)
+        {
+            failures.Add("돌아오지 않은 파일: " + string.Join(", ", missing.Select(s => Path.GetFileName(target + s))));
+        }
+
+        var extra = DatabaseFiles.Except(before).Where(s => File.Exists(target + s)).ToList();
+        if (extra.Count > 0)
+        {
+            failures.Add("남아 있는 새 파일: " + string.Join(", ", extra.Select(s => Path.GetFileName(target + s))));
+        }
+
+        return failures;
+    }
+
+    /// <summary>Puts the previous settings file back, or removes one the failed import added. Returns the problems.</summary>
+    internal static List<string> RestoreSettings(string targetSettings, bool hadSettings, string? keptSettings, bool placed)
+    {
+        var failures = new List<string>();
+        try
+        {
+            if (placed && File.Exists(targetSettings))
+            {
+                File.Delete(targetSettings); // the imported copy (the staged one stays in the migration folder)
+            }
+
+            if (keptSettings is not null && File.Exists(keptSettings))
+            {
+                File.Move(keptSettings, targetSettings);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            failures.Add("설정 파일을 되돌리지 못했습니다: " + ex.Message);
+        }
+
+        if (hadSettings != File.Exists(targetSettings))
+        {
+            failures.Add(hadSettings ? "이전 설정 파일이 돌아오지 않았습니다." : "가져오던 설정 파일이 남아 있습니다.");
+        }
+
+        return failures;
+    }
+
+    /// <summary>A free "name.label.ext" (or "name.label-N.ext") next to <paramref name="path"/>, free for its -wal/-shm too.</summary>
+    private static string UniqueAside(string path, string label)
+    {
+        var directory = Path.GetDirectoryName(path)!;
+        var name = Path.GetFileNameWithoutExtension(path);
+        var extension = Path.GetExtension(path);
+        for (var n = 0; ; n++)
+        {
+            var aside = Path.Combine(directory, n == 0 ? $"{name}.{label}{extension}" : $"{name}.{label}-{n}{extension}");
+            if (!DatabaseFiles.Any(s => File.Exists(aside + s)))
+            {
+                return aside;
+            }
         }
     }
 

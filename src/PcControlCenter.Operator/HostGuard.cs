@@ -23,7 +23,10 @@ public sealed class HostGuard(IReadOnlyCollection<int> protectedProcessIds, stri
 
     public void Resume() => Interlocked.Exchange(ref _latched, 0);
 
-    /// <summary>Null when the host may act on <paramref name="window"/>; otherwise the reason it refuses.</summary>
+    /// <summary>
+    /// Null when the host may act on <paramref name="window"/>; otherwise the reason it refuses. A window the host could
+    /// not identify (null: closed, or a handle that is not a window) is refused: nothing about it can be checked.
+    /// </summary>
     public string? CheckTarget(WindowInfo? window)
     {
         if (RefuseAllReason is { } all)
@@ -38,7 +41,7 @@ public sealed class HostGuard(IReadOnlyCollection<int> protectedProcessIds, stri
 
         if (window is null)
         {
-            return null;
+            return "대상 창을 찾지 못했습니다. 확인할 수 없는 창에는 키보드·마우스 입력을 보내지 않습니다(Operator 실행 프로세스의 독립 검사).";
         }
 
         if (protectedProcessIds.Contains(window.ProcessId))
