@@ -216,7 +216,7 @@
                      Text="관리자 권한 없이 동작합니다. 시스템 설정·BIOS를 바꾸지 않으며, 기존 프로그램의 데이터는 읽기만 합니다."
                      Visibility="{Binding CompactNavigation, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource InverseBoolToVisibility}}" />
           <ListBox x:Name="SectionList" ItemsSource="{Binding Sections}" SelectedItem="{Binding CurrentSection}" Background="Transparent" BorderThickness="0"
-                   AutomationProperties.Name="메뉴" AutomationProperties.AutomationId="ShellNavigation">
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="메뉴" AutomationProperties.AutomationId="ShellNavigation">
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <StackPanel Orientation="Horizontal" Margin="6,8" AutomationProperties.Name="{Binding Title}">

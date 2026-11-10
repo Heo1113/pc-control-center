@@ -1,11 +1,14 @@
 <UserControl x:Class="PcControlCenter.App.Views.DashboardView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:app="clr-namespace:PcControlCenter.App"
              AutomationProperties.AutomationId="IntegratedDashboard">
   <UserControl.Resources>
+    <app:CardWidthConverter x:Key="CardWidth" MinWidth="340" HorizontalMargin="12" />
     <Style x:Key="DashCard" TargetType="Border" BasedOn="{StaticResource Card}">
-      <!-- Compact module cards: less empty height at 1024x768; keep a two-column layout. -->
-      <Setter Property="Width" Value="352" />
+      <!-- Cards share the row (two columns at 1024x768, three at the default size, more on large screens) and keep their own
+           height; a lower minimum height leaves less empty space in short cards. -->
+      <Setter Property="Width" Value="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=WrapPanel}, Converter={StaticResource CardWidth}}" />
       <Setter Property="MinHeight" Value="248" />
       <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
