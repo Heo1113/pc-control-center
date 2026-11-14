@@ -441,6 +441,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         {
             lines.Add("구성 (추정): " + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}")) + (d.BreakdownNote is { } note ? $" — {note}" : ""));
         }
+        else if (d.BreakdownNote is { } withheldNote)
+        {
+            lines.Add($"구성: {withheldNote}");
+        }
 
         if (d.StrataModel is not null)
         {
@@ -937,9 +941,17 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         var kind = KindOf(s, p);
         var engines = p.Engines;
         // An estimated split only for an LLM whose model file header was read; Strata's context when this is its process.
+        // A split estimated from the header only where the header can say it: an LLM file, not served by Strata (its engine
+        // places experts, KV - int8 by default - and session buffers its own way) and not a mixture of experts (their weights
+        // are often kept in RAM, --n-cpu-moe, so the header cannot say which weights are on the GPU).
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
-        var context = IsStrata(p.ProcessId) ? _strataSnapshot?.Model?.ContextTokens : null;
-        var estimate = model is null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
+        var withheld = model is null ? null
+            : IsStrata(p.ProcessId) ? "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
+                                      + "위 값은 측정값과 Strata가 보고한 값입니다."
+            : model.Experts is > 0 ? "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다."
+            : null;
+        long? context = null; // no runtime reports the context of a process other than Strata's yet, so KV is not split
+        var estimate = model is null || withheld is not null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
         IReadOnlyList<BarSegment> breakdown = [];
         IReadOnlyList<LegendItem> breakdownLegend = [];
         string? breakdownNote = null;
@@ -951,7 +963,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             if (estimate.KvCache is long kv)
             {
                 segments.Add(new(Frac(kv), KvColor, "KV 캐시", true));
-                legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (상한)" : "KV 캐시", Text.Bytes(kv), true));
+                legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (f16, 상한)" : "KV 캐시 (f16)", Text.Bytes(kv), true));
             }
 
             segments.Add(new(Frac(estimate.Rest), RestColor, "나머지", true));
@@ -960,10 +972,17 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             breakdownLegend = legend;
             breakdownNote = string.Join(" ", new[]
             {
-                "모든 층이 GPU에 있고 KV가 f16이라고 가정한 추정입니다.",
+                "모든 층이 GPU에 있다고 가정한 추정입니다.",
                 estimate.WeightsCapped ? "가중치 전체가 이 프로세스의 VRAM보다 커서 일부만 GPU에 있을 수 있습니다." : null,
-                estimate.KvCache is null ? (context is null ? "컨텍스트를 알 수 없어 KV 캐시는 나누지 않았습니다." : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.") : null,
+                estimate.KvCache is not null ? null
+                    : model!.KvUnknownReason is { } reason ? $"{reason}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
+                    : context is null ? "런타임이 컨텍스트를 알려 주지 않아 KV 캐시는 나누지 않았습니다."
+                    : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.",
             }.Where(x => x is not null));
+        }
+        else if (withheld is not null)
+        {
+            breakdownNote = withheld;
         }
 
         IReadOnlyList<ModelRow> models = (detail?.Models ?? []).Select(m => new ModelRow(

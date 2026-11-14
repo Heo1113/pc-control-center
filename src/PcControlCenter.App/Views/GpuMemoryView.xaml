@@ -308,10 +308,12 @@
               </StackPanel>
             </WrapPanel>
 
-            <StackPanel Margin="0,6,0,0" Visibility="{Binding Breakdown, Converter={StaticResource NotEmptyToVisibility}}">
+            <!-- The estimated split, or why none is drawn (Strata's engine, a mixture of experts). -->
+            <StackPanel Margin="0,6,0,0" Visibility="{Binding BreakdownNote, Converter={StaticResource NotEmptyToVisibility}}">
               <TextBlock Text="구성 (추정)" Style="{StaticResource StatLabel}" Margin="0,0,0,3" />
-              <c:SegmentBar Segments="{Binding Breakdown}" Height="12" />
-              <ItemsControl ItemsSource="{Binding BreakdownLegend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}" Focusable="False" Margin="0,4,0,0" />
+              <c:SegmentBar Segments="{Binding Breakdown}" Height="12" Visibility="{Binding Breakdown, Converter={StaticResource NotEmptyToVisibility}}" />
+              <ItemsControl ItemsSource="{Binding BreakdownLegend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}" Focusable="False" Margin="0,4,0,0"
+                            Visibility="{Binding BreakdownLegend, Converter={StaticResource NotEmptyToVisibility}}" />
               <TextBlock Text="{Binding BreakdownNote}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
             </StackPanel>
 

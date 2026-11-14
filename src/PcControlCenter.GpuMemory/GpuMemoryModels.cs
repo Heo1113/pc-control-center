@@ -202,6 +202,13 @@ public sealed record GgufSummary
 
     public bool IsCausal { get; init; } = true;
 
+    /// <summary>
+    /// Why KV per token cannot be computed from the header (<see cref="KvBytesPerTokenF16"/> is null then): recurrent or
+    /// linear layers mixed with attention (SSM, RWKV, short convolutions, a full-attention interval), or latent attention
+    /// (MLA, which caches a compressed vector instead of keys and values per head).
+    /// </summary>
+    public string? KvUnknownReason { get; init; }
+
     /// <summary>Why the header could not be read completely (the other fields are then partial or empty).</summary>
     public string? Error { get; init; }
 }

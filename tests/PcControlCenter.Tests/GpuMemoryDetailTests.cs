@@ -222,6 +222,33 @@ public class GgufHeaderTests
     }
 
     [Fact]
+    public void Kv_is_not_computed_for_hybrid_or_latent_attention_models()
+    {
+        var plain = GgufFixtures.Parse(GgufFixtures.Qwen3().Build());
+        Assert.Null(plain.KvUnknownReason);
+
+        var hybrid = GgufFixtures.Parse(new GgufWriter()
+            .Text("general.architecture", "qwen3next").U32("qwen3next.block_count", 48).U32("qwen3next.context_length", 262144)
+            .U32("qwen3next.attention.head_count", 16).U32("qwen3next.attention.head_count_kv", 2)
+            .U32("qwen3next.attention.key_length", 256).U32("qwen3next.attention.value_length", 256)
+            .U32("qwen3next.full_attention_interval", 4).U32("qwen3next.ssm.conv_kernel", 4)
+            .Tensor("blk.0.attn_q.weight", 64, 8).Build());
+        Assert.Equal("LLM", hybrid.Kind);
+        Assert.Null(hybrid.KvBytesPerTokenF16); // only every fourth layer has attention; the header formula would count 48
+        Assert.Equal("순환·선형 층이 섞인 구조", hybrid.KvUnknownReason);
+
+        var latent = GgufFixtures.Parse(new GgufWriter()
+            .Text("general.architecture", "deepseek2").U32("deepseek2.block_count", 61).U32("deepseek2.context_length", 163840)
+            .U32("deepseek2.attention.head_count", 128).U32("deepseek2.attention.head_count_kv", 128)
+            .U32("deepseek2.attention.key_length", 192).U32("deepseek2.attention.value_length", 128)
+            .U32("deepseek2.attention.kv_lora_rank", 512).U32("deepseek2.expert_count", 256)
+            .Tensor("blk.0.attn_q_a.weight", 64, 8).Build());
+        Assert.Null(latent.KvBytesPerTokenF16); // MLA caches a compressed vector, not keys and values per head
+        Assert.Equal("잠재 주의(MLA) 구조", latent.KvUnknownReason);
+        Assert.Equal(256, latent.Experts);
+    }
+
+    [Fact]
     public void Per_layer_kv_heads_and_sliding_windows_are_read()
     {
         var model = GgufFixtures.Parse(new GgufWriter()

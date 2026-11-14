@@ -516,17 +516,15 @@ public class GpuMemoryViewModelTests
         Assert.Equal("5,120 (슬롯 2)", detail.StrataSlots);
         Assert.False(string.IsNullOrEmpty(detail.StrataEvidence));
 
-        // The model file header: weights from the tensor table. 32,768 tokens of KV (5 GiB at f16) do not fit in what is
-        // left after the weights, so no KV split is shown rather than a made-up one.
+        // The model file header is shown, but no split: Strata's engine places experts, KV (int8 by default) and session
+        // buffers its own way, so a split from the GGUF header would be wrong however it is labelled.
         var model = Assert.Single(detail.Models);
         Assert.Equal("MOCK Qwen3 14B", model.Name);
         Assert.Equal("qwen3 · 14.8B · Q4_K_M · 40층 · 학습 컨텍스트 40,960 · KV 160 KiB/토큰", model.Summary);
         Assert.Equal("8.38 GiB", model.Size);
-        Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
-        Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
-        Assert.Equal(["가중치", "KV·버퍼·런타임"], detail.BreakdownLegend.Select(l => l.Label));
-        Assert.Equal("8.00 GiB", detail.BreakdownLegend[0].Value);
-        Assert.Contains("KV 추정값이 남은 양보다 커서", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Empty(detail.Breakdown);
+        Assert.Empty(detail.BreakdownLegend);
+        Assert.StartsWith("Strata 엔진은", detail.BreakdownNote, StringComparison.Ordinal);
 
         Assert.NotNull(detail.Chart);
         Assert.Equal("GiB", detail.Chart!.Unit);
@@ -535,11 +533,39 @@ public class GpuMemoryViewModelTests
         Assert.Equal(Level.Good, vm.StrataLevel);
     }
 
-    [Fact]
-    public void A_kv_cache_that_fits_is_shown_as_an_estimate_next_to_the_weights()
+    /// <summary>One llama.cpp process holding <paramref name="model"/>; with <paramref name="strata"/> it serves Strata's port.</summary>
+    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor) LlmProcess(GgufSummary model, bool strata)
     {
         var start = GpuMemoryFixtures.Start.AddMinutes(-10);
-        var qwen = new GgufSummary
+        ManualTime? clock = null;
+        var created = Create(
+            strata ? () => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null) : null,
+            t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+                processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 50 * MiB, CommittedBytes = 2 * GiB + 100 * MiB, Engines = new EngineUsage(0, 35, 1, 0, 0) }],
+                table: new Dictionary<int, ProcessEntry>
+                {
+                    [50] = new(50, 10, "server.exe", start, ProcessIdentityState.Verified),
+                    [60] = new(60, 50, "llama-server.exe", start.AddSeconds(1), ProcessIdentityState.Verified),
+                },
+                listeners: [new TcpListenerEntry(18500, 50, false, true)]) with
+            {
+                EnginesRead = true,
+                Details = new Dictionary<int, ProcessDetail>
+                {
+                    [60] = new() { Runtimes = ["llama.cpp", "ggml", "CUDA"], Models = [new ModelFile("model.gguf", 639_446_688, "GGUF", model)], ScannedAt = t.GetUtcNow() },
+                },
+            }));
+        clock = created.Time;
+        created.Vm.IsVisible = true;
+        created.Monitor.ReadNow();
+        created.Vm.Refresh();
+        return (created.Vm, created.Monitor);
+    }
+
+    [Fact]
+    public void A_header_based_split_is_drawn_only_where_the_header_can_say_it()
+    {
+        var dense = new GgufSummary
         {
             Name = "Qwen3 0.6B",
             Architecture = "qwen3",
@@ -552,59 +578,39 @@ public class GpuMemoryViewModelTests
             GpuWeightBytesAllLayers = 600 * MiB,
             KvBytesPerTokenF16 = GgufHeader.KvBytesPerToken(28, 16L, 8L, 1024L, 128L, 128L),
         };
-        ManualTime? clock = null;
-        var (vm, monitor, time) = Create(
-            () => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()) with { Model = new RuntimeModelInfo { Id = "qwen3-0.6b", Loaded = true, ContextTokens = 8192 } }, null),
-            t => new ScriptedGpuMemoryProvider(request => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
-                processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 50 * MiB, CommittedBytes = 2 * GiB + 100 * MiB, Engines = new EngineUsage(0, 35, 1, 0, 0) }],
-                table: new Dictionary<int, ProcessEntry>
-                {
-                    [50] = new(50, 10, "server.exe", start, ProcessIdentityState.Verified),
-                    [60] = new(60, 50, "llama-server.exe", start.AddSeconds(1), ProcessIdentityState.Verified),
-                },
-                listeners: [new TcpListenerEntry(18500, 50, false, true)]) with
-            {
-                EnginesRead = true,
-                Details = new Dictionary<int, ProcessDetail>
-                {
-                    [60] = new() { Runtimes = ["llama.cpp", "ggml", "CUDA"], Models = [new ModelFile("Qwen3-0.6B-Q8_0.gguf", 639_446_688, "GGUF", qwen)], ScannedAt = t.GetUtcNow() },
-                },
-            }));
-        clock = time;
-        vm.IsVisible = true;
-        monitor.ReadNow();
-        vm.Refresh();
 
-        var row = Row(vm, "llama-server.exe");
-        Assert.True(row.IsStrata);
-        Assert.Equal("llama.cpp · ggml · CUDA", row.Runtimes);
+        // A plain llama.cpp process: the weights from the tensor table; KV is not split without a context from the runtime.
+        var (plain, _) = LlmProcess(dense, strata: false);
+        var row = Row(plain, "llama-server.exe");
+        Assert.False(row.IsStrata);
         Assert.Equal("Qwen3 0.6B · 596M · Q8_0", row.Inside);
-        var detail = vm.Detail!;
+        var detail = plain.Detail!;
         Assert.Equal("qwen3 · 596M · Q8_0 · 28층 · 학습 컨텍스트 40,960 · KV 112 KiB/토큰", detail.Models.Single().Summary);
-        // 8,192 tokens × 114,688 B (28 layers × 8 KV heads × (128 + 128) × 2 B) = 896 MiB, within the 1,448 MiB left after the weights.
-        Assert.Equal([("가중치", "600 MiB"), ("KV 캐시", "896 MiB"), ("버퍼·런타임", "552 MiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
-        Assert.Equal([600.0 / 2048, 896.0 / 2048, 552.0 / 2048], detail.Breakdown.Select(b => b.Fraction));
+        Assert.Equal([("가중치", "600 MiB"), ("KV·버퍼·런타임", "1.41 GiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
         Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
-        Assert.StartsWith("모든 층이 GPU에 있고 KV가 f16이라고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
+        Assert.StartsWith("모든 층이 GPU에 있다고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownNote, StringComparison.Ordinal);
         Assert.Equal("2.00 GiB", detail.Dedicated); // the only measured part
         Assert.Equal("35%", detail.Gpu);
-        Assert.Equal("3D 0 · 연산 35 · 복사 1 · 영상 0", detail.Engines);
-        Assert.Equal("3.00 GiB", vm.Adapters.Single().View.Legend.Single(l => l.Label == "나뉘지 않음").Value);
 
-        // Without Strata's context the KV cache is not split off.
-        var noStrata = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
-            processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 0, CommittedBytes = 2 * GiB }],
-            table: new Dictionary<int, ProcessEntry> { [60] = new(60, 50, "llama-server.exe", start, ProcessIdentityState.Verified) }) with
-        {
-            Details = new Dictionary<int, ProcessDetail> { [60] = new() { Runtimes = ["llama.cpp"], Models = [new ModelFile("q.gguf", 1, "GGUF", qwen)], ScannedAt = t.GetUtcNow() } },
-        }));
-        noStrata.Monitor.ReadNow();
-        noStrata.Vm.Refresh();
-        var plain = noStrata.Vm.Detail!;
-        Assert.Equal("LLM", plain.Kind);
-        Assert.Equal(["가중치", "KV·버퍼·런타임"], plain.BreakdownLegend.Select(l => l.Label));
-        Assert.Contains("컨텍스트를 알 수 없어", plain.BreakdownNote, StringComparison.Ordinal);
-        Assert.Null(plain.StrataModel);
+        // The same file served by Strata: its engine's own placement, so no split from the header.
+        var (served, _) = LlmProcess(dense, strata: true);
+        Assert.True(Row(served, "llama-server.exe").IsStrata);
+        Assert.Empty(served.Detail!.Breakdown);
+        Assert.StartsWith("Strata 엔진은", served.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("32,768 토큰", served.Detail.StrataWindow);
+
+        // A mixture of experts: which experts are on the GPU is not in the header.
+        var (moe, _) = LlmProcess(dense with { Experts = 128 }, strata: false);
+        Assert.Empty(moe.Detail!.Breakdown);
+        Assert.StartsWith("전문가(MoE) 모델은", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+
+        // Recurrent or linear layers: the weights still come from the header, the KV size does not.
+        var (hybrid, _) = LlmProcess(dense with { KvBytesPerTokenF16 = null, KvUnknownReason = "순환·선형 층이 섞인 구조" }, strata: false);
+        Assert.Equal(["가중치", "KV·버퍼·런타임"], hybrid.Detail!.BreakdownLegend.Select(l => l.Label));
+        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("KV", hybrid.Detail.Models.Single().Summary.Split(" · ").Last(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -898,7 +904,7 @@ public class GpuMemoryViewModelTests
 
         var detail = vm.DetailText()!;
         Assert.StartsWith("strata.exe (PID 7412) · LLM — 분류 근거:", detail, StringComparison.Ordinal);
-        Assert.Contains("구성 (추정): 가중치 8.00 GiB", detail, StringComparison.Ordinal);
+        Assert.Contains("구성: Strata 엔진은", detail, StringComparison.Ordinal); // why no split is drawn, not a split
         Assert.Contains("Strata 보고: 모델 test-model-30b", detail, StringComparison.Ordinal);
         Assert.Contains("출처 MOCK 가상 GPU 메모리 (측정 아님)", detail, StringComparison.Ordinal);
     }
