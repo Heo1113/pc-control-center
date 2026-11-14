@@ -1113,10 +1113,14 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         // A split estimated from the header only where the header can say it: an LLM file, not served by Strata (its engine
         // places experts, KV - int8 by default - and session buffers its own way) and not a mixture of experts (their weights
         // are often kept in RAM, --n-cpu-moe, so the header cannot say which weights are on the GPU).
+        // Strata's engine is recognised by the link to its server or, without one (the local AI module not connected), by its
+        // executable name: the header cannot say how it places the model either way.
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
         var withheld = model is null ? null
             : IsStrata(p.ProcessId) ? "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
                                       + "위 값은 측정값과 Strata가 보고한 값입니다."
+            : ProcessKinds.IsStrataEngineName(entry?.Name ?? "") ? "이름이 Strata 엔진(strata.exe)이라 구성을 그리지 않습니다. Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 "
+                                      + "자체 방식으로 배치해 GGUF 헤더로는 나눌 수 없습니다. 로컬 AI 모듈이 이 Strata에 연결되면 엔진이 보고한 값도 함께 보여 줍니다."
             : model.Experts is > 0 ? "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다."
             : null;
         long? context = null; // no runtime reports the context of a process other than Strata's yet, so KV is not split

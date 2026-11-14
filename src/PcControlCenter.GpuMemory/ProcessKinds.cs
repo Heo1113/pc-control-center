@@ -20,6 +20,13 @@ public sealed record KindResult(ProcessKind Kind, string Basis);
 
 public static class ProcessKinds
 {
+    /// <summary>
+    /// Strata's engine executable: "strata.exe" on Windows, "strata" elsewhere (Strata's strata_control/shape_engine.py).
+    /// Its tools (strata-gguf, strata-plan, ...) are not the engine.
+    /// </summary>
+    public static bool IsStrataEngineName(string name)
+        => name.Equals("strata.exe", StringComparison.OrdinalIgnoreCase) || name.Equals("strata", StringComparison.OrdinalIgnoreCase);
+
     private static readonly string[] LlmNames = ["llama-", "llama.", "ollama", "lm studio", "lmstudio", "llmster", "koboldcpp", "jan.", "gpt4all", "llamafile", "strata"];
 
     private static readonly IReadOnlySet<string> Browsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
