@@ -60,12 +60,17 @@ function Invoke-Smoke([string]$Name, [string]$Data, [string[]]$Extra) {
 $mockData = Join-Path $temp "pcc-smoke-mock-$(Get-Random)"
 $mock = Invoke-Smoke 'mock' $mockData @('--mock-sensors', '--demo-data', '--mock-desktop', '--mock-model')
 if ($mock -and -not $mock.sensor.isMock) { $failures.Add('mock: the run did not use mock sensors') }
+if ($mock -and -not $mock.gpuMemory.isMock) { $failures.Add('mock: the GPU memory reader did not use its MOCK provider') }
 
 # The real run also rehearses and imports B data written by the mock run (stands in for an original program's folder).
 $real = Invoke-Smoke 'real' (Join-Path $temp "pcc-smoke-real-$(Get-Random)") @('--mock-model', '--smoke-migrate-from', (Join-Path $mockData 'modules\gpu-economics'))
 if ($real -and -not $real.checks.'operator-real-uia-workflow') { $failures.Add('real: the Operator workflow on the real desktop did not complete') }
 if ($real -and -not $real.checks.'migration-apply') { $failures.Add('real: the data import rehearsal/apply did not pass') }
 if ($real -and $real.sensor.isMock) { $failures.Add('real: the run used mock sensors') }
+# The real Windows GPU counters: a reading, or "unavailable" with a reason (a runner without a GPU driver may have no counters).
+if ($real -and $real.gpuMemory.isMock) { $failures.Add('real: the GPU memory reader used its MOCK provider') }
+if ($real -and $real.gpuMemory.state -eq 'Unavailable' -and -not $real.gpuMemory.reason) { $failures.Add('real: GPU memory unavailable without a reason') }
+if ($real) { Write-Host "GPU memory (real): state=$($real.gpuMemory.state) provider=$($real.gpuMemory.provider) variant=$($real.gpuMemory.variant) adapters=$(if ($null -eq $real.gpuMemory.adapters) { 0 } else { @($real.gpuMemory.adapters).Count }) processes=$($real.gpuMemory.processes) cost=$($real.gpuMemory.lastCollectionMs) ms reason=$($real.gpuMemory.reason)" }
 
 # Abnormal end while every module records.
 $killData = Join-Path $temp "pcc-smoke-kill-$(Get-Random)"

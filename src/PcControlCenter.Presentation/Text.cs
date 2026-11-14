@@ -23,6 +23,23 @@ public static class Text
 
     public static string GibPair(long? used, long? total) => used is null && total is null ? NA : $"{Gib(used)} / {Gib(total)}";
 
+    /// <summary>Bytes in binary units: GiB with two decimals from 1 GiB, otherwise MiB (KiB below 1 MiB). A measured 0 stays "0 MiB".</summary>
+    public static string Bytes(long? bytes)
+    {
+        if (bytes is not long b)
+        {
+            return NA;
+        }
+
+        var magnitude = Math.Abs(b);
+        return magnitude >= 1L << 30 ? (b / (1024.0 * 1024 * 1024)).ToString("0.00", Ko) + " GiB"
+            : magnitude >= 1L << 20 || b == 0 ? (b / (1024.0 * 1024)).ToString("0", Ko) + " MiB"
+            : (b / 1024.0).ToString("0", Ko) + " KiB";
+    }
+
+    /// <summary>A difference of byte counts with its sign (+ / −).</summary>
+    public static string SignedBytes(long? bytes) => bytes is long b ? (b > 0 ? "+" : b < 0 ? "−" : "") + Bytes(Math.Abs(b)) : NA;
+
     public static string Krw(decimal? value) => value is decimal d ? d.ToString("N0", Ko) + " 원" : NA;
 
     public static string Kwh(double? value) => value is double d && double.IsFinite(d) ? d.ToString(Math.Abs(d) < 10 ? "0.000" : "N2", Ko) + " kWh" : NA;

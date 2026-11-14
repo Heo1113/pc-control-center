@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- GPU memory as Windows accounts it, per adapter and per process: the WDDM performance counters "GPU Adapter Memory"
+       and "GPU Process Memory" (read through PDH with English counter names), adapter names from DXGI, process names and
+       start times, and the TCP listeners that link a local AI server to its processes. Reads on a thread of its own and
+       never opens NVML (the shared hardware hub owns it). Models and logic are platform-neutral and tested on Linux; the
+       Windows provider is exercised on the Windows CI runner. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.GpuMemory</RootNamespace>
+    <!-- LibraryImport (PDH, kernel32, iphlpapi) and DXGI's COM vtable through function pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Core\LocalAiPerf.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

@@ -12,6 +12,7 @@ using WindowsAiOperator.Core.Automation;
 using WindowsAiOperator.Core.Execution;
 using WindowsAiOperator.Presentation.ViewModels;
 using PcControlCenter.Core;
+using PcControlCenter.GpuMemory;
 using PcControlCenter.Modules;
 using PcControlCenter.Presentation;
 
@@ -99,6 +100,20 @@ internal sealed class SmokeTestRunner(
                 }
             }
 
+            // GPU memory (Windows counters, or MOCK): a reading arrived, or the page says why there is none. Never fails the
+            // app when the counters are missing (a runner without a GPU driver), but the reason must be given.
+            checks["gpu-memory-reader"] = await WaitUntil(() => runtime.GpuMemory.Latest is not null
+                                                               || runtime.GpuMemory.Health.State is GpuMemoryMonitorState.Unavailable
+                                                                   or GpuMemoryMonitorState.Disabled,
+                TimeSpan.FromSeconds(20));
+            details["gpu-memory"] = runtime.GpuMemory.Latest is { } gpuMemory
+                ? $"{gpuMemory.Source}: adapters {gpuMemory.Adapters.Count}, processes {gpuMemory.Processes.Count}, variant {gpuMemory.Variant}, {gpuMemory.CollectionTime.TotalMilliseconds:0} ms"
+                : runtime.GpuMemory.Health.UnavailableReason ?? "-";
+            if (runtime.Hub.IsMock)
+            {
+                checks["gpu-memory-mock-rows"] = shell.GpuMemory.Processes.Count > 0 || runtime.GpuMemory.Latest?.Processes.Count > 0;
+            }
+
             shell.Navigate(SectionKeys.Dashboard);
             checks["dashboard-live"] = await WaitUntil(() => shell.Dashboard.CpuUtil != Text.NA, TimeSpan.FromSeconds(10));
 
@@ -182,6 +197,7 @@ internal sealed class SmokeTestRunner(
             operatorHost = runtime.Operator?.Host is { } host ? new { state = host.State.ToString(), pid = host.ProcessId, shellPid = Environment.ProcessId, shellElevated = Environment.IsPrivilegedProcess, deElevated = host.HostDeElevated, host.Restarts, mock = host.ExpectMock, reason = host.UnavailableReason } : null,
             operatorRuns = _operatorRuns,
             strata = runtime.LocalAi.Service?.LatestRuntime?.State.ToString(),
+            gpuMemory = GpuMemoryReport(runtime.GpuMemory),
             screenshots = _screens,
             exceptions = _exceptions,
             bindingPathErrors = pathErrors,
@@ -193,6 +209,46 @@ internal sealed class SmokeTestRunner(
         File.WriteAllText(Path.Combine(reportDirectory, "smoke-report.json"),
             JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }));
         window.Close();
+    }
+
+    /// <summary>
+    /// The GPU memory reader for the report: provider, state, adapters (name, vendor, LUID, usage) and counts only — no
+    /// process names, so a report from a user's PC does not list their programs.
+    /// </summary>
+    private static object GpuMemoryReport(GpuMemoryMonitor monitor)
+    {
+        var health = monitor.Health;
+        var latest = monitor.Latest;
+        return new
+        {
+            state = health.State.ToString(),
+            provider = health.ProviderName,
+            isMock = health.IsMock,
+            reason = health.UnavailableReason,
+            readings = health.Readings,
+            failures = health.Failures,
+            intervalMs = health.Interval.TotalMilliseconds,
+            lastCollectionMs = latest?.CollectionTime.TotalMilliseconds,
+            timestamp = latest?.Timestamp,
+            variant = latest?.Variant.ToString(),
+            committedAvailable = latest?.CommittedAvailable,
+            adapterCountersAvailable = latest?.AdapterCountersAvailable,
+            adapters = latest?.Adapters.Select(a => new
+            {
+                luid = GpuLuid.Format(a.Luid),
+                name = a.Info?.Name,
+                vendor = a.Info?.VendorName,
+                software = a.Info?.IsSoftware,
+                dedicatedCapacity = a.Info?.DedicatedVideoMemoryBytes,
+                dedicatedUsage = a.DedicatedUsageBytes,
+                sharedUsage = a.SharedUsageBytes,
+                processes = latest.Processes.Count(p => p.Luid == a.Luid),
+            }),
+            processes = latest?.Processes.Count,
+            listedProcesses = latest?.Processes.Count(GpuMemoryRules.IsListed),
+            identities = latest?.ProcessTable.Values.GroupBy(p => p.State).ToDictionary(g => g.Key.ToString(), g => g.Count()),
+            issues = latest?.Issues.Select(i => $"{i.Source} [{i.Scope}] {i.Status}: {i.Message}"),
+        };
     }
 
     /// <summary>

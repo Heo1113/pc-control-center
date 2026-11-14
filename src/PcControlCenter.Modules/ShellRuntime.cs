@@ -1,5 +1,6 @@
 using LocalAiPerf.Core.Diagnostics;
 using PcControlCenter.Core;
+using PcControlCenter.GpuMemory;
 using PcControlCenter.Hardware;
 
 namespace PcControlCenter.Modules;
@@ -16,6 +17,9 @@ public sealed record ShellOptions
 
     /// <summary>The Operator (E) module; null leaves the Operator out of this run (it then shows as not available).</summary>
     public OperatorModuleOptions? Operator { get; init; }
+
+    /// <summary>Tests: the GPU memory provider to use instead of the Windows/MOCK one chosen from the settings.</summary>
+    public Func<IGpuMemoryProvider>? GpuMemoryProvider { get; init; }
 }
 
 /// <summary>
@@ -27,7 +31,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     private DataRootLock? _lock;
 
     private ShellRuntime(ShellPaths paths, ShellSettingsStore store, LoadedShellSettings loaded, DataRootLock rootLock, FileAppLogger fileLog,
-        MemoryLogSink log, SharedHardwareHub hub, ShellOptions options)
+        MemoryLogSink log, SharedHardwareHub hub, GpuMemoryMonitor gpuMemory, ShellOptions options)
     {
         Paths = paths;
         SettingsStore = store;
@@ -37,6 +41,7 @@ public sealed class ShellRuntime : IAsyncDisposable
         FileLog = fileLog;
         Log = log;
         Hub = hub;
+        GpuMemory = gpuMemory;
         Options = options;
         Intervals = new SensorIntervalCoordinator(hub, TimeSpan.FromMilliseconds(Settings.Hardware.MaxIntervalMs));
         Supervisor = new ModuleSupervisor(log);
@@ -69,6 +74,13 @@ public sealed class ShellRuntime : IAsyncDisposable
     public FileAppLogger FileLog { get; }
     public MemoryLogSink Log { get; }
     public SharedHardwareHub Hub { get; }
+
+    /// <summary>
+    /// GPU memory per process and adapter (Windows performance counters), read on its own thread. Not a module and not part
+    /// of the shared reader: it never opens NVML, and when it fails only the GPU memory page shows N/A.
+    /// </summary>
+    public GpuMemoryMonitor GpuMemory { get; }
+
     public SensorIntervalCoordinator Intervals { get; }
     public ModuleSupervisor Supervisor { get; }
     public ModuleContext Context { get; }
@@ -116,15 +128,19 @@ public sealed class ShellRuntime : IAsyncDisposable
         var hardware = loaded.Settings.Hardware;
         var hub = SharedHardwareHub.Create(hardware.GpuEnabled, hardware.SystemEnabled, options.MockSensors,
             TimeSpan.FromMilliseconds(hardware.MaxIntervalMs), options.Time, log);
+        var gpuMemory = options.GpuMemoryProvider is { } provider
+            ? new GpuMemoryMonitor(provider, options.Time, log)
+            : GpuMemoryMonitor.Create(hardware.ProcessMemoryEnabled, options.MockSensors, options.Time, log);
         log.Info("app", $"시작 {AppInfo.Version}, 데이터 폴더 {(paths.IsPortable ? "(포터블)" : paths.Root)}, 관리자 권한 {Environment.IsPrivilegedProcess}, "
                         + $"센서 {(hub.IsMock ? "MOCK" : hub.GpuProviderName)}");
-        return new ShellRuntime(paths, store, loaded, rootLock, fileLog, log, hub, options);
+        return new ShellRuntime(paths, store, loaded, rootLock, fileLog, log, hub, gpuMemory, options);
     }
 
-    /// <summary>Starts the sensor reader, then all modules in parallel.</summary>
+    /// <summary>Starts the sensor reader and the GPU memory reader, then all modules in parallel.</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         Hub.Start();
+        GpuMemory.Start();
         await Supervisor.StartAllAsync(cancellationToken).ConfigureAwait(false);
         foreach (var module in Supervisor.Modules)
         {
@@ -135,12 +151,14 @@ public sealed class ShellRuntime : IAsyncDisposable
     public async Task StopAsync()
     {
         await Supervisor.StopAllAsync().ConfigureAwait(false);
+        await GpuMemory.StopAsync().ConfigureAwait(false);
         await Hub.StopAsync().ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
+        await GpuMemory.DisposeAsync().ConfigureAwait(false);
         await Hub.DisposeAsync().ConfigureAwait(false);
         Log.Info("app", "종료");
         FileLog.Dispose();
