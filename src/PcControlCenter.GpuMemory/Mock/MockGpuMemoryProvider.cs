@@ -77,6 +77,56 @@ public sealed class MockGpuMemoryProvider(TimeProvider? time = null) : IGpuMemor
             table[CyclingPid] = new ProcessEntry(CyclingPid, 5000, name, start, ProcessIdentityState.Verified);
         }
 
+        // Engine activity and details only when asked (the Windows provider reads them only while the page is visible).
+        var details = new Dictionary<int, ProcessDetail>();
+        EngineUsage? nvidiaEngines = null, integratedEngines = null;
+        if (request.IncludeDetails)
+        {
+            var compute = Math.Round(42 + 8 * Math.Sin(t / 7.0), 1);
+            var engines = new Dictionary<int, EngineUsage>
+            {
+                [4] = new(0, 0, 0.4, 0, 0),
+                [1520] = new(3.5, 0, 0, 0, 0),
+                [EnginePid] = new(0, compute, 1.5, 0, 0),
+                [ServerPid] = EngineUsage.Idle,
+                [9120] = new(1.2, 0, 0, 2.5, 0),
+                [8800] = new(0.8, 0, 0, 0, 0),
+                [3100] = EngineUsage.Idle,
+                [CyclingPid] = new(61, 0, 2, 0, 0),
+            };
+            processes = [.. processes.Select(p => p.Luid == NvidiaLuid && engines.TryGetValue(p.ProcessId, out var e) ? p with { Engines = e } : p.Luid == IntegratedLuid ? p with { Engines = new(1, 0, 0, 0, 0) } : p)];
+            nvidiaEngines = new EngineUsage(processes.Where(p => p.Luid == NvidiaLuid).Sum(p => p.Engines?.ThreeD ?? 0), compute, 3.5,
+                processes.Where(p => p.Luid == NvidiaLuid).Sum(p => p.Engines?.Video ?? 0), 0);
+            integratedEngines = new EngineUsage(1, 0, 0, 0, 0);
+            details[EnginePid] = new ProcessDetail
+            {
+                Runtimes = ["ggml", "CUDA"],
+                LoadedLibraries = 84,
+                ScannedAt = now,
+                Models = [new ModelFile("MOCK-Qwen3-14B-Q4_K_M.gguf", 9_001_000_000, "GGUF", new GgufSummary
+                {
+                    Name = "MOCK Qwen3 14B",
+                    Architecture = "qwen3",
+                    Kind = "LLM",
+                    Parameters = 14_770_000_000,
+                    Quantization = "Q4_K_M",
+                    Layers = 40,
+                    TrainedContext = 40_960,
+                    TensorBytes = 8_990_000_000,
+                    GpuWeightBytesAllLayers = 8L * GiB,
+                    KvBytesPerTokenF16 = 40L * 8 * (128 + 128) * 2,
+                })],
+            };
+            details[ServerPid] = new ProcessDetail { Runtimes = [], LoadedLibraries = 31, ScannedAt = now };
+            details[9120] = new ProcessDetail { Runtimes = ["D3D11"], LoadedLibraries = 160, ScannedAt = now };
+            details[8800] = new ProcessDetail { Runtimes = ["D3D11"], LoadedLibraries = 120, ScannedAt = now };
+            details[1520] = new ProcessDetail { AccessDenied = true, ScannedAt = now };
+            if (processes.Any(p => p.ProcessId == CyclingPid))
+            {
+                details[CyclingPid] = new ProcessDetail { Runtimes = ["D3D12", "D3D11"], LoadedLibraries = 95, ScannedAt = now };
+            }
+        }
+
         var nvidiaProcessSum = processes.Where(p => p.Luid == NvidiaLuid).Sum(p => p.DedicatedBytes ?? 0);
         return new GpuMemorySnapshot
         {
@@ -88,12 +138,14 @@ public sealed class MockGpuMemoryProvider(TimeProvider? time = null) : IGpuMemor
             AdapterCountersAvailable = true,
             Adapters =
             [
-                new GpuAdapterMemory { Luid = NvidiaLuid, Info = AdapterInfos[0], DedicatedUsageBytes = nvidiaProcessSum + 260 * MiB, SharedUsageBytes = engineShared + 230 * MiB },
-                new GpuAdapterMemory { Luid = IntegratedLuid, Info = AdapterInfos[1], DedicatedUsageBytes = 30 * MiB, SharedUsageBytes = 160 * MiB },
+                new GpuAdapterMemory { Luid = NvidiaLuid, Info = AdapterInfos[0], DedicatedUsageBytes = nvidiaProcessSum + 260 * MiB, SharedUsageBytes = engineShared + 230 * MiB, Engines = nvidiaEngines },
+                new GpuAdapterMemory { Luid = IntegratedLuid, Info = AdapterInfos[1], DedicatedUsageBytes = 30 * MiB, SharedUsageBytes = 160 * MiB, Engines = integratedEngines },
             ],
             Processes = processes,
             ProcessTable = table,
             Listeners = Listeners.Where(l => request.WatchedPorts.Contains(l.Port)).ToList(),
+            EnginesRead = request.IncludeDetails,
+            Details = details,
             CollectionTime = TimeSpan.FromMilliseconds(1),
         };
     }

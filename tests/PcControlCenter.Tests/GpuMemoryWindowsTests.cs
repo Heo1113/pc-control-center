@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.MemoryMappedFiles;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
@@ -46,6 +47,84 @@ public class GpuMemoryWindowsTests
         Assert.All(second.Processes, p => Assert.Contains(second.Adapters, a => a.Luid == p.Luid));
         Assert.All(second.Processes, p => Assert.True(second.ProcessTable.ContainsKey(p.ProcessId), $"PID {p.ProcessId} has no identity"));
         Assert.All(second.Processes, p => Assert.True(p.DedicatedBytes is null or >= 0 && p.SharedBytes is null or >= 0));
+    }
+
+    [Fact(Timeout = 60_000)]
+    public void Engine_activity_and_process_details_are_read_only_when_asked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), WindowsOnly);
+        using var provider = new WindowsGpuMemoryProvider();
+        Assert.SkipWhen(provider.UnavailableReason is not null, "no GPU counters on this machine");
+        var plain = provider.Read(GpuMemoryReadRequest.None);
+        Assert.False(plain.EnginesRead);
+        Assert.Empty(plain.Details);
+        Assert.All(plain.Processes, p => Assert.Null(p.Engines));
+
+        var request = GpuMemoryReadRequest.None with { IncludeDetails = true };
+        provider.Read(request); // engine utilization is a rate: the first collection is the baseline
+        var detailed = provider.Read(request);
+        var output = TestContext.Current.TestOutputHelper;
+        output?.WriteLine($"engines read {detailed.EnginesRead}; cost {detailed.CollectionTime.TotalMilliseconds:0.0} ms; details {detailed.Details.Count}");
+        output?.WriteLine("adapters: " + string.Join(" | ", detailed.Adapters.Select(a => $"{a.Info?.Name ?? "?"} {a.Engines}")));
+        foreach (var (pid, detail) in detailed.Details)
+        {
+            output?.WriteLine($"PID {pid} {detailed.Process(pid)?.Name}: denied={detail.AccessDenied} partial={detail.Partial} libraries={detail.LoadedLibraries} "
+                              + $"runtimes=[{string.Join(", ", detail.Runtimes)}] models={detail.Models.Count}");
+        }
+
+        output?.WriteLine("issues: " + string.Join(" | ", detailed.Issues.Select(i => $"[{i.Scope}] {i.Message}")));
+        if (detailed.EnginesRead)
+        {
+            Assert.All(detailed.Adapters, a => Assert.NotNull(a.Engines));
+            Assert.All(detailed.Processes.Where(p => p.Engines is not null), p => Assert.InRange(p.Engines!.Busiest, 0, 100));
+        }
+        else
+        {
+            Assert.Contains(detailed.Issues, i => i.Scope.StartsWith("engine", StringComparison.Ordinal)); // says why
+        }
+
+        Assert.All(detailed.Details.Values, d => Assert.All(d.Models, m => Assert.DoesNotContain('\\', m.FileName)));
+        Assert.True(detailed.CollectionTime < TimeSpan.FromSeconds(3), $"a detailed reading took {detailed.CollectionTime.TotalMilliseconds:0} ms");
+    }
+
+    [Fact(Timeout = 60_000)]
+    public void The_scanner_lists_the_libraries_of_a_process_with_drive_letter_paths()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), WindowsOnly);
+        var scan = ProcessScanner.Scan(Environment.ProcessId, DosDevices.Load(), TimeSpan.FromSeconds(10));
+
+        Assert.False(scan.AccessDenied);
+        Assert.False(scan.Partial);
+        Assert.Contains(scan.Libraries, l => l.EndsWith(@"\ntdll.dll", StringComparison.OrdinalIgnoreCase) && l.Length > 3 && l[1] == ':');
+        Assert.Contains(scan.Libraries, l => l.EndsWith(@"\coreclr.dll", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(RawProcessScan.Denied, ProcessScanner.Scan(4, DosDevices.Load(), TimeSpan.FromSeconds(1))); // the kernel's System process
+    }
+
+    [Fact(Timeout = 60_000)]
+    public void A_memory_mapped_gguf_file_is_found_by_name_and_its_header_read()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), WindowsOnly);
+        using var temp = new TempDir();
+        // The runner's TEMP can be a short 8.3 path while Windows reports the long one: matched by a unique file name.
+        var name = $"Tiny-{Guid.NewGuid():N}-Q8_0.gguf";
+        var path = temp.Sub(name);
+        File.WriteAllBytes(path, GgufFixtures.Qwen3().Build());
+        using var file = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        using var view = file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        var devices = DosDevices.Load();
+
+        var scan = ProcessScanner.Scan(Environment.ProcessId, devices, TimeSpan.FromSeconds(10));
+        Assert.Contains(scan.MappedFiles, f => f.EndsWith(@"\" + name, StringComparison.OrdinalIgnoreCase));
+
+        // The inspector with the real scan: a GPU memory row and a verified identity make this process a candidate.
+        var inspector = new ProcessInspector((pid, budget) => ProcessScanner.Scan(pid, devices, budget));
+        var table = ProcessQueries.Table([Environment.ProcessId], DateTimeOffset.UtcNow.AddSeconds(1), new List<SensorIssue>());
+        var details = inspector.Inspect([new GpuProcessMemory { ProcessId = Environment.ProcessId, Luid = 1, DedicatedBytes = 1 }], table, TimeSpan.FromSeconds(10));
+        var model = Assert.Single(details[Environment.ProcessId].Models);
+        Assert.Equal(name, model.FileName);
+        Assert.Equal("GGUF", model.Format);
+        Assert.Equal("LLM", model.Gguf!.Kind);
+        Assert.Equal(114_688, model.Gguf.KvBytesPerTokenF16);
     }
 
     [Fact]

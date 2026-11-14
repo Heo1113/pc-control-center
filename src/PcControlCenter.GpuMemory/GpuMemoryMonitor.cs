@@ -509,7 +509,8 @@ public sealed class GpuMemoryMonitor : IAsyncDisposable
         GpuMemoryReadRequest request;
         lock (_gate)
         {
-            request = _request;
+            // Engine activity and process details only while the page is visible (they cost more than the memory counters).
+            request = _request with { IncludeDetails = _active };
         }
 
         try

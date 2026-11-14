@@ -92,6 +92,39 @@ public sealed record GpuAdapterMemory
 
     /// <summary><c>Shared Usage</c>: bytes of system RAM the adapter uses as GPU memory. Not the same as LLM offloading.</summary>
     public long? SharedUsageBytes { get; init; }
+
+    /// <summary>
+    /// Engine activity from <c>\GPU Engine(*)\Utilization Percentage</c>: per group, the busiest engine (its processes added).
+    /// Null when engines were not read for this reading (they are read while the page is visible) or not reported.
+    /// </summary>
+    public EngineUsage? Engines { get; init; }
+}
+
+/// <summary>Engine groups as Task Manager shows them. CUDA work can appear on the 3D engine as well as on compute engines.</summary>
+public enum EngineGroup
+{
+    ThreeD,
+    Compute,
+    Copy,
+    Video,
+    Other,
+}
+
+/// <summary>Busy percentages (0-100) per engine group. Utilization is the busiest group, as in Task Manager.</summary>
+public sealed record EngineUsage(double ThreeD, double Compute, double Copy, double Video, double Other)
+{
+    public static EngineUsage Idle { get; } = new(0, 0, 0, 0, 0);
+
+    public double Busiest => Math.Max(Math.Max(ThreeD, Compute), Math.Max(Math.Max(Copy, Video), Other));
+
+    public double Of(EngineGroup group) => group switch
+    {
+        EngineGroup.ThreeD => ThreeD,
+        EngineGroup.Compute => Compute,
+        EngineGroup.Copy => Copy,
+        EngineGroup.Video => Video,
+        _ => Other,
+    };
 }
 
 /// <summary>One process on one adapter from <c>\GPU Process Memory(*)</c>. Null = this counter was not reported, never zero.</summary>
@@ -108,6 +141,69 @@ public sealed record GpuProcessMemory
 
     /// <summary><c>Total Committed</c>: all GPU memory the process allocated on the adapter, resident or not.</summary>
     public long? CommittedBytes { get; init; }
+
+    /// <summary>The process's engine activity on this adapter; null when engines were not read or not reported.</summary>
+    public EngineUsage? Engines { get; init; }
+}
+
+/// <summary>
+/// What a process has loaded, from the list of files mapped into it (VirtualQueryEx + GetMappedFileName): libraries tell
+/// the runtime (CUDA, ggml, ONNX Runtime ...), mapped data files the model. Only names and file headers on disk are read,
+/// never the process's memory or command line.
+/// </summary>
+public sealed record ProcessDetail
+{
+    /// <summary>Runtimes recognised from loaded libraries, most specific first. Detection, not proof that each one does GPU work.</summary>
+    public IReadOnlyList<string> Runtimes { get; init; } = [];
+
+    /// <summary>Model files mapped into the process (file name only, never the full path).</summary>
+    public IReadOnlyList<ModelFile> Models { get; init; } = [];
+
+    /// <summary>The process refused the query rights (protected or another user's): runtimes and models are unknown.</summary>
+    public bool AccessDenied { get; init; }
+
+    /// <summary>The scan stopped at its time budget; lists can be incomplete.</summary>
+    public bool Partial { get; init; }
+
+    public int LoadedLibraries { get; init; }
+    public DateTimeOffset ScannedAt { get; init; }
+}
+
+/// <summary>A model file mapped into a process. A mapping proves the file is open in the process, not that it sits on the GPU.</summary>
+public sealed record ModelFile(string FileName, long SizeBytes, string Format, GgufSummary? Gguf);
+
+/// <summary>Facts from a GGUF header (read from the file on disk) and what follows from them by arithmetic.</summary>
+public sealed record GgufSummary
+{
+    public string? Name { get; init; }
+    public string? Architecture { get; init; }
+
+    /// <summary>LLM, embedding, reranker, vision projector, LoRA adapter, speech or model (from header keys only).</summary>
+    public required string Kind { get; init; }
+
+    public long Parameters { get; init; }
+
+    /// <summary>From general.file_type (a header fact, not guessed from the file name).</summary>
+    public string? Quantization { get; init; }
+
+    public int Layers { get; init; }
+    public long? TrainedContext { get; init; }
+    public int? SlidingWindow { get; init; }
+    public int? Experts { get; init; }
+
+    /// <summary>All tensor data in the file.</summary>
+    public long TensorBytes { get; init; }
+
+    /// <summary>Tensor bytes llama.cpp would place on the GPU with every layer offloaded (input embeddings stay on the CPU).</summary>
+    public long GpuWeightBytesAllLayers { get; init; }
+
+    /// <summary>KV cache bytes per token with f16 keys and values (all layers); null when the header lacks the dimensions.</summary>
+    public long? KvBytesPerTokenF16 { get; init; }
+
+    public bool IsCausal { get; init; } = true;
+
+    /// <summary>Why the header could not be read completely (the other fields are then partial or empty).</summary>
+    public string? Error { get; init; }
 }
 
 /// <summary>How well the process behind a PID is known at the moment of the counter sample.</summary>
@@ -165,6 +261,12 @@ public sealed record GpuMemorySnapshot
 
     public IReadOnlyList<TcpListenerEntry> Listeners { get; init; } = [];
 
+    /// <summary>Engine counters were read for this reading (they are read only while the page is visible).</summary>
+    public bool EnginesRead { get; init; }
+
+    /// <summary>Loaded libraries and mapped model files of the larger GPU processes, by PID (scanned within a time budget).</summary>
+    public IReadOnlyDictionary<int, ProcessDetail> Details { get; init; } = new Dictionary<int, ProcessDetail>();
+
     /// <summary>Problems of this reading (a counter missing, a lookup failing). Values affected are null.</summary>
     public IReadOnlyList<SensorIssue> Issues { get; init; } = [];
 
@@ -175,6 +277,8 @@ public sealed record GpuMemorySnapshot
     public TimeSpan ExpectedInterval { get; init; }
 
     public ProcessEntry? Process(int pid) => ProcessTable.TryGetValue(pid, out var entry) ? entry : null;
+
+    public ProcessDetail? Detail(int pid) => Details.TryGetValue(pid, out var detail) ? detail : null;
 
     public GpuAdapterMemory? Adapter(long luid) => Adapters.FirstOrDefault(a => a.Luid == luid);
 }

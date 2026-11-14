@@ -6,6 +6,9 @@ namespace PcControlCenter.GpuMemory;
 /// <summary>One instance of a counter array: the instance name as Windows spells it and its value in bytes.</summary>
 public readonly record struct CounterItem(string Instance, long Value);
 
+/// <summary>One instance of the engine utilization counter (percent, a rate over the last two collections).</summary>
+public readonly record struct EngineCounterItem(string Instance, double Value);
+
 /// <summary>
 /// Turns the counter arrays of one sample into per-process and per-adapter rows. Platform-neutral, so the parsing and the
 /// null rules are tested on Linux with instance names in the format Windows uses.
@@ -97,6 +100,93 @@ public static partial class CounterInstances
         return (processes, adapters);
     }
 
+    /// <summary>
+    /// Parses <c>pid_1234_luid_0x0_0xC8D1_phys_0_eng_3_engtype_Compute_0</c> (a <c>GPU Engine</c> instance).
+    /// </summary>
+    public static bool TryParseEngine(string instance, out int processId, out long luid, out int physical, out int engine, out EngineGroup group)
+    {
+        processId = 0;
+        luid = 0;
+        physical = 0;
+        engine = 0;
+        group = EngineGroup.Other;
+        var match = EngineRegex().Match(instance);
+        if (!match.Success
+            || !uint.TryParse(match.Groups[1].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out var pid) || pid > int.MaxValue
+            || !TryLuid(match.Groups[2].ValueSpan, match.Groups[3].ValueSpan, out luid)
+            || !int.TryParse(match.Groups[4].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out physical)
+            || !int.TryParse(match.Groups[5].ValueSpan, NumberStyles.None, CultureInfo.InvariantCulture, out engine))
+        {
+            return false;
+        }
+
+        processId = (int)pid;
+        group = GroupOf(match.Groups[6].Value);
+        return true;
+    }
+
+    /// <summary>Engine type names (3D, Copy, VideoDecode, Compute_0, Cuda, ...) grouped like Task Manager's graphs.</summary>
+    public static EngineGroup GroupOf(string engineType)
+    {
+        var t = engineType.Trim().ToLowerInvariant();
+        return t.StartsWith("3d", StringComparison.Ordinal) || t.StartsWith("graphics", StringComparison.Ordinal) ? EngineGroup.ThreeD
+            : t.StartsWith("compute", StringComparison.Ordinal) || t.StartsWith("cuda", StringComparison.Ordinal) ? EngineGroup.Compute
+            : t.StartsWith("copy", StringComparison.Ordinal) ? EngineGroup.Copy
+            : t.StartsWith("video", StringComparison.Ordinal) ? EngineGroup.Video
+            : EngineGroup.Other;
+    }
+
+    /// <summary>
+    /// Engine activity per process and adapter, as Task Manager counts it. A process's group is its busiest engine of that
+    /// group (so <see cref="EngineUsage.Busiest"/> is the process's busiest engine, Task Manager's GPU column); an adapter's
+    /// group is its busiest engine of that group with every process on that engine added (capped at 100).
+    /// </summary>
+    public static (IReadOnlyDictionary<(int Pid, long Luid), EngineUsage> Processes, IReadOnlyDictionary<long, EngineUsage> Adapters) MergeEngines(
+        IReadOnlyList<EngineCounterItem> items, out int unrecognized)
+    {
+        unrecognized = 0;
+        var perProcess = new Dictionary<(int, long), double[]>();
+        var perEngine = new Dictionary<(long Luid, int Phys, int Engine, EngineGroup Group), double>();
+        foreach (var item in items)
+        {
+            if (!TryParseEngine(item.Instance, out var pid, out var luid, out var phys, out var engine, out var group))
+            {
+                unrecognized++;
+                continue;
+            }
+
+            var value = double.IsFinite(item.Value) ? Math.Max(0, item.Value) : 0;
+            if (!perProcess.TryGetValue((pid, luid), out var groups))
+            {
+                perProcess[(pid, luid)] = groups = new double[5];
+            }
+
+            groups[(int)group] = Math.Max(groups[(int)group], value);
+            perEngine[(luid, phys, engine, group)] = perEngine.GetValueOrDefault((luid, phys, engine, group)) + value;
+        }
+
+        var processes = perProcess.ToDictionary(p => p.Key, p => Usage(p.Value));
+        var adapters = perEngine
+            .GroupBy(e => e.Key.Luid)
+            .ToDictionary(g => g.Key, g =>
+            {
+                var groups = new double[5];
+                foreach (var (key, value) in g)
+                {
+                    groups[(int)key.Group] = Math.Max(groups[(int)key.Group], value);
+                }
+
+                return Usage(groups);
+            });
+        return (processes, adapters);
+    }
+
+    private static EngineUsage Usage(double[] g)
+    {
+        static double Cap(double v) => Math.Min(100, Math.Round(v, 1));
+        return new EngineUsage(Cap(g[0]), Cap(g[1]), Cap(g[2]), Cap(g[3]), Cap(g[4]));
+    }
+
     private static Dictionary<(int Pid, long Luid), long>? SumByProcess(IReadOnlyList<CounterItem>? items, ref int unrecognized)
     {
         if (items is null)
@@ -162,4 +252,7 @@ public static partial class CounterInstances
 
     [GeneratedRegex(@"^luid_0x([0-9A-Fa-f]{1,8})_0x([0-9A-Fa-f]{1,8})_phys_\d{1,3}$", RegexOptions.CultureInvariant)]
     private static partial Regex AdapterRegex();
+
+    [GeneratedRegex(@"^pid_(\d{1,10})_luid_0x([0-9A-Fa-f]{1,8})_0x([0-9A-Fa-f]{1,8})_phys_(\d{1,3})_eng_(\d{1,4})_engtype_(.*)$", RegexOptions.CultureInvariant)]
+    private static partial Regex EngineRegex();
 }
