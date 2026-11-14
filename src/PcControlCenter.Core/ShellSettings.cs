@@ -108,8 +108,20 @@ public sealed class GpuMemoryPageSettings
 {
     public static readonly IReadOnlySet<string> ColumnKeys = new HashSet<string>(StringComparer.Ordinal)
     {
-        "Name", "Pid", "KindLabel", "Dedicated", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
+        "Name", "Pid", "KindLabel", "Dedicated", "Delta", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
     };
+
+    public static readonly IReadOnlySet<string> ChartMetrics = new HashSet<string>(StringComparer.Ordinal) { "Dedicated", "Shared", "Gpu" };
+
+    public static readonly IReadOnlyList<int> ChartWindows = [5, 15, 30];
+
+    /// <summary>The kinds a process can be given (the names of PcControlCenter.GpuMemory.ProcessKind).</summary>
+    public static readonly IReadOnlySet<string> KindNames = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Llm", "Ai", "Compute", "Graphics3D", "Video", "Browser", "Compositor", "System", "Kernel", "App",
+    };
+
+    public const int MaxKindOverrides = 200;
 
     /// <summary>Sort column; null = dedicated memory, largest first.</summary>
     public string? SortColumn { get; set; }
@@ -125,6 +137,22 @@ public sealed class GpuMemoryPageSettings
     /// <summary>Height of the detail panel in device-independent pixels; 0 = share the height with the table.</summary>
     public double DetailHeight { get; set; }
 
+    /// <summary>What the detail chart shows: Dedicated, Shared or Gpu (the busiest engine, %).</summary>
+    public string ChartMetric { get; set; } = "Dedicated";
+
+    /// <summary>The detail chart's window in minutes (5, 15 or 30; the reader keeps 30).</summary>
+    public int ChartMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Kinds the user gave by executable name (lower case, such as "myapp.exe"), used instead of the classification from
+    /// loaded libraries, model files and names. Only the name and the kind are kept.
+    /// </summary>
+    public Dictionary<string, string> KindOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A bare executable name: no folder, no control characters, at most 260 characters.</summary>
+    public static bool IsExecutableName(string? name)
+        => name is { Length: > 0 and <= 260 } && name.Trim().Length > 0 && name.IndexOfAny(['\\', '/', ':']) < 0 && !name.Any(char.IsControl);
+
     public void Normalize()
     {
         if (SortColumn is not null && !ColumnKeys.Contains(SortColumn))
@@ -138,6 +166,27 @@ public sealed class GpuMemoryPageSettings
         {
             DetailHeight = 0;
         }
+
+        if (ChartMetric is null || !ChartMetrics.Contains(ChartMetric))
+        {
+            ChartMetric = "Dedicated";
+        }
+
+        if (!ChartWindows.Contains(ChartMinutes))
+        {
+            ChartMinutes = 15;
+        }
+
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, kind) in KindOverrides ?? [])
+        {
+            if (overrides.Count < MaxKindOverrides && IsExecutableName(name) && kind is not null && KindNames.Contains(kind))
+            {
+                overrides[name.Trim().ToLowerInvariant()] = kind;
+            }
+        }
+
+        KindOverrides = overrides;
     }
 }
 

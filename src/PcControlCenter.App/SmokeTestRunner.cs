@@ -142,10 +142,26 @@ internal sealed class SmokeTestRunner(
                 await Capture("hardware-gpu-memory-filter-help");
                 shell.GpuMemory.ClearKindFilterCommand.Execute(null);
                 shell.GpuMemory.HelpOpen = false;
+
+                // MOCK: the Ollama runner with what its server reported (sizes, context), shown apart from the measured values.
+                if (runtime.Hub.IsMock && shell.GpuMemory.Processes.FirstOrDefault(r => r.Name.StartsWith("ollama", StringComparison.OrdinalIgnoreCase)) is { } runner)
+                {
+                    shell.GpuMemory.SelectedProcess = runner;
+                    checks["gpu-memory-runtime-report"] = await WaitUntil(() => shell.GpuMemory.Detail?.Reports.Count > 0, TimeSpan.FromSeconds(15));
+                    await Task.Delay(800);
+                    await Capture("hardware-gpu-memory-runtime");
+                }
             }
 
             shell.Navigate(SectionKeys.Dashboard);
             checks["dashboard-live"] = await WaitUntil(() => shell.Dashboard.CpuUtil != Text.NA, TimeSpan.FromSeconds(10));
+            if (runtime.Hub.IsMock)
+            {
+                // The dashboard's GPU memory card: the largest processes from the reader (MOCK here).
+                checks["dashboard-gpu-memory"] = await WaitUntil(() => shell.Dashboard.GpuMemoryLargest != Text.NA, TimeSpan.FromSeconds(15));
+                await Task.Delay(800);
+                await Capture("dashboard-gpu-memory");
+            }
 
             // A: a manual inference session through A's own recorder.
             if (runtime.LocalAi.Service is { } service && service.Recorder is not null)

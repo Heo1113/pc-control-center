@@ -165,7 +165,7 @@ public sealed class ProcessInspector(
             var due = cached is not { } hit || Due(hit.Detail, hit.MemoryAtScan, mem, now);
             if (due && Stopwatch.GetElapsedTime(started) < budget)
             {
-                var detail = Build(scan(pid, PerProcessBudget), now);
+                var detail = Build(scan(pid, PerProcessBudget), now) with { Key = key };
                 Scans++;
                 _cache[key] = (detail, mem);
                 result[pid] = detail;

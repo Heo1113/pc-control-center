@@ -167,6 +167,9 @@ public sealed record ProcessDetail
 
     public int LoadedLibraries { get; init; }
     public DateTimeOffset ScannedAt { get; init; }
+
+    /// <summary>The process that was scanned (PID and start time): a detail is shown only for that process.</summary>
+    public ProcessKey? Key { get; init; }
 }
 
 /// <summary>A model file mapped into a process. A mapping proves the file is open in the process, not that it sits on the GPU.</summary>
@@ -201,6 +204,13 @@ public sealed record GgufSummary
     public long? KvBytesPerTokenF16 { get; init; }
 
     public bool IsCausal { get; init; } = true;
+
+    /// <summary>
+    /// Why KV per token cannot be computed from the header (<see cref="KvBytesPerTokenF16"/> is null then): recurrent or
+    /// linear layers mixed with attention (SSM, RWKV, short convolutions, a full-attention interval), or latent attention
+    /// (MLA, which caches a compressed vector instead of keys and values per head).
+    /// </summary>
+    public string? KvUnknownReason { get; init; }
 
     /// <summary>Why the header could not be read completely (the other fields are then partial or empty).</summary>
     public string? Error { get; init; }
@@ -260,6 +270,12 @@ public sealed record GpuMemorySnapshot
     public IReadOnlyDictionary<int, ProcessEntry> ProcessTable { get; init; } = new Dictionary<int, ProcessEntry>();
 
     public IReadOnlyList<TcpListenerEntry> Listeners { get; init; } = [];
+
+    /// <summary>
+    /// Ports that local AI servers listen on (Ollama, llama.cpp's server), found among the processes of this reading and their
+    /// parents, only while the page is visible: the page asks those servers about themselves. Nothing else is looked up.
+    /// </summary>
+    public IReadOnlyList<TcpListenerEntry> ServiceListeners { get; init; } = [];
 
     /// <summary>Engine counters were read for this reading (they are read only while the page is visible).</summary>
     public bool EnginesRead { get; init; }

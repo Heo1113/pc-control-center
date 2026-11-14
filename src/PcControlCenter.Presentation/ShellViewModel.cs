@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LocalAiPerf.Core.Diagnostics;
 using PcControlCenter.Core;
+using PcControlCenter.GpuMemory;
 using PcControlCenter.Hardware;
 using PcControlCenter.Modules;
 
@@ -103,12 +104,14 @@ public sealed partial class ShellViewModel : ObservableObject
 
         operatorSummary ??= runtime.Operator is { } operatorModule ? operatorModule.Summary : () => null;
         Dashboard = new DashboardViewModel(runtime.Hub, runtime.LocalAi, runtime.Economics, runtime.Diagnostics, operatorSummary, ui,
-            key => Navigate(key), _time);
+            key => Navigate(key), _time, runtime.GpuMemory);
         Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
         // The page's layout (sort, columns, panel size) is remembered in the shell settings, which the settings page saves too.
+        // Local runtimes are asked about the selected process only (loopback GETs); MOCK answers with --mock-sensors.
         GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time,
-            runtime.Settings.GpuMemoryPage, () => runtime.SettingsStore.Save(runtime.Settings));
+            runtime.Settings.GpuMemoryPage, () => runtime.SettingsStore.Save(runtime.Settings),
+            runtime.Options.MockSensors ? new MockRuntimeHttp() : new HttpRuntimeClient());
         History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);
@@ -352,7 +355,8 @@ public sealed partial class ShellViewModel : ObservableObject
         var service = runtime.LocalAi.Service;
         return service?.Runtime is null
             ? new StrataContext(null, "로컬 AI 모듈의 Strata 연결이 꺼져 있습니다 (로컬 AI 설정).")
-            : new StrataContext(service.LatestRuntime, service.LatestRuntime is null ? "로컬 AI 모듈이 Strata에 연결하는 중입니다." : null);
+            : new StrataContext(service.LatestRuntime, service.LatestRuntime is null ? "로컬 AI 모듈이 Strata에 연결하는 중입니다." : null,
+                service.Settings.Strata.ApiKeyEnvironmentVariable);
     }
 
     private ModuleStatus StatusOf(string id) => _runtime.Supervisor.Find(id)?.Status

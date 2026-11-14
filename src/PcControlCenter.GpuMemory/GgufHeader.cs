@@ -213,6 +213,12 @@ public static class GgufHeader
         }
 
         var layers = (int)(ToLong(Meta("block_count")) ?? 0);
+        var hybrid = arch is not null && metadata.Keys.Any(k => k.StartsWith($"{arch}.ssm.", StringComparison.Ordinal)
+                                                               || k.StartsWith($"{arch}.wkv.", StringComparison.Ordinal)
+                                                               || k.StartsWith($"{arch}.shortconv.", StringComparison.Ordinal)
+                                                               || k == $"{arch}.full_attention_interval");
+        var latent = Meta("attention.kv_lora_rank") is not null;
+        var kvUnknown = hybrid ? "순환·선형 층이 섞인 구조" : latent ? "잠재 주의(MLA) 구조" : null;
         var causal = Meta("attention.causal") is not false;
         var type = Str(metadata, "general.type");
         string kind;
@@ -252,9 +258,11 @@ public static class GgufHeader
             Experts = (int?)ToLong(Meta("expert_count")),
             TensorBytes = tensorBytes,
             GpuWeightBytesAllLayers = gpuWeights,
-            KvBytesPerTokenF16 = kind == "LLM" ? KvBytesPerToken(layers, Meta("attention.head_count"), Meta("attention.head_count_kv"),
+            // Only attention layers hold a KV cache; with recurrent or linear layers the header alone does not say how many.
+            KvBytesPerTokenF16 = kind == "LLM" && kvUnknown is null ? KvBytesPerToken(layers, Meta("attention.head_count"), Meta("attention.head_count_kv"),
                 Meta("embedding_length"), Meta("attention.key_length"), Meta("attention.value_length")) : null,
             IsCausal = causal,
+            KvUnknownReason = kind == "LLM" ? kvUnknown : null,
         };
     }
 

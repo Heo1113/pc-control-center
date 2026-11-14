@@ -177,6 +177,41 @@ public class GpuMemoryMonitorTests
     }
 
     [Fact]
+    public void The_history_keeps_gpu_utilization_only_where_the_engines_were_read()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var engines = false;
+        var provider = new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(time.GetUtcNow(),
+            processes:
+            [
+                new GpuProcessMemory { ProcessId = 100, Luid = 1, DedicatedBytes = 4 * GpuMemoryFixtures.GiB, SharedBytes = 0, CommittedBytes = 4 * GpuMemoryFixtures.GiB,
+                    Engines = engines ? new EngineUsage(0, 42, 0, 0, 0) : null },
+                new GpuProcessMemory { ProcessId = 200, Luid = 1, DedicatedBytes = 512 * GpuMemoryFixtures.MiB, SharedBytes = 0, CommittedBytes = 512 * GpuMemoryFixtures.MiB },
+            ],
+            table: new Dictionary<int, ProcessEntry>
+            {
+                [100] = new(100, 10, "app.exe", time.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified),
+                [200] = new(200, 10, "idle.exe", time.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified),
+            }) with
+        {
+            EnginesRead = engines,
+            Adapters = [new GpuAdapterMemory { Luid = 1, DedicatedUsageBytes = 5 * GpuMemoryFixtures.GiB, Engines = engines ? new EngineUsage(3, 42, 0, 0, 0) : null }],
+        });
+        var monitor = new GpuMemoryMonitor(() => provider, time);
+        monitor.ReadNow(); // the page was not open: no engine counters read
+        engines = true;
+        time.Advance(TimeSpan.FromSeconds(2));
+        monitor.ReadNow();
+
+        var history = monitor.History(TimeSpan.FromMinutes(5));
+        Assert.Null(history[0].Processes.Single(p => p.Name == "app.exe").Busiest); // not read: a gap, never 0 %
+        Assert.Null(history[0].Adapters.Single().Busiest);
+        Assert.Equal(42, history[1].Processes.Single(p => p.Name == "app.exe").Busiest);
+        Assert.Equal(0, history[1].Processes.Single(p => p.Name == "idle.exe").Busiest); // read and not listed: idle
+        Assert.Equal(42, history[1].Adapters.Single().Busiest);
+    }
+
+    [Fact]
     public void The_history_keeps_a_bounded_window()
     {
         var time = new ManualTime(GpuMemoryFixtures.Start);
@@ -388,19 +423,20 @@ public class GpuMemoryViewModelTests
     private const long GiB = GpuMemoryFixtures.GiB;
 
     private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) Create(Func<StrataContext>? strata = null,
-        Func<ManualTime, IGpuMemoryProvider>? provider = null)
+        Func<ManualTime, IGpuMemoryProvider>? provider = null, IRuntimeHttp? http = null)
     {
         var time = new ManualTime(GpuMemoryFixtures.Start);
         var monitor = new GpuMemoryMonitor(() => provider?.Invoke(time) ?? new MockGpuMemoryProvider(time), time);
-        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), strata ?? (() => new StrataContext(null, "로컬 AI 모듈 꺼짐 (테스트)")), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), strata ?? (() => new StrataContext(null, "로컬 AI 모듈 꺼짐 (테스트)")), time,
+            runtimeHttp: http);
         return (vm, monitor, time);
     }
 
     /// <summary>The page is open (details and engines are read), Strata is polled now and serves the MOCK port.</summary>
-    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) OpenWithStrata()
+    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) OpenWithStrata(IRuntimeHttp? http = null, string? keyVariable = null)
     {
         ManualTime? clock = null;
-        var created = Create(() => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null));
+        var created = Create(() => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null, keyVariable), http: http);
         clock = created.Time;
         created.Vm.IsVisible = true;
         created.Monitor.ReadNow();
@@ -516,17 +552,15 @@ public class GpuMemoryViewModelTests
         Assert.Equal("5,120 (슬롯 2)", detail.StrataSlots);
         Assert.False(string.IsNullOrEmpty(detail.StrataEvidence));
 
-        // The model file header: weights from the tensor table. 32,768 tokens of KV (5 GiB at f16) do not fit in what is
-        // left after the weights, so no KV split is shown rather than a made-up one.
+        // The model file header is shown, but no split: Strata's engine places experts, KV (int8 by default) and session
+        // buffers its own way, so a split from the GGUF header would be wrong however it is labelled.
         var model = Assert.Single(detail.Models);
         Assert.Equal("MOCK Qwen3 14B", model.Name);
         Assert.Equal("qwen3 · 14.8B · Q4_K_M · 40층 · 학습 컨텍스트 40,960 · KV 160 KiB/토큰", model.Summary);
         Assert.Equal("8.38 GiB", model.Size);
-        Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
-        Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
-        Assert.Equal(["가중치", "KV·버퍼·런타임"], detail.BreakdownLegend.Select(l => l.Label));
-        Assert.Equal("8.00 GiB", detail.BreakdownLegend[0].Value);
-        Assert.Contains("KV 추정값이 남은 양보다 커서", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Empty(detail.Breakdown);
+        Assert.Empty(detail.BreakdownLegend);
+        Assert.StartsWith("Strata 엔진은", detail.BreakdownNote, StringComparison.Ordinal);
 
         Assert.NotNull(detail.Chart);
         Assert.Equal("GiB", detail.Chart!.Unit);
@@ -535,11 +569,39 @@ public class GpuMemoryViewModelTests
         Assert.Equal(Level.Good, vm.StrataLevel);
     }
 
-    [Fact]
-    public void A_kv_cache_that_fits_is_shown_as_an_estimate_next_to_the_weights()
+    /// <summary>One llama.cpp process holding <paramref name="model"/>; with <paramref name="strata"/> it serves Strata's port.</summary>
+    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor) LlmProcess(GgufSummary model, bool strata)
     {
         var start = GpuMemoryFixtures.Start.AddMinutes(-10);
-        var qwen = new GgufSummary
+        ManualTime? clock = null;
+        var created = Create(
+            strata ? () => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null) : null,
+            t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+                processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 50 * MiB, CommittedBytes = 2 * GiB + 100 * MiB, Engines = new EngineUsage(0, 35, 1, 0, 0) }],
+                table: new Dictionary<int, ProcessEntry>
+                {
+                    [50] = new(50, 10, "server.exe", start, ProcessIdentityState.Verified),
+                    [60] = new(60, 50, "llama-server.exe", start.AddSeconds(1), ProcessIdentityState.Verified),
+                },
+                listeners: [new TcpListenerEntry(18500, 50, false, true)]) with
+            {
+                EnginesRead = true,
+                Details = new Dictionary<int, ProcessDetail>
+                {
+                    [60] = new() { Runtimes = ["llama.cpp", "ggml", "CUDA"], Models = [new ModelFile("model.gguf", 639_446_688, "GGUF", model)], ScannedAt = t.GetUtcNow() },
+                },
+            }));
+        clock = created.Time;
+        created.Vm.IsVisible = true;
+        created.Monitor.ReadNow();
+        created.Vm.Refresh();
+        return (created.Vm, created.Monitor);
+    }
+
+    [Fact]
+    public void A_header_based_split_is_drawn_only_where_the_header_can_say_it()
+    {
+        var dense = new GgufSummary
         {
             Name = "Qwen3 0.6B",
             Architecture = "qwen3",
@@ -552,59 +614,53 @@ public class GpuMemoryViewModelTests
             GpuWeightBytesAllLayers = 600 * MiB,
             KvBytesPerTokenF16 = GgufHeader.KvBytesPerToken(28, 16L, 8L, 1024L, 128L, 128L),
         };
-        ManualTime? clock = null;
-        var (vm, monitor, time) = Create(
-            () => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()) with { Model = new RuntimeModelInfo { Id = "qwen3-0.6b", Loaded = true, ContextTokens = 8192 } }, null),
-            t => new ScriptedGpuMemoryProvider(request => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
-                processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 50 * MiB, CommittedBytes = 2 * GiB + 100 * MiB, Engines = new EngineUsage(0, 35, 1, 0, 0) }],
-                table: new Dictionary<int, ProcessEntry>
-                {
-                    [50] = new(50, 10, "server.exe", start, ProcessIdentityState.Verified),
-                    [60] = new(60, 50, "llama-server.exe", start.AddSeconds(1), ProcessIdentityState.Verified),
-                },
-                listeners: [new TcpListenerEntry(18500, 50, false, true)]) with
-            {
-                EnginesRead = true,
-                Details = new Dictionary<int, ProcessDetail>
-                {
-                    [60] = new() { Runtimes = ["llama.cpp", "ggml", "CUDA"], Models = [new ModelFile("Qwen3-0.6B-Q8_0.gguf", 639_446_688, "GGUF", qwen)], ScannedAt = t.GetUtcNow() },
-                },
-            }));
-        clock = time;
-        vm.IsVisible = true;
-        monitor.ReadNow();
-        vm.Refresh();
 
-        var row = Row(vm, "llama-server.exe");
-        Assert.True(row.IsStrata);
-        Assert.Equal("llama.cpp · ggml · CUDA", row.Runtimes);
+        // A plain llama.cpp process: the weights from the tensor table; KV is not split without a context from the runtime.
+        var (plain, _) = LlmProcess(dense, strata: false);
+        var row = Row(plain, "llama-server.exe");
+        Assert.False(row.IsStrata);
         Assert.Equal("Qwen3 0.6B · 596M · Q8_0", row.Inside);
-        var detail = vm.Detail!;
+        var detail = plain.Detail!;
         Assert.Equal("qwen3 · 596M · Q8_0 · 28층 · 학습 컨텍스트 40,960 · KV 112 KiB/토큰", detail.Models.Single().Summary);
-        // 8,192 tokens × 114,688 B (28 layers × 8 KV heads × (128 + 128) × 2 B) = 896 MiB, within the 1,448 MiB left after the weights.
-        Assert.Equal([("가중치", "600 MiB"), ("KV 캐시", "896 MiB"), ("버퍼·런타임", "552 MiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
-        Assert.Equal([600.0 / 2048, 896.0 / 2048, 552.0 / 2048], detail.Breakdown.Select(b => b.Fraction));
+        Assert.Equal([("가중치", "600 MiB"), ("KV·버퍼·런타임", "1.41 GiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
         Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
-        Assert.StartsWith("모든 층이 GPU에 있고 KV가 f16이라고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
+        Assert.StartsWith("모든 층이 GPU에 있다고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownNote, StringComparison.Ordinal);
         Assert.Equal("2.00 GiB", detail.Dedicated); // the only measured part
         Assert.Equal("35%", detail.Gpu);
-        Assert.Equal("3D 0 · 연산 35 · 복사 1 · 영상 0", detail.Engines);
-        Assert.Equal("3.00 GiB", vm.Adapters.Single().View.Legend.Single(l => l.Label == "나뉘지 않음").Value);
 
-        // Without Strata's context the KV cache is not split off.
-        var noStrata = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
-            processes: [new GpuProcessMemory { ProcessId = 60, Luid = 1, DedicatedBytes = 2 * GiB, SharedBytes = 0, CommittedBytes = 2 * GiB }],
-            table: new Dictionary<int, ProcessEntry> { [60] = new(60, 50, "llama-server.exe", start, ProcessIdentityState.Verified) }) with
-        {
-            Details = new Dictionary<int, ProcessDetail> { [60] = new() { Runtimes = ["llama.cpp"], Models = [new ModelFile("q.gguf", 1, "GGUF", qwen)], ScannedAt = t.GetUtcNow() } },
-        }));
-        noStrata.Monitor.ReadNow();
-        noStrata.Vm.Refresh();
-        var plain = noStrata.Vm.Detail!;
-        Assert.Equal("LLM", plain.Kind);
-        Assert.Equal(["가중치", "KV·버퍼·런타임"], plain.BreakdownLegend.Select(l => l.Label));
-        Assert.Contains("컨텍스트를 알 수 없어", plain.BreakdownNote, StringComparison.Ordinal);
-        Assert.Null(plain.StrataModel);
+        // The same file served by Strata: its engine's own placement, so no split from the header.
+        var (served, _) = LlmProcess(dense, strata: true);
+        Assert.True(Row(served, "llama-server.exe").IsStrata);
+        Assert.Empty(served.Detail!.Breakdown);
+        Assert.StartsWith("Strata 엔진은", served.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("32,768 토큰", served.Detail.StrataWindow);
+
+        // A mixture of experts: which experts are on the GPU is not in the header.
+        var (moe, _) = LlmProcess(dense with { Experts = 128 }, strata: false);
+        Assert.Empty(moe.Detail!.Breakdown);
+        Assert.StartsWith("전문가(MoE) 모델은", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+
+        // Recurrent or linear layers: the weights still come from the header, the KV size does not.
+        var (hybrid, _) = LlmProcess(dense with { KvBytesPerTokenF16 = null, KvUnknownReason = "순환·선형 층이 섞인 구조" }, strata: false);
+        Assert.Equal(["가중치", "KV·버퍼·런타임"], hybrid.Detail!.BreakdownLegend.Select(l => l.Label));
+        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("KV", hybrid.Detail.Models.Single().Summary.Split(" · ").Last(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Weights_larger_than_the_process_are_shown_beside_the_measured_total_without_a_split()
+    {
+        var model = new GgufSummary { Name = "Big", Architecture = "llama", Kind = "LLM", Parameters = 8_000_000_000, Layers = 32, GpuWeightBytesAllLayers = 3 * GiB };
+        var (vm, _) = LlmProcess(model, strata: false); // the process holds 2 GiB
+
+        var detail = vm.Detail!;
+        Assert.Empty(detail.Breakdown);
+        Assert.Equal([("가중치 (모든 층 GPU 가정, 이론값)", "3.00 GiB", true), ("이 프로세스 전용 (측정)", "2.00 GiB", false)],
+            detail.BreakdownLegend.Select(l => (l.Label, l.Value, l.IsEstimate)));
+        Assert.Contains("일부 층만 GPU에 있는 것으로 보입니다", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("비교: 가중치 (모든 층 GPU 가정, 이론값) 3.00 GiB", vm.DetailText(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -898,7 +954,7 @@ public class GpuMemoryViewModelTests
 
         var detail = vm.DetailText()!;
         Assert.StartsWith("strata.exe (PID 7412) · LLM — 분류 근거:", detail, StringComparison.Ordinal);
-        Assert.Contains("구성 (추정): 가중치 8.00 GiB", detail, StringComparison.Ordinal);
+        Assert.Contains("구성: Strata 엔진은", detail, StringComparison.Ordinal); // why no split is drawn, not a split
         Assert.Contains("Strata 보고: 모델 test-model-30b", detail, StringComparison.Ordinal);
         Assert.Contains("출처 MOCK 가상 GPU 메모리 (측정 아님)", detail, StringComparison.Ordinal);
     }
@@ -980,6 +1036,98 @@ public class GpuMemoryViewModelTests
     }
 
     [Fact]
+    public void The_baseline_shows_changes_and_tells_new_restarted_and_gone_processes_apart()
+    {
+        var start = GpuMemoryFixtures.Start.AddMinutes(-30);
+        var processes = new List<(int Pid, string Name, long Dedicated, DateTimeOffset Started)>
+        {
+            (100, "app.exe", 4 * GiB, start), (200, "game.exe", 2 * GiB, start), (300, "llama-server.exe", GiB, start),
+        };
+        var (vm, monitor, time) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            processes: [.. processes.Select(p => new GpuProcessMemory { ProcessId = p.Pid, Luid = 1, DedicatedBytes = p.Dedicated, SharedBytes = 0, CommittedBytes = p.Dedicated })],
+            table: processes.ToDictionary(p => p.Pid, p => new ProcessEntry(p.Pid, 10, p.Name, p.Started, ProcessIdentityState.Verified)))));
+        void Read()
+        {
+            time.Advance(TimeSpan.FromSeconds(2));
+            monitor.ReadNow();
+            vm.Refresh();
+        }
+
+        vm.HasBaseline = true; // nothing measured yet: no baseline
+        Assert.False(vm.HasBaseline);
+        Read();
+        vm.HasBaseline = true;
+        Assert.True(vm.HasBaseline);
+        Assert.Equal("0", Row(vm, "app.exe").DeltaText);
+
+        var baselineTime = time.GetUtcNow();
+        processes[0] = (100, "app.exe", 5 * GiB, start);                                   // grew
+        processes.RemoveAt(1);                                                              // game.exe gone
+        processes[1] = (310, "llama-server.exe", GiB + 512 * MiB, baselineTime.AddSeconds(1)); // restarted: new PID
+        processes.Add((400, "new.exe", 512 * MiB, baselineTime.AddSeconds(1)));             // started after the baseline
+        processes.Add((500, "old.exe", 64 * MiB, start));                                   // ran before, began using the GPU after
+        Read();
+
+        Assert.Equal(("+1.00 GiB", (string?)null), (Row(vm, "app.exe").DeltaText, Row(vm, "app.exe").DeltaNote));
+        Assert.Equal(GiB, Row(vm, "app.exe").Delta);
+        Assert.Equal(("+512 MiB", "재시작 (이전 PID 300)"), (Row(vm, "llama-server.exe").DeltaText, Row(vm, "llama-server.exe").DeltaNote));
+        Assert.Equal(("+512 MiB", "기준점 뒤 시작"), (Row(vm, "new.exe").DeltaText, Row(vm, "new.exe").DeltaNote));
+        Assert.Equal("기준점 뒤 GPU 사용 시작", Row(vm, "old.exe").DeltaNote);
+        Assert.StartsWith("사라짐 1개: game.exe (PID 200) −2.00 GiB", vm.BaselineGone, StringComparison.Ordinal);
+        Assert.Contains("Test GPU 전용 0", vm.BaselineText, StringComparison.Ordinal); // the fixture's adapter total did not move
+        Assert.Equal("기준점 대비 0", vm.Adapters.Single().View.DeltaText);
+        var report = vm.BaselineReport()!;
+        Assert.Contains("app.exe\t100\t+1.00 GiB\t\t5.00 GiB", report, StringComparison.Ordinal);
+        Assert.Contains("game.exe (PID 200)", report, StringComparison.Ordinal);
+
+        vm.ToggleBaselineCommand.Execute(null);
+        Assert.False(vm.HasBaseline);
+        Assert.Equal("", Row(vm, "app.exe").DeltaText);
+        Assert.Equal(long.MinValue, Row(vm, "app.exe").Delta);
+        Assert.Equal("", vm.BaselineText);
+        Assert.Null(vm.Adapters.Single().View.DeltaText);
+        Assert.Null(vm.BaselineReport());
+    }
+
+    [Fact]
+    public void The_chart_shows_the_chosen_value_and_window_with_gaps_where_nothing_was_read()
+    {
+        var page = new GpuMemoryPageSettings();
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, page, () => { });
+        monitor.ReadNow(); // page not open: memory only, no engine counters
+        time.Advance(TimeSpan.FromSeconds(10));
+        vm.IsVisible = true;
+        for (var i = 0; i < 3; i++)
+        {
+            monitor.ReadNow();
+            time.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        vm.Refresh();
+        Assert.Equal("전용 · 15분", vm.Detail!.Chart!.Title);
+        Assert.Equal(4, vm.Detail.Chart.Series.Single(x => x.Label == "strata.exe").Y.Length);
+
+        vm.ChartMetric = "Gpu";
+        var gpu = vm.Detail!.Chart!;
+        Assert.Equal(("GPU % · 15분", "%", (double?)100), (gpu.Title, gpu.Unit, gpu.YMax));
+        Assert.Equal(3, gpu.Series.Single(x => x.Label == "strata.exe").Y.Length); // the reading without engines is a gap, not 0 %
+        Assert.All(gpu.Series.Single(x => x.Label == "strata.exe").Y, y => Assert.InRange(y, 30, 60));
+
+        vm.ChartMetric = "Shared";
+        Assert.Equal("GiB", vm.Detail!.Chart!.Unit);
+        vm.ChartMinutes = 5;
+        Assert.Equal("공유 · 5분", vm.Detail!.Chart!.Title);
+        Assert.Equal(("Shared", 5), (page.ChartMetric, page.ChartMinutes)); // remembered
+
+        vm.ChartMetric = "Bogus";
+        Assert.Equal("Dedicated", vm.ChartMetric);
+        vm.ChartMinutes = 7;
+        Assert.Equal(15, vm.ChartMinutes);
+    }
+
+    [Fact]
     public void Help_lists_where_each_value_comes_from()
     {
         var (vm, _, _) = Create();
@@ -989,6 +1137,209 @@ public class GpuMemoryViewModelTests
         Assert.Contains(vm.ValueKinds, k => k.Label == "추정" && k.IsEstimate);
         Assert.Contains(vm.Knowable, k => k.Label.StartsWith("가중치", StringComparison.Ordinal) && k.Value.Contains("추정", StringComparison.Ordinal));
         Assert.NotEmpty(vm.Checks);
+    }
+
+    [Fact]
+    public void A_kind_given_to_an_executable_name_replaces_the_classification_everywhere_and_is_remembered()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var page = new GpuMemoryPageSettings();
+        var saves = 0;
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, page, () => saves++);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        var chrome = Row(vm, "chrome.exe");
+        vm.SelectedProcess = chrome;
+        Assert.Equal(ProcessKind.Browser, chrome.Kind);
+        Assert.DoesNotContain(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video);
+
+        vm.SetKindOverride(chrome, ProcessKind.Video);
+
+        Assert.Same(chrome, Row(vm, "chrome.exe")); // updated in place
+        Assert.Equal(ProcessKind.Video, chrome.Kind);
+        Assert.Equal("영상", chrome.KindLabel);
+        Assert.True(chrome.KindOverridden);
+        Assert.StartsWith("분류 근거: 사용자가 지정함 (자동 분류: 브라우저 — ", chrome.KindBasis, StringComparison.Ordinal);
+        Assert.Contains(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video); // the device legend follows
+        Assert.Equal("영상", vm.Detail!.Kind);
+        Assert.Equal(ProcessKind.Video, vm.KindOverrideOf(chrome));
+        Assert.Equal(new Dictionary<string, string> { ["chrome.exe"] = "Video" }, page.KindOverrides);
+        Assert.Equal(1, saves);
+        vm.SetKindOverride(chrome, ProcessKind.Video); // the same kind again: nothing to save
+        Assert.Equal(1, saves);
+
+        monitor.ReadNow(); // the next reading keeps it
+        vm.Refresh();
+        Assert.Equal(ProcessKind.Video, Row(vm, "chrome.exe").Kind);
+
+        vm.SetKindOverride(chrome, null);
+        Assert.Equal(ProcessKind.Browser, chrome.Kind);
+        Assert.False(chrome.KindOverridden);
+        Assert.Empty(page.KindOverrides);
+        Assert.Equal(2, saves);
+
+        // The kernel's row has no executable name to remember.
+        vm.ShowAll = true;
+        var kernel = vm.Processes.Single(r => r.Pid == 4);
+        Assert.False(vm.CanOverrideKind(kernel));
+        vm.SetKindOverride(kernel, ProcessKind.App);
+        Assert.Empty(page.KindOverrides);
+        Assert.DoesNotContain(ProcessKind.Kernel, vm.AssignableKinds);
+    }
+
+    private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
+
+    [Fact]
+    public async Task Ollama_is_asked_about_the_selected_runner_only_and_its_sizes_are_not_turned_into_ram_use()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers[":11434/api/ps"] = FakeRuntimeHttp.Ok("""
+            {"models":[{"name":"gemma3:4b","size":3500000000,"size_vram":1600000000,"context_length":8192,"details":{"parameter_size":"4.3B","quantization_level":"Q4_K_M"}}]}
+            """);
+        var (vm, monitor, _) = Create(http: http);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.SelectedProcess = Row(vm, "chrome.exe");
+        await vm.ReportsIdle();
+        Assert.Empty(http.Calls); // not a runtime: nothing is asked
+        Assert.Empty(vm.Detail!.Reports);
+
+        // The runner holds the GPU memory; the server (its parent) listens on 11434 and is the one asked.
+        vm.SelectedProcess = Row(vm, "ollama.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        Assert.Equal("http://127.0.0.1:11434/api/ps", Assert.Single(http.Calls).Url);
+        var group = Assert.Single(vm.Detail!.Reports);
+        Assert.Equal("Ollama · gemma3:4b", group.Title);
+        var facts = Facts(group);
+        Assert.Equal("3.26 GiB", facts["전체 (Ollama 계산)"]);
+        Assert.Equal("1.49 GiB", facts["VRAM (Ollama 계산)"]);
+        Assert.Equal("8,192 토큰", facts["컨텍스트"]);
+        Assert.DoesNotContain(facts.Keys, k => k.Contains("RAM", StringComparison.Ordinal) && !k.Contains("VRAM", StringComparison.Ordinal));
+        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Note, StringComparison.Ordinal);
+        Assert.Contains("모델 파일 크기", group.Note, StringComparison.Ordinal);
+        Assert.Contains("Ollama · gemma3:4b: 전체 (Ollama 계산) 3.26 GiB", vm.DetailText(), StringComparison.Ordinal);
+        // The runner's model does not fit on the GPU whole: the two numbers are shown apart, no split.
+        Assert.Empty(vm.Detail.Breakdown);
+        Assert.Equal(["가중치 (모든 층 GPU 가정, 이론값)", "이 프로세스 전용 (측정)"], vm.Detail.BreakdownLegend.Select(l => l.Label));
+
+        vm.IsVisible = false; // closing the page forgets the answers and asks nothing more
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        await vm.ReportsIdle();
+        Assert.Equal(2, http.Calls.Count); // asked again after reopening, not in between
+    }
+
+    [Fact]
+    public async Task Strata_engine_report_keeps_start_settings_apart_from_its_last_report_and_from_the_measurement()
+    {
+        var (vm, monitor, _) = OpenWithStrata(new MockRuntimeHttp());
+        vm.SelectedProcess = Row(vm, "strata.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        var reports = vm.Detail!.Reports;
+        Assert.Equal(["Strata 엔진 · 시작 때 정한 값", "Strata 엔진 · 마지막 보고 (VRAM 조정 시)"], reports.Select(g => g.Title));
+        var start = Facts(reports[0]);
+        Assert.Equal("int8", start["KV 형식"]);
+        Assert.Equal("32,768 토큰", start["컨텍스트"]);
+        Assert.Equal("4.00 GiB", start["대화 캐시 상한 (RAM)"]);
+        var last = Facts(reports[1]);
+        Assert.Equal("1,200 (최대 3,700)", last["전문가 슬롯"]);
+        Assert.Equal("1.50 GiB (최대 4.79 GiB)", last["전문가 캐시"]); // the adjusted size, not the start's 4.79 GiB
+        Assert.Equal("5.96 GiB", last["여유 VRAM (그때 장치 전체)"]);
+        Assert.Equal("5.86 GiB", last["요청한 예약"]);
+        Assert.Contains("Windows 측정", reports[1].Note, StringComparison.Ordinal);
+        Assert.Equal(Row(vm, "strata.exe").DedicatedText, vm.Detail.Dedicated); // the measurement stays the measurement
+        Assert.Empty(vm.Detail.Breakdown);
+        Assert.Contains("Strata 엔진 · 마지막 보고 (VRAM 조정 시): 전문가 슬롯 1,200 (최대 3,700)", vm.DetailText(), StringComparison.Ordinal);
+        Assert.NotNull(monitor.Latest);
+    }
+
+    [Fact]
+    public async Task A_refused_strata_request_is_a_reason_and_a_paused_page_asks_nothing()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers["/metrics"] = new RuntimeHttpResponse(401, null, null);
+        var (vm, monitor, time) = OpenWithStrata(http, keyVariable: "PCC_TEST_UNSET_" + Guid.NewGuid().ToString("N"));
+        Assert.Same(Row(vm, "strata.exe"), vm.SelectedProcess); // the largest process is selected when the page opens
+        await vm.ReportsIdle();
+        var call = Assert.Single(http.Calls);
+        Assert.Equal("http://127.0.0.1:18500/metrics", call.Url);
+        Assert.Null(call.Bearer); // the named variable is not set: no key
+
+        vm.IsPaused = true;
+        time.Advance(RuntimeReportPoller.Interval);
+        monitor.ReadNow(); // the reader keeps reading while the page is paused
+        vm.SelectedProcess = Row(vm, "chrome.exe");
+        vm.SelectedProcess = Row(vm, "strata.exe");
+        vm.Refresh();
+        await vm.ReportsIdle();
+        Assert.Single(http.Calls); // paused: nothing new is asked
+
+        vm.IsPaused = false;
+        await vm.ReportsIdle();
+        vm.Refresh();
+        Assert.Equal(2, http.Calls.Count);
+        var group = Assert.Single(vm.Detail!.Reports);
+        Assert.True(group.IsError);
+        Assert.Equal("Strata 엔진 보고 · 읽지 못함", group.Title);
+        Assert.Contains("API 키", group.Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_llama_router_child_shows_its_own_settings_and_only_the_instance_whose_file_it_maps()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers[":49152/props"] = FakeRuntimeHttp.Ok("""{"default_generation_settings":{"n_ctx":131072},"total_slots":1,"model_path":"D:\\m\\gemma-3-4b-it-Q4_K_M.gguf","build_info":"b7000"}""");
+        http.Answers[":8080/props"] = new RuntimeHttpResponse(400, """{"error":"model name is missing from the request"}""", null);
+        http.Answers[":8080/models"] = FakeRuntimeHttp.Ok("""
+            {"data":[
+              {"id":"gemma","path":"/m/gemma-3-4b-it-Q4_K_M.gguf","memory":{"status":"measured","min":{"n_ctx":4096,"devices":[]},
+                "max":{"n_ctx":262144,"devices":[{"kind":"device","name":"CUDA0","model":1,"context":99999999999,"compute":1}]},
+                "effective":{"n_ctx":131072,"devices":[{"kind":"device","name":"CUDA0","model":4986635264,"context":536870912,"compute":301989888}]}}},
+              {"id":"other","path":"/m/other.gguf","memory":{"status":"measured","effective":{"n_ctx":4096,"devices":[{"kind":"device","name":"CUDA0","model":1,"context":1,"compute":1}]}}}
+            ]}
+            """);
+        var at = GpuMemoryFixtures.Start;
+        var provider = (ManualTime time) => new ScriptedGpuMemoryProvider(request => GpuMemoryFixtures.Snapshot(time.GetUtcNow(),
+            [new GpuProcessMemory { ProcessId = 300, Luid = 1, DedicatedBytes = 5 * GiB, SharedBytes = 0, CommittedBytes = 5 * GiB }],
+            new Dictionary<int, ProcessEntry>
+            {
+                [300] = new(300, 200, "llama-server.exe", at.AddMinutes(-2), ProcessIdentityState.Verified),
+                [200] = new(200, 10, "llama-server.exe", at.AddMinutes(-9), ProcessIdentityState.Verified),
+            }) with
+        {
+            ServiceListeners = [new(8080, 200, false, true), new(49152, 300, false, true)],
+            Details = new Dictionary<int, ProcessDetail>
+            {
+                [300] = new() { Runtimes = ["llama.cpp", "CUDA"], ScannedAt = at, Models = [new ModelFile("gemma-3-4b-it-Q4_K_M.gguf", 3_000_000_000, "GGUF", null)] },
+            },
+        });
+        var (vm, monitor, _) = Create(provider: provider, http: http);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.SelectedProcess = Row(vm, "llama-server.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        Assert.Equal(4, http.Calls.Count); // the child's /props and /models, the router's /props and /models
+        var reports = vm.Detail!.Reports;
+        Assert.Equal(["llama.cpp 서버 · 설정", "llama.cpp 라우터 · 이 인스턴스"], reports.Select(g => g.Title));
+        Assert.Equal("131,072 토큰", Facts(reports[0])["컨텍스트 (n_ctx)"]);
+        Assert.Equal("gemma-3-4b-it-Q4_K_M.gguf", Facts(reports[0])["모델 파일"]); // the file name, never the path
+        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Note, StringComparison.Ordinal);
+        var instance = Facts(reports[1]);
+        Assert.Equal("가중치 4.64 GiB · 컨텍스트 512 MiB · 계산 288 MiB", instance["CUDA0"]); // effective, not max
+        Assert.DoesNotContain(reports[1].Facts, f => f.Value.Contains("93.13 GiB", StringComparison.Ordinal));
+        Assert.Contains("min·max", reports[1].Note, StringComparison.Ordinal);
+        Assert.DoesNotContain("D:", vm.DetailText(), StringComparison.Ordinal);
     }
 }
 
@@ -1093,9 +1444,69 @@ public class GpuMemoryShellTests
         var settings = store.Load().Settings;
         settings.GpuMemoryPage.SortColumn = "Gpu";
         settings.GpuMemoryPage.DetailHeight = 300;
+        settings.GpuMemoryPage.KindOverrides["myrenderer.exe"] = "Graphics3D";
         store.Save(settings);
         var reloaded = store.Load().Settings.GpuMemoryPage;
         Assert.Equal(("Gpu", 300.0), (reloaded.SortColumn, reloaded.DetailHeight));
+        Assert.Equal("Graphics3D", reloaded.KindOverrides["MyRenderer.EXE"]); // names compare without case
+    }
+
+    [Fact]
+    public void Kind_overrides_keep_bare_executable_names_and_known_kinds_only()
+    {
+        var page = new GpuMemoryPageSettings
+        {
+            KindOverrides = new()
+            {
+                [" MyApp.EXE "] = "Llm", [@"C:\tools\a.exe"] = "Llm", ["b.exe"] = "Spaceship", [""] = "App", ["tab\t.exe"] = "App",
+                ["c.exe"] = null!, [new string('x', 300)] = "App",
+            },
+        };
+        page.Normalize();
+        Assert.Equal(new Dictionary<string, string> { ["myapp.exe"] = "Llm" }, page.KindOverrides);
+
+        var many = new GpuMemoryPageSettings { KindOverrides = Enumerable.Range(0, 250).ToDictionary(i => $"app{i}.exe", _ => "App") };
+        many.Normalize();
+        Assert.Equal(GpuMemoryPageSettings.MaxKindOverrides, many.KindOverrides.Count);
+
+        // The names kept in the settings are the classifier's kinds (the settings library cannot see the enum).
+        Assert.Equal(Enum.GetNames<ProcessKind>().Order(StringComparer.Ordinal), GpuMemoryPageSettings.KindNames.Order(StringComparer.Ordinal));
+    }
+
+    [Fact(Timeout = 180_000)]
+    public async Task The_dashboard_card_lists_the_largest_processes_and_opens_the_page()
+    {
+        using var temp = new TempDir();
+        await using var runtime = ShellRuntime.Create(new ShellOptions
+        {
+            DataDirectory = temp.Sub("data"),
+            ExecutableDirectory = temp.Path,
+            MockSensors = true,
+            Unattended = true,
+            LegacyLocations = [],
+        });
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var shell = new ShellViewModel(runtime, new LockedDispatcher(), new RecordingShellDialogs());
+        var dashboard = shell.Dashboard;
+
+        Assert.True(await Eventually(() =>
+        {
+            dashboard.Tick();
+            return runtime.GpuMemory.Latest is not null && dashboard.GpuMemoryLargest != Text.NA;
+        }, TimeSpan.FromSeconds(20)));
+        var latest = runtime.GpuMemory.Latest!;
+        var largest = latest.Processes.OrderByDescending(p => p.DedicatedBytes).First();
+        Assert.StartsWith(latest.Process(largest.ProcessId)!.Name, dashboard.GpuMemoryState, StringComparison.Ordinal);
+        Assert.Equal(Text.Bytes(largest.DedicatedBytes), dashboard.GpuMemoryLargest);
+        Assert.InRange(dashboard.GpuMemoryTop.Count, 1, 3);
+        Assert.Equal(Level.Warning, dashboard.GpuMemoryLevel); // MOCK is never "good"
+        Assert.Contains("MOCK", dashboard.GpuMemoryNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("합계", dashboard.GpuMemoryNote, StringComparison.Ordinal);
+
+        dashboard.OpenCommand.Execute("hardware/gpu-memory");
+        shell.Tick();
+        Assert.Same(shell.GpuMemory, shell.CurrentSection!.SelectedTab!.Content);
+        Assert.True(shell.GpuMemory.IsVisible);
     }
 
     private static async Task<bool> Eventually(Func<bool> condition, TimeSpan timeout)

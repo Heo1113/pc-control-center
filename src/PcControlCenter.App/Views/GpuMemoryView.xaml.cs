@@ -20,10 +20,11 @@ namespace PcControlCenter.App.Views;
 /// </summary>
 public partial class GpuMemoryView : UserControl
 {
-    private static readonly HashSet<string> Numeric = ["Dedicated", "Shared", "Gpu", "Committed"];
+    private static readonly HashSet<string> Numeric = ["Dedicated", "Delta", "Shared", "Gpu", "Committed"];
     private readonly ContextMenu _rowMenu = new();
     private readonly ContextMenu _columnMenu = new();
     private readonly MenuItem _kindItem;
+    private readonly MenuItem _kindSetItem = new() { Header = "종류 지정" };
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private GpuMemoryViewModel? _vm;
     private bool _hovering;
@@ -44,6 +45,7 @@ public partial class GpuMemoryView : UserControl
             }
         });
         _rowMenu.Items.Add(_kindItem);
+        _rowMenu.Items.Add(_kindSetItem);
         Table.ContextMenu = _rowMenu;
         _noticeTimer.Tick += (_, _) =>
         {
@@ -105,7 +107,7 @@ public partial class GpuMemoryView : UserControl
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(GpuMemoryViewModel.ShowGpuColumn))
+        if (e.PropertyName is nameof(GpuMemoryViewModel.ShowGpuColumn) or nameof(GpuMemoryViewModel.HasBaseline))
         {
             UpdateColumns();
         }
@@ -193,7 +195,9 @@ public partial class GpuMemoryView : UserControl
         foreach (var column in Table.Columns)
         {
             var key = column.SortMemberPath;
-            var visible = !_vm.HiddenColumns.Contains(key) && (key != nameof(GpuProcessRow.Adapter) || _vm.ShowGpuColumn);
+            var visible = !_vm.HiddenColumns.Contains(key)
+                          && (key != nameof(GpuProcessRow.Adapter) || _vm.ShowGpuColumn)
+                          && (key != nameof(GpuProcessRow.Delta) || _vm.HasBaseline);
             column.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
     }
@@ -224,7 +228,29 @@ public partial class GpuMemoryView : UserControl
         }
 
         _kindItem.Header = _vm.KindFilter == row.Kind ? "모든 종류 보기" : $"{row.KindLabel}만 보기";
+        BuildKindSetMenu(_vm, row);
         Table.ContextMenu = _rowMenu;
+    }
+
+    /// <summary>"종류 지정": the kinds to give this executable name, and the way back to the classification.</summary>
+    private void BuildKindSetMenu(GpuMemoryViewModel vm, GpuProcessRow row)
+    {
+        _kindSetItem.Items.Clear();
+        _kindSetItem.IsEnabled = vm.CanOverrideKind(row);
+        _kindSetItem.ToolTip = _kindSetItem.IsEnabled ? $"이름이 {row.Name}인 프로세스에 모두 적용되고 공통 설정에 저장됩니다" : null;
+        ToolTipService.SetShowOnDisabled(_kindSetItem, true);
+        var current = vm.KindOverrideOf(row);
+        foreach (var kind in vm.AssignableKinds)
+        {
+            var item = new MenuItem { Header = GpuMemoryViewModel.KindLabels[kind], IsCheckable = true, IsChecked = current == kind };
+            item.Click += (_, _) => vm.SetKindOverride(row, kind);
+            _kindSetItem.Items.Add(item);
+        }
+
+        _kindSetItem.Items.Add(new Separator());
+        var reset = Item("자동 분류로 되돌리기", null, () => vm.SetKindOverride(row, null));
+        reset.IsEnabled = current is not null;
+        _kindSetItem.Items.Add(reset);
     }
 
     private void BuildColumnMenu()
@@ -244,6 +270,10 @@ public partial class GpuMemoryView : UserControl
             if (key == nameof(GpuProcessRow.Adapter))
             {
                 item.ToolTip = "켜 두어도 어댑터가 둘 이상일 때만 보입니다";
+            }
+            else if (key == nameof(GpuProcessRow.Delta))
+            {
+                item.ToolTip = "켜 두어도 기준점을 잡았을 때만 보입니다";
             }
 
             item.Click += (_, _) =>
@@ -331,6 +361,8 @@ public partial class GpuMemoryView : UserControl
     }
 
     private void OnCopyDetail(object sender, RoutedEventArgs e) => Copy(_vm?.DetailText(), "상세");
+
+    private void OnCopyBaseline(object sender, RoutedEventArgs e) => Copy(_vm?.BaselineReport(), "비교");
 
     private void Copy(string? text, string what)
     {

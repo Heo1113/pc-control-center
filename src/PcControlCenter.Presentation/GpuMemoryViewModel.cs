@@ -37,7 +37,11 @@ public sealed record AdapterView(
     bool HasCapacity,
     bool IsCompact = false,
     string LegendText = "",
-    string? FreeText = null);
+    string? FreeText = null,
+    string? DeltaText = null);
+
+/// <summary>One choice of a small chooser (the chart's metric and window): what it says, and the value it stands for.</summary>
+public sealed record ChoiceOption(string Label, object Value);
 
 /// <summary>
 /// One adapter's place in the header. The slot stays while its adapter does and only its <see cref="View"/> changes, so
@@ -58,6 +62,15 @@ public sealed partial class AdapterSlot : ObservableObject
 
 /// <summary>A labelled value in the detail panel.</summary>
 public sealed record DetailFact(string Label, string Value, bool IsEstimate = false, string? ToolTip = null);
+
+/// <summary>
+/// What a runtime reported about itself (Strata's engine, Ollama, llama.cpp's server): settings or its last report, never the
+/// current use. The title says which and from when; the note says what the values mean and where they came from.
+/// </summary>
+public sealed record ReportGroup(string Title, string Note, IReadOnlyList<DetailFact> Facts, bool IsError = false)
+{
+    public bool SameAs(ReportGroup other) => Title == other.Title && Note == other.Note && IsError == other.IsError && Facts.SequenceEqual(other.Facts);
+}
 
 /// <summary>A model file mapped into the selected process.</summary>
 public sealed record ModelRow(string Name, string Summary, string Size, string Evidence);
@@ -86,11 +99,15 @@ public sealed record ProcessDetailView(
     string? StrataWindow,
     string? StrataSlots,
     string? StrataEvidence,
+    IReadOnlyList<ReportGroup> Reports,
     string Note,
     ChartModel? Chart);
 
-/// <summary>The local AI module's view of Strata for this page: its latest poll, or why there is none.</summary>
-public sealed record StrataContext(RuntimeSnapshot? Snapshot, string? Unavailable);
+/// <summary>
+/// The local AI module's view of Strata for this page: its latest poll, or why there is none, and the name of the environment
+/// variable its settings read the API key from (the page reads the key for each request to Strata's /metrics, never keeps it).
+/// </summary>
+public sealed record StrataContext(RuntimeSnapshot? Snapshot, string? Unavailable, string? CredentialVariable = null);
 
 /// <summary>One row of the process table. Updated in place on every reading, so selection and sort order survive refreshes.</summary>
 public sealed partial class GpuProcessRow(ProcessKey key, long luid) : ObservableObject
@@ -105,6 +122,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial string KindColor { get; set; } = GpuMemoryViewModel.KindColors[ProcessKind.App];
     [ObservableProperty] public partial string KindBasis { get; set; } = "";
 
+    /// <summary>The kind was given by the user (by executable name), not classified from evidence.</summary>
+    [ObservableProperty] public partial bool KindOverridden { get; set; }
+
     /// <summary>Bytes for sorting; -1 = N/A (sorts last when the largest come first).</summary>
     [ObservableProperty] public partial long Dedicated { get; set; }
     [ObservableProperty] public partial string DedicatedText { get; set; } = "";
@@ -118,6 +138,13 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial string SharedText { get; set; } = "";
     [ObservableProperty] public partial long Committed { get; set; }
     [ObservableProperty] public partial string CommittedText { get; set; } = "";
+
+    /// <summary>Change of dedicated memory since the baseline, for sorting; long.MinValue without a baseline or a value.</summary>
+    [ObservableProperty] public partial long Delta { get; set; } = long.MinValue;
+    [ObservableProperty] public partial string DeltaText { get; set; } = "";
+
+    /// <summary>How the row relates to the baseline: started after it, restarted (another PID), or null for the same process.</summary>
+    [ObservableProperty] public partial string? DeltaNote { get; set; }
 
     /// <summary>Busiest engine in percent; -1 = not read.</summary>
     [ObservableProperty] public partial double Gpu { get; set; }
@@ -144,7 +171,6 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
 /// </summary>
 public sealed partial class GpuMemoryViewModel : ObservableObject
 {
-    public static readonly TimeSpan ChartWindow = TimeSpan.FromMinutes(15);
 
     /// <summary>A Strata poll older than this is not used to link processes (the port may belong to someone else by then).</summary>
     public static readonly TimeSpan StrataMaxAge = TimeSpan.FromSeconds(15);
@@ -185,6 +211,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private const string WeightsColor = "#D55181";
     private const string KvColor = "#D95926";
     private const string RestColor = "#6E6D68";
+    private const string MeasuredColor = "#F0EFEC";
     private static readonly double ChartGapDays = TimeSpan.FromSeconds(25).TotalDays;
     private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
 
@@ -210,7 +237,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private readonly HashSet<GpuProcessRow> _shown = [];
     private readonly GpuMemoryPageSettings _page;
     private readonly Action? _savePage;
+    private readonly RuntimeReportPoller? _reports;
+    private int _reportsVersion = -1;
+    private StrataContext? _strataContext;
     private (string Name, int Pid)? _lost;
+    private Baseline? _baseline;
+    private Dictionary<(ProcessKey, long), (long? Delta, string? Note)> _deltas = [];
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
     private RuntimeSnapshot? _strataSnapshot;
@@ -221,8 +253,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     /// <param name="page">Where the page's layout is remembered (the shell settings); a private copy when null.</param>
     /// <param name="savePage">Writes <paramref name="page"/> (the shell settings file); failures only cost the memory of the layout.</param>
+    /// <param name="runtimeHttp">
+    /// Asks local runtimes about the selected process (Strata's /metrics, Ollama's /api/ps, llama.cpp's /props and /models);
+    /// null asks nothing.
+    /// </param>
     public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
-        GpuMemoryPageSettings? page = null, Action? savePage = null)
+        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null)
     {
         _monitor = monitor;
         _hub = hub;
@@ -231,7 +267,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _page = page ?? new GpuMemoryPageSettings();
         _page.Normalize();
         _savePage = savePage;
+        _reports = runtimeHttp is null ? null : new RuntimeReportPoller(runtimeHttp, _time);
         ShowAll = _page.ShowAll;
+        ChartMetric = _page.ChartMetric;
+        ChartMinutes = _page.ChartMinutes;
     }
 
     public ObservableCollection<AdapterSlot> Adapters { get; } = [];
@@ -274,6 +313,23 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     [ObservableProperty] public partial ProcessKind? KindFilter { get; set; }
     [ObservableProperty] public partial string KindFilterText { get; set; } = "";
 
+    /// <summary>A baseline is held: rows and adapters show the change since it (B1).</summary>
+    [ObservableProperty] public partial bool HasBaseline { get; set; }
+
+    /// <summary>When the baseline was taken and how each adapter changed since.</summary>
+    [ObservableProperty] public partial string BaselineText { get; set; } = "";
+
+    /// <summary>Processes listed at the baseline that are no longer in the list (ended or released their GPU memory).</summary>
+    [ObservableProperty] public partial string BaselineGone { get; set; } = "";
+
+    /// <summary>The detail chart's metric (Dedicated, Shared, Gpu) and window in minutes; remembered in the shell settings.</summary>
+    [ObservableProperty] public partial string ChartMetric { get; set; } = "Dedicated";
+    [ObservableProperty] public partial int ChartMinutes { get; set; } = 15;
+
+    public IReadOnlyList<ChoiceOption> ChartMetricOptions { get; } = [new("전용", "Dedicated"), new("공유", "Shared"), new("GPU %", "Gpu")];
+
+    public IReadOnlyList<ChoiceOption> ChartWindowOptions { get; } = [new("5분", 5), new("15분", 15), new("30분", 30)];
+
     /// <summary>The detail panel's text while no process is selected (why, when the selected one went away).</summary>
     [ObservableProperty] public partial string DetailPlaceholder { get; set; } = DefaultPlaceholder;
     [ObservableProperty] public partial bool HelpOpen { get; set; }
@@ -286,7 +342,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         new("#F0EFEC", "측정", "Windows·드라이버가 보고한 값 (별도 표시 없음)"),
         new("#F0EFEC", "계산", "측정값의 합·차 (예: 나뉘지 않음)"),
         new("#898781", "추정", "모델 파일 헤더와 컨텍스트로 계산한 값 (빗금, \"추정\" 표시)", IsEstimate: true),
-        new("#F0EFEC", "Strata 보고", "Strata가 자체 API로 보고한 값"),
+        new("#F0EFEC", "런타임 보고", "Strata·Ollama·llama.cpp가 자체 API로 알린 설정값이나 마지막 보고값 (지금의 사용량이 아님)"),
         new("#898781", "N/A", "측정할 수 없거나 보고되지 않음 (0이 아님)"),
     ];
 
@@ -298,6 +354,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         new("런타임", "프로세스에 불러온 DLL 이름 — 감지 (GPU 작업의 증거는 아님)"),
         new("모델 파일", "프로세스에 매핑된 파일과 디스크의 GGUF 헤더 — 확인"),
         new("가중치·KV 캐시", "헤더 구조 × 컨텍스트 — 추정 (런타임 로그나 API가 있어야 정확)"),
+        new("런타임 설정·보고값", "Strata /metrics의 engine, Ollama /api/ps, llama.cpp /props·/models — 보고 (선택한 프로세스만, 10초마다)"),
         new("텍스처·텐서 이름", "그래픽 디버거(PIX, Nsight)가 필요 — 알 수 없음"),
     ];
 
@@ -341,6 +398,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearKindFilter() => KindFilter = null;
+
+    /// <summary>Takes a baseline now, or drops the one held.</summary>
+    [RelayCommand]
+    private void ToggleBaseline() => HasBaseline = !HasBaseline;
 
     [RelayCommand]
     private void ClearFilter() => Filter = "";
@@ -439,13 +500,21 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         lines.AddRange(d.Models.Select(m => $"모델 파일: {m.Name} — {m.Summary} ({m.Size})"));
         if (d.BreakdownLegend.Count > 0)
         {
-            lines.Add("구성 (추정): " + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}")) + (d.BreakdownNote is { } note ? $" — {note}" : ""));
+            lines.Add((d.Breakdown.Count > 0 ? "구성 (추정): " : "비교: ") + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}"))
+                      + (d.BreakdownNote is { } note ? $" — {note}" : ""));
+        }
+        else if (d.BreakdownNote is { } withheldNote)
+        {
+            lines.Add($"구성: {withheldNote}");
         }
 
         if (d.StrataModel is not null)
         {
             lines.Add($"Strata 보고: 모델 {d.StrataModel} · 컨텍스트 {d.StrataWindow} · 슬롯 토큰 {d.StrataSlots}");
         }
+
+        lines.AddRange(d.Reports.Select(g => $"{g.Title}: " + string.Join(" · ", g.Facts.Select(f => $"{f.Label} {f.Value}"))
+                                             + (g.Note.Length > 0 ? $" — {g.Note}" : "")));
 
         lines.Add($"측정 {Text.DateTime(s.Timestamp)} · 출처 {s.Source}");
         return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
@@ -488,6 +557,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         else
         {
             _monitor.SetActive(false);
+            _reports?.Update([]); // nothing is asked while the page is closed
         }
     }
 
@@ -518,6 +588,85 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     partial void OnFilterChanged(string value) => RebuildRows(force: true, userAction: true);
 
+    partial void OnHasBaselineChanged(bool value)
+    {
+        if (value && _current is { } s)
+        {
+            _baseline = Baseline.Of(s);
+        }
+        else if (value)
+        {
+            HasBaseline = false; // nothing measured to compare against yet
+            return;
+        }
+        else
+        {
+            _baseline = null;
+        }
+
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true);
+    }
+
+    partial void OnChartMetricChanged(string value)
+    {
+        if (!GpuMemoryPageSettings.ChartMetrics.Contains(value))
+        {
+            ChartMetric = "Dedicated";
+            return;
+        }
+
+        if (_page.ChartMetric != value)
+        {
+            _page.ChartMetric = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    partial void OnChartMinutesChanged(int value)
+    {
+        if (!GpuMemoryPageSettings.ChartWindows.Contains(value))
+        {
+            ChartMinutes = 15;
+            return;
+        }
+
+        if (_page.ChartMinutes != value)
+        {
+            _page.ChartMinutes = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    /// <summary>The comparison with the baseline as text: adapters, the listed processes and those gone since.</summary>
+    public string? BaselineReport()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        var lines = new List<string> { $"기준점 {Text.DateTime(b.At)} → {Text.DateTime(s.Timestamp)} (전용 메모리 변화, 측정값의 차)" };
+        lines.AddRange(s.Adapters.Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+            ? $"{a.Info?.Name ?? GpuLuid.Format(a.Luid)}\t{Signed(d)}" : null).OfType<string>());
+        lines.AddRange(Processes.OrderByDescending(r => r.Delta).Select(r =>
+            string.Join('\t', r.Name, r.Pid.ToString(CultureInfo.InvariantCulture), r.DeltaText, r.DeltaNote ?? "", r.DedicatedText)));
+        if (BaselineGone.Length > 0)
+        {
+            lines.Add(BaselineGone);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     partial void OnKindFilterChanged(ProcessKind? value)
     {
         KindFilterText = value is { } kind ? $"종류: {KindLabels[kind]}" : "";
@@ -537,6 +686,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             DetailPlaceholder = DefaultPlaceholder;
         }
 
+        UpdateReports(); // the new selection is asked about at once, not at the next refresh
         BuildDetail();
     }
 
@@ -575,9 +725,15 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         UpdateStatus(health, latest, age, stale);
         var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}";
+        _strataContext = strata;
         if (_rendered && latest?.Timestamp == _renderedAt && stale == _renderedStale && key == _renderedKey)
         {
             UpdateStrata(strata, now);
+            if (UpdateReports())
+            {
+                BuildDetail();
+            }
+
             return;
         }
 
@@ -590,6 +746,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _strataSnapshot = strata.Snapshot;
         _link = _current is not null && StrataPort(strata, now) is not null ? ServerProcessLinker.Link(strata.Snapshot!.Endpoint, _current) : null;
         UpdateStrata(strata, now);
+        UpdateReports();
         HasValues = _current is not null;
         Replace(Issues, [.. (latest?.Issues ?? []).Select(i => $"{i.Source} [{i.Scope}]: {i.Message}").Distinct()]);
         (Message, MessageDetail) = health.State switch
@@ -750,7 +907,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 capacity > 0,
                 IsCompact: views.Count > 0,
                 LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
-                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null)));
+                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null,
+                DeltaText: _baseline is { } b && b.AdapterDedicated.TryGetValue(adapter.Luid, out var then) && Diff(used, then) is long change
+                    ? $"기준점 대비 {Signed(change)}" : null)));
         }
 
         return views;
@@ -782,6 +941,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         var filter = Filter.Trim();
         var listed = s.Processes.Where(p => ShowAll || GpuMemoryRules.IsListed(p)).ToList();
+        CompareWithBaseline(s);
         var keys = new HashSet<(ProcessKey, long)>();
         var luids = new HashSet<long>();
         foreach (var p in listed)
@@ -824,7 +984,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         var hidden = s.Processes.Count - listed.Count;
         var filtering = filter.Length > 0 || KindFilter is not null;
         CountText = filtering ? $"{visible}/{listed.Count}개 표시"
-            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
+            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · {hidden}개 숨김" : ""); // next to the "작은 프로세스 포함" box
         EmptyText = visible > 0 ? ""
             : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (KindFilter is { } k1 ? $" ({KindLabels[k1]} 종류 안에서)" : "")
             : KindFilter is { } k2 ? $"{KindLabels[k2]} 종류의 프로세스가 없습니다"
@@ -897,12 +1057,25 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.KindLabel = KindLabels[kind.Kind];
         row.KindColor = KindColors[kind.Kind];
         row.KindBasis = $"분류 근거: {kind.Basis}";
+        row.KindOverridden = OverrideOf(p.ProcessId, row.Name) is not null;
         row.Dedicated = p.DedicatedBytes ?? -1;
         row.DedicatedText = Text.Bytes(p.DedicatedBytes);
         row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
         row.DedicatedShareText = capacity > 0 && p.DedicatedBytes is not null ? $"카드 VRAM의 {Percent(row.DedicatedShare)}" : null;
         row.Shared = p.SharedBytes ?? -1;
         row.SharedText = Text.Bytes(p.SharedBytes);
+        if (_baseline is not null && _deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+        {
+            row.Delta = change.Delta ?? long.MinValue;
+            row.DeltaText = change.Delta is long d2 ? Signed(d2) : Text.NA;
+            row.DeltaNote = change.Note;
+        }
+        else
+        {
+            row.Delta = long.MinValue;
+            row.DeltaText = "";
+            row.DeltaNote = null;
+        }
         row.Committed = p.CommittedBytes ?? -1;
         row.CommittedText = s.CommittedAvailable ? Text.Bytes(p.CommittedBytes) : Text.NA;
         row.Gpu = p.Engines?.Busiest ?? -1;
@@ -937,33 +1110,59 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         var kind = KindOf(s, p);
         var engines = p.Engines;
         // An estimated split only for an LLM whose model file header was read; Strata's context when this is its process.
+        // A split estimated from the header only where the header can say it: an LLM file, not served by Strata (its engine
+        // places experts, KV - int8 by default - and session buffers its own way) and not a mixture of experts (their weights
+        // are often kept in RAM, --n-cpu-moe, so the header cannot say which weights are on the GPU).
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
-        var context = IsStrata(p.ProcessId) ? _strataSnapshot?.Model?.ContextTokens : null;
-        var estimate = model is null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
+        var withheld = model is null ? null
+            : IsStrata(p.ProcessId) ? "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
+                                      + "위 값은 측정값과 Strata가 보고한 값입니다."
+            : model.Experts is > 0 ? "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다."
+            : null;
+        long? context = null; // no runtime reports the context of a process other than Strata's yet, so KV is not split
+        var estimate = model is null || withheld is not null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
         IReadOnlyList<BarSegment> breakdown = [];
         IReadOnlyList<LegendItem> breakdownLegend = [];
         string? breakdownNote = null;
-        if (estimate is not null)
+        if (estimate is { FitsAllLayers: false })
+        {
+            // Not every layer can be on the GPU, and which part of the measured total is weights is unknown: the two numbers
+            // are shown apart and no split is drawn.
+            breakdownLegend =
+            [
+                new(WeightsColor, "가중치 (모든 층 GPU 가정, 이론값)", Text.Bytes(estimate.WeightsAllLayers), true),
+                new(MeasuredColor, "이 프로세스 전용 (측정)", Text.Bytes(estimate.Total)),
+            ];
+            breakdownNote = "모든 층을 GPU에 올렸을 때의 가중치가 이 프로세스의 전용 메모리보다 커서 일부 층만 GPU에 있는 것으로 보입니다. "
+                            + "측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어 구성은 그리지 않습니다.";
+        }
+        else if (estimate is { Rest: long rest })
         {
             double Frac(long bytes) => estimate.Total > 0 ? (double)bytes / estimate.Total : 0;
-            var segments = new List<BarSegment> { new(Frac(estimate.Weights), WeightsColor, "가중치", true) };
-            var legend = new List<LegendItem> { new(WeightsColor, "가중치", Text.Bytes(estimate.Weights), true) };
+            var segments = new List<BarSegment> { new(Frac(estimate.WeightsAllLayers), WeightsColor, "가중치", true) };
+            var legend = new List<LegendItem> { new(WeightsColor, "가중치", Text.Bytes(estimate.WeightsAllLayers), true) };
             if (estimate.KvCache is long kv)
             {
                 segments.Add(new(Frac(kv), KvColor, "KV 캐시", true));
-                legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (상한)" : "KV 캐시", Text.Bytes(kv), true));
+                legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (f16, 상한)" : "KV 캐시 (f16)", Text.Bytes(kv), true));
             }
 
-            segments.Add(new(Frac(estimate.Rest), RestColor, "나머지", true));
-            legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(estimate.Rest), true));
+            segments.Add(new(Frac(rest), RestColor, "나머지", true));
+            legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(rest), true));
             breakdown = segments;
             breakdownLegend = legend;
             breakdownNote = string.Join(" ", new[]
             {
-                "모든 층이 GPU에 있고 KV가 f16이라고 가정한 추정입니다.",
-                estimate.WeightsCapped ? "가중치 전체가 이 프로세스의 VRAM보다 커서 일부만 GPU에 있을 수 있습니다." : null,
-                estimate.KvCache is null ? (context is null ? "컨텍스트를 알 수 없어 KV 캐시는 나누지 않았습니다." : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.") : null,
+                "모든 층이 GPU에 있다고 가정한 추정입니다.",
+                estimate.KvCache is not null ? null
+                    : model!.KvUnknownReason is { } reason ? $"{reason}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
+                    : context is null ? "런타임이 컨텍스트를 알려 주지 않아 KV 캐시는 나누지 않았습니다."
+                    : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.",
             }.Where(x => x is not null));
+        }
+        else if (withheld is not null)
+        {
+            breakdownNote = withheld;
         }
 
         IReadOnlyList<ModelRow> models = (detail?.Models ?? []).Select(m => new ModelRow(
@@ -991,6 +1190,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var held = rt.Slots.Where(x => x.HeldTokens is not null).ToList();
             strataSlots = held.Count == 0 ? Text.NA : $"{Text.Count(held.Sum(x => x.HeldTokens!.Value))} (슬롯 {rt.Slots.Count})";
             evidence = _link is { IsLinked: true } l ? string.Join(Environment.NewLine, l.Evidence) : null;
+        }
+
+        IReadOnlyList<ReportGroup> reports = BuildReports(s, p.ProcessId, detail);
+        if (Detail is { } before && before.Reports.Count == reports.Count && before.Reports.Zip(reports).All(x => x.First.SameAs(x.Second)))
+        {
+            reports = before.Reports; // same answers: the rows (and an open tooltip) stay
         }
 
         Detail = new ProcessDetailView(
@@ -1022,51 +1227,469 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             strataWindow,
             strataSlots,
             evidence,
+            reports,
             KindNotes[kind.Kind],
             BuildChart(row, p));
     }
 
     private ChartModel BuildChart(GpuProcessRow row, GpuProcessMemory p)
     {
-        var history = _monitor.History(ChartWindow);
+        // Missing values stay out of the series, so the chart shows a gap (never 0) where nothing was read.
+        var history = _monitor.History(TimeSpan.FromMinutes(ChartMinutes));
+        var gpu = ChartMetric == "Gpu";
+        const double GiB = 1024.0 * 1024 * 1024;
+        double? ProcessValue(GpuProcessHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedBytes / GiB,
+        };
+        double? AdapterValue(GpuAdapterHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedUsageBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedUsageBytes / GiB,
+        };
         var processPoints = history
-            .Select(h => (h.Timestamp, Value: h.Processes.FirstOrDefault(x => x.Key == row.Key && x.Luid == p.Luid).DedicatedBytes))
+            .Select(h => (h.Timestamp, Value: h.Processes.Where(x => x.Key == row.Key && x.Luid == p.Luid).Select(ProcessValue).FirstOrDefault()))
             .Where(x => x.Value is not null)
             .ToList();
         var adapterPoints = history
-            .Select(h => (h.Timestamp, Value: h.Adapters.FirstOrDefault(a => a.Luid == p.Luid).DedicatedUsageBytes))
+            .Select(h => (h.Timestamp, Value: h.Adapters.Where(a => a.Luid == p.Luid).Select(AdapterValue).FirstOrDefault()))
             .Where(x => x.Value is not null)
             .ToList();
         var series = new List<ChartSeries>();
         if (adapterPoints.Count > 0)
         {
             series.Add(new ChartSeries("GPU 전체", [.. adapterPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. adapterPoints.Select(x => x.Value!.Value / (1024.0 * 1024 * 1024))], "#8A8984"));
+                [.. adapterPoints.Select(x => x.Value!.Value)], "#8A8984"));
         }
 
         if (processPoints.Count > 0)
         {
             series.Add(new ChartSeries(row.Name, [.. processPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. processPoints.Select(x => x.Value!.Value / (1024.0 * 1024 * 1024))], row.KindColor));
+                [.. processPoints.Select(x => x.Value!.Value)], row.KindColor));
         }
 
+        var metric = ChartMetricOptions.First(o => (string)o.Value == ChartMetric).Label;
         return new ChartModel
         {
-            Title = "전용 메모리 · 15분",
-            Unit = "GiB",
+            Title = $"{metric} · {ChartMinutes}분",
+            Unit = gpu ? "%" : "GiB",
             Series = series,
             XIsTime = true,
             GapThreshold = ChartGapDays,
             YMin = 0,
-            ValueFormat = "0.00",
-            EmptyText = "기록 없음",
+            YMax = gpu ? 100 : null,
+            ValueFormat = gpu ? "0" : "0.00",
+            EmptyText = gpu ? "GPU 사용률은 이 화면을 보는 동안만 기록합니다" : "기록 없음",
         };
     }
 
+    private void CompareWithBaseline(GpuMemorySnapshot s)
+    {
+        _deltas = [];
+        if (_baseline is not { } b)
+        {
+            BaselineText = "";
+            BaselineGone = "";
+            return;
+        }
+
+        // Same process (PID and start time) on the same adapter: the change. A new process with the name of one that is gone
+        // since: restarted, compared with that one. Otherwise it started (or began using the GPU) after the baseline.
+        var live = s.Processes.Select(p => (Key: KeyOf(s, p), p.Luid)).ToHashSet();
+        var restartedFrom = new HashSet<Baseline.Entry>();
+        foreach (var p in s.Processes)
+        {
+            var key = KeyOf(s, p);
+            var entry = s.Process(p.ProcessId);
+            if (b.Processes.FirstOrDefault(x => x.Key == key && x.Luid == p.Luid) is { } same)
+            {
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null);
+                continue;
+            }
+
+            var name = entry?.Name ?? $"PID {p.ProcessId}";
+            if (b.Processes.Where(x => x.Name == name && x.Luid == p.Luid && !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x))
+                    .OrderByDescending(x => x.Dedicated ?? 0).FirstOrDefault() is { } previous)
+            {
+                restartedFrom.Add(previous);
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})");
+                continue;
+            }
+
+            var startedAfter = entry?.StartTime is { } started && started > b.At;
+            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작");
+        }
+
+        var gone = b.Processes
+            .Where(x => !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x) && (x.Dedicated >= GpuMemoryRules.MiB || x.Shared >= 16 * GpuMemoryRules.MiB))
+            .OrderByDescending(x => x.Dedicated ?? 0)
+            .ToList();
+        BaselineGone = gone.Count == 0 ? ""
+            : $"사라짐 {gone.Count}개: " + string.Join(", ", gone.Take(4).Select(x => $"{x.Name} (PID {x.Pid}) {Signed(-(x.Dedicated ?? 0))}"))
+              + (gone.Count > 4 ? " 외" : "") + " (종료했거나 GPU 메모리를 놓음)";
+        var adapters = s.Adapters
+            .Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+                ? $"{ShortAdapterName(a.Info?.Name ?? GpuLuid.Format(a.Luid))} 전용 {Signed(d)}" : null)
+            .OfType<string>();
+        BaselineText = string.Join(" · ", new[] { $"기준점 {Text.Clock(b.At)} ({Text.Age(s.Timestamp - b.At)})" }.Concat(adapters));
+    }
+
+    private static long? Diff(long? now, long? then) => now is long n && then is long t ? n - t : null;
+
+    private static string Signed(long bytes) => bytes > 0 ? "+" + Text.Bytes(bytes) : bytes < 0 ? "\u2212" + Text.Bytes(-bytes) : "0";
+
+    /// <summary>The memory picture at the moment the baseline was taken.</summary>
+    private sealed record Baseline(DateTimeOffset At, IReadOnlyList<Baseline.Entry> Processes, IReadOnlyDictionary<long, long?> AdapterDedicated)
+    {
+        public sealed record Entry(ProcessKey Key, string Name, int Pid, long Luid, long? Dedicated, long? Shared);
+
+        public static Baseline Of(GpuMemorySnapshot s) => new(
+            s.Timestamp,
+            [.. s.Processes.Select(p => new Entry(KeyOf(s, p), s.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", p.ProcessId, p.Luid, p.DedicatedBytes, p.SharedBytes))],
+            s.Adapters.ToDictionary(a => a.Luid, a => a.DedicatedUsageBytes));
+    }
+
+    /// <summary>The kind from the evidence, or the one the user gave this executable name (the basis then says both).</summary>
     private KindResult KindOf(GpuMemorySnapshot s, GpuProcessMemory p)
-        => ProcessKinds.Classify(p.ProcessId, s.Process(p.ProcessId)?.Name ?? "", s.Detail(p.ProcessId), p.Engines, IsStrata(p.ProcessId));
+    {
+        var name = s.Process(p.ProcessId)?.Name ?? "";
+        var classified = ProcessKinds.Classify(p.ProcessId, name, s.Detail(p.ProcessId), p.Engines, IsStrata(p.ProcessId));
+        return OverrideOf(p.ProcessId, name) is { } kind
+            ? new KindResult(kind, $"사용자가 지정함 (자동 분류: {KindLabels[classified.Kind]} — {classified.Basis})")
+            : classified;
+    }
+
+    private ProcessKind? OverrideOf(int pid, string name)
+        => pid > 4 && name.Length > 0 && _page.KindOverrides.TryGetValue(name, out var value) && Enum.TryParse<ProcessKind>(value, out var kind)
+            ? kind
+            : null;
+
+    /// <summary>The kinds the row menu offers (the kernel's is the System process's own).</summary>
+    public IReadOnlyList<ProcessKind> AssignableKinds { get; } =
+    [
+        ProcessKind.Llm, ProcessKind.Ai, ProcessKind.Compute, ProcessKind.Graphics3D, ProcessKind.Video, ProcessKind.Browser,
+        ProcessKind.Compositor, ProcessKind.System, ProcessKind.App,
+    ];
+
+    /// <summary>A process with an executable name (not the kernel, not an unknown PID) can be given a kind.</summary>
+    public bool CanOverrideKind(GpuProcessRow row) => row.Pid > 4 && GpuMemoryPageSettings.IsExecutableName(row.Name) && !row.Name.StartsWith("PID ", StringComparison.Ordinal);
+
+    /// <summary>The kind the user gave this row's executable name, if any.</summary>
+    public ProcessKind? KindOverrideOf(GpuProcessRow row) => OverrideOf(row.Pid, row.Name);
+
+    /// <summary>
+    /// Gives every process with this row's executable name the kind (null: back to the classification), remembered in the
+    /// shell settings. The table, the device legend and the detail follow at once.
+    /// </summary>
+    public void SetKindOverride(GpuProcessRow row, ProcessKind? kind)
+    {
+        if (!CanOverrideKind(row))
+        {
+            return;
+        }
+
+        var name = row.Name.Trim().ToLowerInvariant();
+        if (kind is { } set)
+        {
+            if (_page.KindOverrides.TryGetValue(name, out var old) ? old == set.ToString() : _page.KindOverrides.Count >= GpuMemoryPageSettings.MaxKindOverrides)
+            {
+                return;
+            }
+
+            _page.KindOverrides[name] = set.ToString();
+        }
+        else if (!_page.KindOverrides.Remove(name))
+        {
+            return;
+        }
+
+        SavePage();
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true, userAction: true);
+        BuildDetail();
+    }
 
     private bool IsStrata(int pid) => _link is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
+
+    /// <summary>Completes when the runtimes asked so far have answered (tests wait on it).</summary>
+    internal Task ReportsIdle() => _reports?.WhenIdle() ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Asks the runtimes about the selected process only, and only while the page is visible and not paused. Returns whether
+    /// answers arrived (or were dropped) since the detail was last built.
+    /// </summary>
+    private bool UpdateReports()
+    {
+        if (_reports is null)
+        {
+            return false;
+        }
+
+        if (IsVisible && !IsPaused)
+        {
+            _reports.Update(_current is { } s && SelectedProcess is { } row ? TargetsFor(s, row.Pid) : []);
+        }
+
+        return _reports.Version != _reportsVersion;
+    }
+
+    /// <summary>
+    /// The runtimes that can say something about a process: Strata's engine for a Strata process (its server's /metrics), the
+    /// Ollama server that runs it (the topmost ollama process that listens: runners listen on ports of their own, for the
+    /// server), the llama.cpp server it is, and the router that started it. Loopback addresses only.
+    /// </summary>
+    private List<RuntimeTarget> TargetsFor(GpuMemorySnapshot s, int pid)
+    {
+        if (IsStrata(pid))
+        {
+            return _strataContext is { } strata && StrataPort(strata, _time.GetUtcNow()) is int port
+                ? [new RuntimeTarget(RuntimeReportSource.StrataEngine, s.Listeners.FirstOrDefault(l => l.Port == port)?.ProcessId ?? 0, port, strata.CredentialVariable)]
+                : [];
+        }
+
+        if (s.Process(pid) is not { } entry || LocalAiServers.SourceOf(entry.Name) is not { } source)
+        {
+            return [];
+        }
+
+        if (source == RuntimeReportSource.Ollama)
+        {
+            RuntimeTarget? server = null;
+            for (var (e, depth) = (entry, 0); e is not null && depth < 4 && LocalAiServers.SourceOf(e.Name) == source; (e, depth) = (Parent(s, e), depth + 1))
+            {
+                server = ListenerTarget(s, e.ProcessId, source) ?? server;
+            }
+
+            return server is null ? [] : [server];
+        }
+
+        var targets = new List<RuntimeTarget>();
+        if (ListenerTarget(s, pid, source) is { } own)
+        {
+            targets.Add(own);
+        }
+
+        if (Parent(s, entry) is { } parent && LocalAiServers.SourceOf(parent.Name) == source && ListenerTarget(s, parent.ProcessId, source) is { } router)
+        {
+            targets.Add(router);
+        }
+
+        return targets;
+    }
+
+    /// <summary>The parent process, unless its PID was reused by a process that started after this one.</summary>
+    private static ProcessEntry? Parent(GpuMemorySnapshot s, ProcessEntry entry)
+        => entry.ParentProcessId > 4 && entry.ParentProcessId != entry.ProcessId && s.Process(entry.ParentProcessId) is { } parent
+           && !(parent.StartTime is { } ps && entry.StartTime is { } cs && ps > cs)
+            ? parent
+            : null;
+
+    /// <summary>The port a process serves on: IPv4 before IPv6, Ollama's default port first, then the lowest.</summary>
+    private static RuntimeTarget? ListenerTarget(GpuMemorySnapshot s, int pid, RuntimeReportSource source)
+        => s.ServiceListeners.Where(l => l.ProcessId == pid)
+            .OrderBy(l => l.IsIpv6).ThenBy(l => l.Port == LocalAiServers.OllamaDefaultPort ? 0 : 1).ThenBy(l => l.Port)
+            .Select(l => new RuntimeTarget(source, pid, l.Port, Ipv6: l.IsIpv6))
+            .FirstOrDefault();
+
+    /// <summary>The answers about this process, as groups that say what kind of value each is (setting, last report) and from when.</summary>
+    private List<ReportGroup> BuildReports(GpuMemorySnapshot s, int pid, ProcessDetail? detail)
+    {
+        var groups = new List<ReportGroup>();
+        if (_reports is null)
+        {
+            return groups;
+        }
+
+        _reportsVersion = _reports.Version;
+        var results = _reports.Results;
+        foreach (var target in TargetsFor(s, pid))
+        {
+            if (!results.TryGetValue(target, out var result))
+            {
+                continue; // not answered yet (or not asked while paused)
+            }
+
+            var read = $"{Text.Clock(result.At)}에 읽음";
+            if (result.Error is { } error)
+            {
+                groups.Add(new ReportGroup($"{SourceTitle(target.Source)} · 읽지 못함", $"{error} ({read})", [], IsError: true));
+                continue;
+            }
+
+            switch (result.Report, result.Extra)
+            {
+                case (StrataEngineReport r, _):
+                    groups.AddRange(StrataGroups(r, read));
+                    break;
+                case (OllamaReport o, _):
+                    groups.AddRange(OllamaGroups(o, s, pid, read));
+                    break;
+                case (var server, var router):
+                    var own = target.OwnerPid == pid;
+                    if (own && server is LlamaServerReport ls)
+                    {
+                        groups.Add(LlamaServerGroup(ls, read));
+                    }
+
+                    if (router is LlamaRouterReport lr && LlamaRouterGroup(lr, own, detail, read) is { } routed)
+                    {
+                        groups.Add(routed);
+                    }
+
+                    break;
+            }
+        }
+
+        return groups;
+    }
+
+    private static string SourceTitle(RuntimeReportSource source) => source switch
+    {
+        RuntimeReportSource.StrataEngine => "Strata 엔진 보고",
+        RuntimeReportSource.Ollama => "Ollama 보고",
+        _ => "llama.cpp 서버 보고",
+    };
+
+    private static string Mib(long? mib) => mib is long m ? Text.Bytes(m * 1024 * 1024) : Text.NA;
+
+    private static void Add(List<DetailFact> facts, string label, string? value, string? toolTip = null)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            facts.Add(new DetailFact(label, value, ToolTip: toolTip));
+        }
+    }
+
+    /// <summary>
+    /// Strata's engine: what it set when it started, and its last report (the start, or the last VRAM adjustment, whose
+    /// answer the server keeps apart). Neither is the current VRAM use: that is the measured dedicated memory above.
+    /// </summary>
+    private static IEnumerable<ReportGroup> StrataGroups(StrataEngineReport r, string read)
+    {
+        var settings = new List<DetailFact>();
+        Add(settings, "KV 형식", r.KvType, "엔진이 시작할 때 정한 KV 캐시 형식 (--kv). int8이면 f16의 절반 크기입니다.");
+        Add(settings, "컨텍스트", r.Context is long c ? $"{Text.Count(c)} 토큰" : null, "엔진이 시작할 때 정한 최대 컨텍스트");
+        Add(settings, "배치 슬롯", r.BatchSlots is long b ? Text.Count(b) : null, "한 번에 처리하는 요청 수 (--batch)");
+        Add(settings, "대화 캐시 상한 (RAM)", r.ConversationCacheMib is long cc ? cc <= 0 ? "꺼짐" : Mib(cc) : null,
+            "끝난 대화를 보관하는 RAM 예산입니다. VRAM이 아닙니다.");
+        Add(settings, "CPU·RAM 전문가", r.CpuExperts is not null || r.RamExperts is not null
+            ? $"CPU {(r.CpuExperts is long ce ? Text.Count(ce) : Text.NA)} · RAM {(r.RamExperts is long re ? Text.Count(re) : Text.NA)}" : null);
+        Add(settings, "엔진", r.EngineVersion);
+        if (settings.Count > 0)
+        {
+            yield return new ReportGroup("Strata 엔진 · 시작 때 정한 값", $"엔진이 시작할 때 /metrics의 engine으로 알린 설정입니다 ({read}).", settings);
+        }
+
+        var a = r.LastAdjustment;
+        static string? OfMax(string? value, string? max) => value is null ? null : max is null ? value : $"{value} (최대 {max})";
+        var last = new List<DetailFact>();
+        Add(last, "전문가 슬롯", OfMax((a?.ExpertSlots ?? r.ExpertSlots) is long slots ? Text.Count(slots) : null,
+            a?.ExpertSlotsFull is long full ? Text.Count(full) : null), "VRAM에 둘 수 있는 전문가 수");
+        Add(last, "전문가 캐시", OfMax((a?.ExpertCacheMib ?? r.ExpertCacheMibAtStart) is long cache ? Mib(cache) : null,
+            a?.ExpertCacheFullMib is long fullCache ? Mib(fullCache) : null), "엔진이 GPU에 잡은 전문가 캐시 크기");
+        if (a is null && r.ExpertCachePrimaryMibAtStart is long primary && primary != r.ExpertCacheMibAtStart)
+        {
+            Add(last, "그중 주 GPU", Mib(primary));
+        }
+
+        Add(last, "여유 VRAM (그때 장치 전체)", (a?.VramFreeMib ?? r.VramFreeMib) is long free ? Mib(free) : null,
+            "엔진이 보고할 때 장치 전체에 남아 있던 VRAM");
+        Add(last, "요청한 예약", a?.ReserveMib is long reserve ? Mib(reserve) : null, "마지막 VRAM 조정에서 다른 프로그램 몫으로 비워 달라고 한 양");
+        if (last.Count > 0)
+        {
+            yield return new ReportGroup(a is null ? "Strata 엔진 · 마지막 보고 (시작 시)" : "Strata 엔진 · 마지막 보고 (VRAM 조정 시)",
+                $"엔진이 {(a is null ? "시작할 때" : "마지막 VRAM 조정 때")} 알린 값입니다. 지금 이 프로세스의 VRAM 사용량은 위의 전용 메모리(Windows 측정)이며, "
+                + $"이 값과 다를 수 있습니다 ({read}).", last);
+        }
+    }
+
+    /// <summary>
+    /// Ollama's own figures for its loaded models. They come from llama-server's load log, are set equal when every layer is on
+    /// the GPU, and fall back to the model file's size for both when the log was not read: size − size_vram is not RAM use.
+    /// </summary>
+    private static IEnumerable<ReportGroup> OllamaGroups(OllamaReport o, GpuMemorySnapshot s, int pid, string read)
+    {
+        if (o.Models.Count == 0)
+        {
+            yield return new ReportGroup("Ollama · 로드된 모델 없음", $"/api/ps에 로드된 모델이 없습니다 ({read}).", []);
+            yield break;
+        }
+
+        foreach (var m in o.Models)
+        {
+            var facts = new List<DetailFact>();
+            Add(facts, "전체 (Ollama 계산)", m.Size is long size ? Text.Bytes(size) : null, "Ollama /api/ps의 size");
+            Add(facts, "VRAM (Ollama 계산)", m.SizeVram is long vram ? Text.Bytes(vram) : null, "Ollama /api/ps의 size_vram");
+            Add(facts, "컨텍스트", m.ContextLength is long ctx ? $"{Text.Count(ctx)} 토큰" : null, "Ollama가 이 모델을 불러올 때 정한 컨텍스트");
+            Add(facts, "파라미터", m.ParameterSize);
+            Add(facts, "양자화", m.Quantization);
+            var notes = new List<string>
+            {
+                $"Ollama가 /api/ps로 알린 값입니다 ({read}). 크기는 llama-server의 로드 로그에서 읽고, 로그를 읽지 못하면 두 값 모두 모델 파일 크기로 채웁니다.",
+                "전체 − VRAM을 RAM 사용량으로 보면 안 됩니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.",
+            };
+            if (m.Size is long t && m.SizeVram is long v && t == v)
+            {
+                notes.Add("두 값이 같으면 모든 층이 GPU에 있거나(그때 Ollama가 두 값을 맞춥니다) 파일 크기로 채운 경우입니다.");
+            }
+
+            if (o.Models.Count > 1)
+            {
+                notes.Add("어느 실행기가 어느 모델인지는 Ollama가 알려 주지 않아, 서버에 로드된 모델을 모두 보여 줍니다.");
+            }
+
+            yield return new ReportGroup($"Ollama · {m.Name}", string.Join(" ", notes), facts);
+        }
+    }
+
+    private static ReportGroup LlamaServerGroup(LlamaServerReport r, string read)
+    {
+        var facts = new List<DetailFact>();
+        Add(facts, "컨텍스트 (n_ctx)", r.ContextTokens is long ctx ? $"{Text.Count(ctx)} 토큰" : null, "/props의 default_generation_settings.n_ctx");
+        Add(facts, "슬롯", r.TotalSlots is long slots ? Text.Count(slots) : null, "동시에 처리하는 요청 수 (--parallel)");
+        Add(facts, "모델 파일", r.ModelFile);
+        Add(facts, "빌드", r.Build);
+        return new ReportGroup("llama.cpp 서버 · 설정", $"/props가 알린 설정입니다 ({read}). KV 형식은 알려 주지 않아 KV 크기는 나누지 않습니다.", facts);
+    }
+
+    /// <summary>
+    /// A router's loaded instance: the memory it reported allocating (effective), per device. min and max are what the model
+    /// would need at the smallest and largest context, not what it holds, so they are not shown. Shown for the router itself
+    /// (every loaded model) or for the child process whose mapped model file is the instance's.
+    /// </summary>
+    private static ReportGroup? LlamaRouterGroup(LlamaRouterReport r, bool own, ProcessDetail? detail, string read)
+    {
+        var files = (detail?.Models ?? []).Select(m => m.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var loaded = own ? r.Loaded : r.Loaded.Where(m => m.ModelFile is { } file && files.Contains(file)).ToList();
+        if (loaded.Count == 0)
+        {
+            return null;
+        }
+
+        var facts = new List<DetailFact>();
+        foreach (var m in loaded)
+        {
+            var prefix = own ? $"{m.Id} · " : "";
+            Add(facts, prefix + "컨텍스트 (n_ctx)", m.ContextTokens is long ctx ? $"{Text.Count(ctx)} 토큰" : null);
+            foreach (var dev in m.Devices)
+            {
+                var where = dev.Kind == "host" ? "RAM" : dev.Name;
+                Add(facts, $"{prefix}{where}", $"가중치 {Text.Bytes(dev.Model)} · 컨텍스트 {Text.Bytes(dev.Context)} · 계산 {Text.Bytes(dev.Compute)}",
+                    "인스턴스가 불러온 뒤 실제로 할당했다고 보고한 크기 (effective)");
+            }
+        }
+
+        return new ReportGroup(own ? "llama.cpp 라우터 · 로드된 인스턴스" : "llama.cpp 라우터 · 이 인스턴스",
+            $"라우터의 /models가 알린, 인스턴스가 불러온 뒤 실제로 할당한 크기(effective)입니다 ({read}). "
+            + "min·max는 컨텍스트에 따라 필요할 것으로 본 범위라 표시하지 않습니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.", facts);
+    }
 
     private static ProcessKey KeyOf(GpuMemorySnapshot s, GpuProcessMemory p) => s.Process(p.ProcessId)?.Key ?? new ProcessKey(p.ProcessId, 0, $"PID {p.ProcessId}");
 

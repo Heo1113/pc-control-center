@@ -58,6 +58,34 @@
           </StackPanel>
         </Border>
 
+        <!-- GPU memory: the processes holding the most dedicated memory (measured), and the way to the page -->
+        <Border Style="{StaticResource DashCard}" AutomationProperties.AutomationId="GpuMemoryCard">
+          <StackPanel>
+            <DockPanel>
+              <Ellipse Style="{StaticResource StatusDot}" Fill="{Binding GpuMemoryLevel, Converter={StaticResource LevelBrush}}" />
+              <TextBlock Text="GPU 메모리" Style="{StaticResource SectionTitle}" Margin="0" />
+            </DockPanel>
+            <TextBlock Text="{Binding GpuMemoryState}" Style="{StaticResource CardTitle}" Margin="0,8,0,0" TextTrimming="CharacterEllipsis"
+                       ToolTip="전용 GPU 메모리를 가장 많이 쓰는 프로세스" />
+            <TextBlock Text="{Binding GpuMemoryLargest}" Style="{StaticResource BigValue}" ToolTip="그 프로세스의 전용 GPU 메모리 (Windows 카운터, 측정)" />
+            <ItemsControl ItemsSource="{Binding GpuMemoryTop}" Focusable="False">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Label}" TextTrimming="CharacterEllipsis">
+                      <Run Text="{Binding Name, Mode=OneWay}" /><Run Text="{Binding AdapterSuffix, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" Style="{StaticResource Value}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Text="{Binding GpuMemoryNote}" Style="{StaticResource Caption}" Margin="0,8,0,0" />
+            <Button Content="GPU 메모리 화면 열기" Style="{StaticResource OpenButton}" Command="{Binding OpenCommand}" CommandParameter="hardware/gpu-memory" />
+          </StackPanel>
+        </Border>
+
         <!-- Local AI: Strata (A) -->
         <Border Style="{StaticResource DashCard}" AutomationProperties.AutomationId="LocalAiCard">
           <StackPanel>
