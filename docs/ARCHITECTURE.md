@@ -8,6 +8,7 @@ PC Control Center는 네 프로그램(A·B·C·E)의 **검증된 코드를 그�
 ```
 PcControlCenter.exe (WPF, 일반 사용자 권한)
 ├─ Shell: 메뉴 8개, 공통 상태 표시줄, 통합 대시보드, 공통 설정, 통합 기록, 데이터·이전
+├─ GpuMemoryMonitor ─ Windows GPU 성능 카운터(PDH)·DXGI로 프로세스별·어댑터별 GPU 메모리 (별도 스레드, NVML 미사용, 하드웨어 › GPU 메모리)
 ├─ SharedHardwareHub ─ A의 HardwareMonitor(NVML·Windows CPU/RAM) 하나만 실제로 읽음
 │    ├─▶ 로컬 AI 모듈 (A MonitoringService: Strata 조회는 A 자신의 루프, lapc.db)
 │    ├─▶ GPU 경제성 모듈 (B ProfitEngine: 전력 적산·세션·비용, gpc.db)
@@ -26,6 +27,7 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 |---|---|
 | `modules/<원본 저장소>/` | A·B·C·E 소스(고정 커밋). 바뀐 파일은 [REUSE.md](REUSE.md) |
 | `src/PcControlCenter.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태 |
+| `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), MOCK 공급자 |
 | `src/PcControlCenter.Core` | 데이터 폴더(`ShellPaths`), 기존 프로그램 폴더 보호, 단일 실행 잠금, 공통 설정, 모듈 감독 |
 | `src/PcControlCenter.Modules` | A·B·C·E 모듈 어댑터, 센서 간격 조정, 대시보드 요약, `ShellRuntime`(조립) |
 | `src/PcControlCenter.Operator` | Operator 격리: 프로토콜, 서버(`DesktopServer`), 독립 검사(`HostGuard`), 클라이언트(`RemoteDesktop`), 프로세스 감독 |
@@ -45,6 +47,13 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 - B의 전력 적산은 허브의 **원시 측정값**을 B 자신의 기록기로 받습니다. A의 화면용 버퍼나 통합 기록의 표시용 묶음은 비용 계산에 쓰이지 않습니다.
 - Strata 조회(A)와 이벤트 로그 수집(C)은 각 모듈의 별도 루프 그대로입니다. 센서 장애·Strata 종료·이벤트 로그 접근 제한은 서로 영향을 주지 않습니다.
 - 검증: 통합 테스트에서 A·B·C가 함께 돌 때 장치 읽기 횟수 = 허브 측정 횟수, A의 프레임·B의 `gpu_samples`·C의 `sensor_samples`의 모든 시각이 허브 측정 시각.
+
+## GPU 메모리 (하드웨어 › GPU 메모리)
+
+- `GpuMemoryMonitor`는 공통 센서와 **별도의 전용 스레드**에서 Windows GPU 성능 카운터를 읽습니다. NVML은 열지 않습니다(공통 센서 소유). WDDM에서 NVML은 프로세스별 메모리를 주지 않으므로 프로세스별 값의 출처는 Windows 카운터뿐입니다.
+- 화면을 보는 동안 2초, 그 밖에는 10초 간격으로 읽습니다. 값은 메모리에 30분만 두고 DB에는 쓰지 않습니다(기존 스키마 변경 없음).
+- 공급자 예외·카운터 없음은 이 화면의 N/A와 이유로만 끝나고, 공통 센서·모듈·대시보드에는 영향이 없습니다. 공통 설정에서 끌 수 있습니다.
+- 값마다 출처를 붙입니다: 측정(Windows), 계산(합·차), 런타임 보고(Strata). 가중치·KV 캐시·작업 버퍼로 나누지 않습니다. 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
 
 ## 장애 격리
 
@@ -79,7 +88,7 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 - 1024×768이나 화면 절반으로 붙인 창처럼 폭이 1200(배율 반영) 미만이면 왼쪽 메뉴는 아이콘만 표시합니다(이름은 툴팁·화면 읽기 프로그램용 이름으로 유지). 모듈 화면이 원래 설계된 폭에 가깝게 쓰입니다.
 - 대시보드는 하단 상태 표시줄과 겹치던 모듈 상태 칩을 없앴고, 페이지가 하나인 섹션은 탭 줄을 숨기며, "출처" 표시는 제목 줄에 둡니다. 상태 표시줄의 데이터 경로는 남는 폭만큼만 표시하고(말줄임표, 전체는 툴팁) 긴급 중단 버튼은 항상 보입니다.
 
-- 메뉴: 대시보드 · 하드웨어 · 로컬 AI · GPU 경제성 · 시스템 진단 · AI Operator · 통합 기록 · 설정.
+- 메뉴: 대시보드 · 하드웨어 · 로컬 AI · GPU 경제성 · 시스템 진단 · AI Operator · 통합 기록 · 설정. 하드웨어 메뉴에 셸 화면 "GPU 메모리" 탭이 "공통 센서" 다음에 있습니다(새 메뉴 없음).
 - A·B·C의 대시보드 3개·설정 3개·센서 화면은 하나의 대시보드·하드웨어 메뉴·설정 메뉴로 모았고, 각 모듈 고유 화면(세션 기록, 수익성, 이벤트 탐색 등)은 기능 그대로 탭으로 남겼습니다.
 - 모듈 화면은 `ModulePageHost`가 모듈별 컨테이너에 그 모듈의 `ModuleResources.xaml`(원래 테마·변환기·뷰 템플릿)을 적용해 표시합니다. 원래 XAML은 고치지 않았습니다.
   - WPF는 `{StaticResource}`를 화면 XAML을 **불러오는 순간**(생성자 안, 컨테이너에 들어가기 전) 찾으므로 그때는 화면 자신과 `Application.Resources`만 보입니다.

@@ -41,6 +41,14 @@ Desktop ideas re-implemented in C#, Microsoft documentation) apply unchanged. Se
 | NVIDIA NVML (`nvml.dll`) | Installed by the NVIDIA display driver; loaded from System32 by project A's sensor code, once, by the shared sensor reader. |
 | Windows API (kernel32 `GetSystemTimes`, `GlobalMemoryStatusEx`), Windows Event Log, WMI, registry (read-only) | As in projects A and C. Nothing is written. |
 | Windows UI Automation | As in project E, only inside the separate Operator host process. |
+| Windows PDH (`pdh.dll`), DXGI (`dxgi.dll`), Toolhelp/`OpenProcess`(query-limited)/`GetProcessTimes` (kernel32), `GetExtendedTcpTable` (iphlpapi) | GPU memory page: WDDM GPU memory counters, adapter names, process names and start times, the owner of the Strata port. Loaded from System32; read only. |
+
+## Referenced, not copied
+
+| Project | License | How it was used |
+|---|---|---|
+| [gputaskman](https://github.com/shanselman/gputaskman) (Scott Hanselman), commit `15ec959` | MIT | Design reference for the GPU memory page: which Windows counters to read (`Local Usage`/`Non Local Usage` before `Dedicated Usage`/`Shared Usage`), the counter instance format, pairing by LUID, listing thresholds and the rule that only measured bytes are summed. No code was copied; the C# implementation was written independently (docs/GPU_MEMORY.md). |
+| [Strata](https://github.com/Niko1221/Strata), commit `13eedf5` | MIT | Read to learn which read-only endpoints report memory (none per process) and that the HTTP server starts the engine as a child process. Nothing is called beyond what project A already reads. |
 
 ## Test-only dependencies (not shipped)
 
