@@ -8,7 +8,6 @@
   <UserControl.Resources>
     <c:BindingProxy x:Key="Proxy" Data="{Binding}" />
     <c:HexBrushConverter x:Key="HexBrush" />
-    <SolidColorBrush x:Key="SelectedRowBrush" Color="#26364B" />
 
     <Style x:Key="Num" TargetType="TextBlock">
       <Setter Property="HorizontalAlignment" Value="Right" />
@@ -29,6 +28,17 @@
     </Style>
     <Style x:Key="MutedCell" TargetType="TextBlock" BasedOn="{StaticResource Cell}">
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+    </Style>
+    <!-- Found in the process (model file, Strata's model) in plain text; what the kind usually holds in italics. -->
+    <Style x:Key="InsideCell" TargetType="TextBlock" BasedOn="{StaticResource Cell}">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding InsideIsGeneric}" Value="True">
+          <Setter Property="FontStyle" Value="Italic" />
+          <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+          <Setter Property="ToolTip" Value="이 종류의 프로세스가 보통 담는 것입니다. 이 프로세스에서 확인한 내용이 아닙니다." />
+        </DataTrigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="StatLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11" />
@@ -349,29 +359,12 @@
                 AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="None" CanUserAddRows="False"
                 CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="28"
                 AutomationProperties.AutomationId="GpuMemoryProcesses">
-        <DataGrid.RowStyle>
-          <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
-            <Style.Triggers>
-              <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource SelectedRowBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-              </Trigger>
-            </Style.Triggers>
-          </Style>
-        </DataGrid.RowStyle>
-        <DataGrid.CellStyle>
-          <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Style.Triggers>
-              <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="{StaticResource SelectedRowBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                <Setter Property="BorderBrush" Value="Transparent" />
-              </Trigger>
-            </Style.Triggers>
-          </Style>
-        </DataGrid.CellStyle>
+        <DataGrid.Resources>
+          <!-- The theme draws a selected row with these two brushes (its bright accent fill with dark text). A quiet tint
+               keeps the kind colours and the muted cells readable. Scoped to this table. -->
+          <SolidColorBrush x:Key="DataGridRowSelectedBackgroundThemeBrush" Color="#26364B" />
+          <SolidColorBrush x:Key="DataGridRowSelectedForegroundThemeBrush" Color="#F0EFEC" />
+        </DataGrid.Resources>
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="프로세스" SortMemberPath="Name" Width="1.5*" MinWidth="150">
             <DataGridTemplateColumn.CellTemplate>
@@ -418,7 +411,7 @@
           <DataGridTextColumn Header="공유" Binding="{Binding SharedText}" SortMemberPath="Shared" Width="90" ElementStyle="{StaticResource Num}" />
           <DataGridTextColumn Header="GPU %" Binding="{Binding GpuText}" SortMemberPath="Gpu" Width="64" ElementStyle="{StaticResource Num}" />
           <DataGridTextColumn Header="런타임" Binding="{Binding Runtimes}" SortMemberPath="Runtimes" Width="*" MinWidth="90" ElementStyle="{StaticResource Cell}" />
-          <DataGridTextColumn Header="안에 든 것" Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource MutedCell}" />
+          <DataGridTextColumn Header="안에 든 것" Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource InsideCell}" />
           <DataGridTextColumn Header="GPU" Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="130" ElementStyle="{StaticResource MutedCell}"
                               Visibility="{Binding Data.ShowGpuColumn, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}" />
         </DataGrid.Columns>

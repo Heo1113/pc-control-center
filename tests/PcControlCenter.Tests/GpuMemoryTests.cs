@@ -477,6 +477,9 @@ public class GpuMemoryViewModelTests
         Assert.Contains("Strata 서버 포트", engine.KindBasis, StringComparison.Ordinal);
         Assert.Equal("ggml · CUDA", engine.Runtimes);
         Assert.Equal("MOCK Qwen3 14B · 14.8B · Q4_K_M", engine.Inside);
+        Assert.False(engine.InsideIsGeneric); // read from the mapped model file
+        Assert.True(Row(vm, "chrome.exe").InsideIsGeneric); // what browsers usually hold, not found in this one
+        Assert.Equal("페이지·영상 텍스처", Row(vm, "chrome.exe").Inside);
         Assert.Null(engine.Identity);
         Assert.False(engine.IsUncertain);
         Assert.InRange(engine.Gpu, 30, 60);
