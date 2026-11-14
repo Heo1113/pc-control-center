@@ -65,7 +65,7 @@ public static class ServerProcessLinker
 
         if (owners.Count > 1)
         {
-            return NotLinked($"포트 {port}를 여러 프로세스(PID {string.Join(", ", owners)})가 수신 대기 중이라 어느 것인지 정할 수 없습니다.", port);
+            return NotLinked($"포트 {port}에서 여러 프로세스(PID {string.Join(", ", owners)})가 수신 대기 중이라 어느 것인지 정할 수 없습니다.", port);
         }
 
         var pid = owners[0];
@@ -76,7 +76,7 @@ public static class ServerProcessLinker
 
         if (snapshot.Process(pid) is not { } listener)
         {
-            return NotLinked($"포트 {port}를 수신 대기하는 PID {pid}의 프로세스 정보를 읽지 못했습니다.", port);
+            return NotLinked($"포트 {port}에서 수신 대기하는 PID {pid}의 프로세스 정보를 읽지 못했습니다.", port);
         }
 
         if (listener.State is ProcessIdentityState.Exited or ProcessIdentityState.ReusedAfterSample)
@@ -89,7 +89,7 @@ public static class ServerProcessLinker
             .GroupBy(p => p.ParentProcessId)
             .ToDictionary(g => g.Key, g => g.OrderBy(p => p.ProcessId).ToList());
         var linked = new List<LinkedProcess> { new(listener, 0, MemoryOf(snapshot, pid)) };
-        var evidence = new List<string> { $"PID {pid} {listener.Name}: 포트 {port}를 수신 대기하는 프로세스 (TCP 목록, GetExtendedTcpTable)" };
+        var evidence = new List<string> { $"PID {pid} {listener.Name}: 포트 {port}에서 수신 대기하는 프로세스 (TCP 목록, GetExtendedTcpTable)" };
         var unverified = new List<string>();
         var seen = new HashSet<int> { pid };
         var queue = new Queue<(ProcessEntry Parent, int Depth)>();

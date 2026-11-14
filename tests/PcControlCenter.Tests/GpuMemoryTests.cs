@@ -415,7 +415,9 @@ public class GpuMemoryViewModelTests
 
         // Adapter card: Windows usage (measured), NVML paired (one NVIDIA adapter, one NVML device), sum and difference (computed).
         var card = vm.Adapters.First(a => a.Title.Contains("RTX 5080", StringComparison.Ordinal));
-        Assert.StartsWith("측정", card.Rows.Single(r => r.Label == "전용 GPU 메모리 사용").Origin, StringComparison.Ordinal);
+        // MOCK readings are never labelled as measurements.
+        Assert.StartsWith("MOCK", card.Rows.Single(r => r.Label == "전용 GPU 메모리 사용").Origin, StringComparison.Ordinal);
+        Assert.Contains("MOCK 가상 값", vm.ProcessSummary, StringComparison.Ordinal);
         Assert.Equal("4.00 GiB / 16.00 GiB", card.Rows.Single(r => r.Label.StartsWith("NVML", StringComparison.Ordinal)).Value);
         Assert.Equal("계산", card.Rows.Single(r => r.Label == "프로세스별 전용 합계").Origin);
         Assert.Equal("+260 MiB", card.Rows.Single(r => r.Label == "어댑터 − 프로세스 합계").Value);
@@ -505,6 +507,8 @@ public class GpuMemoryViewModelTests
 
         Assert.Equal(Level.Warning, vm.StatusLevel);
         Assert.Contains("중복 집계", vm.VariantText, StringComparison.Ordinal);
+        Assert.StartsWith("측정", vm.Adapters.Single().Rows.Single(r => r.Label == "전용 GPU 메모리 사용").Origin, StringComparison.Ordinal);
+        Assert.Contains("Windows 측정값", vm.ProcessSummary, StringComparison.Ordinal);
         var difference = vm.Adapters.Single().Rows.Single(r => r.Label == "어댑터 − 프로세스 합계");
         Assert.Equal("−2.00 GiB", difference.Value);
         Assert.Equal(Level.Warning, difference.Level);

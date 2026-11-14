@@ -143,6 +143,12 @@ PcControlCenter.exe
 3. **nvidia-smi** `--query-gpu=memory.used,memory.total --format=csv`: 장치 전체 VRAM을 "NVML 장치 VRAM" 행과 비교합니다. WDDM에서는 nvidia-smi도 프로세스별 메모리를 N/A로 보여 줍니다.
 4. **알려진 부하**: 모델 로드 전·후 strata.exe 행의 "전용" 변화와 nvidia-smi 변화를 비교합니다. 컨텍스트를 바꿔 다시 로드하면 KV 캐시 크기 변화가 프로세스 총량에 나타나는지 볼 수 있습니다(나누어 표시하지는 않음).
 
+## 6.1 CI에서 확인한 것 (GPU 없는 Windows 러너)
+
+- Windows 전용 테스트: PDH 판독 또는 이유, DXGI 어댑터·LUID, 자기 프로세스 시작 시각이 .NET 값과 1 ms 안에서 같음, IPv4/IPv6 루프백 수신 포트·소유자(바이트 순서), 실제 자식 프로세스(ping.exe) 연결 — 모두 통과.
+- GUI 스모크 real: 카운터가 Local/Non Local로 추가됨, 카운터 인스턴스의 LUID가 DXGI 어댑터 LUID와 짝지어짐(Basic Render Driver에 프로세스 12개), 측정된 0은 0으로, 카운터가 없는 어댑터는 N/A로 표시, 한 번 읽는 비용 4.7 ms.
+- 러너에는 GPU가 없어 VRAM 값의 크기·정확도는 확인하지 못했습니다(아래 7장).
+
 ## 7. RTX 5080·Strata 실기에서만 확인할 항목
 
 - RTX 5080(WDDM) 드라이버에서 `Local Usage`/`Non Local Usage` 카운터가 추가되는지, 아니면 대체 카운터로 떨어지는지(화면 상태 줄의 "프로세스 값" 문구).

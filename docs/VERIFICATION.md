@@ -74,6 +74,24 @@ CI 수동 실행 14번(안전성), 15·16번(UI)의 Windows 결과는 테스트 
   - C 원래 화면의 고정 폭 좁은 열(중요도·분류·출처)은 여전히 말줄임표로 표시됩니다.
   - 날짜 선택 칸의 "Select a date"(WPF 기본 문구)는 영어 Windows 러너에서 영어로 나옵니다.
 
+### GPU 메모리 브랜치 (`claude/gpu-memory-attribution`)
+
+GitHub Actions 실행 [43562781639](https://github.com/Heo1113/pc-control-center/actions/runs/43562781639) (커밋 `6d64169`): Linux·Windows의 모든 단계가 통과했습니다.
+
+| 테스트 | Linux (Ubuntu 24.04) | Windows |
+|---|---|---|
+| A / B / C / E 원본 회귀 테스트 | 94 / 145 / 132 / 154 통과 (건너뜀 2 / 0 / 9 / 0) | 94 / 145 / 132 / 154 모두 통과 |
+| E 실제 UIA 테스트 | — | 11 통과 |
+| 통합 테스트 | 104 중 98 통과, Windows 전용 6 건너뜀 | **104 모두 통과** (새 Windows 전용 GPU 메모리 테스트 5개 포함) |
+| GUI 스모크 | — | mock·real·after-kill 통과 (예외 0, 바인딩 경로 오류 0, GPU 메모리 화면 스크린샷 포함) |
+
+실제 Windows 러너(가상 머신, GPU 없음)에서 GPU 메모리 리더가 읽은 것(스모크 real 보고서 `gpuMemory`):
+- 공급자 "Windows 성능 카운터 (WDDM)", 상태 Running, 프로세스 카운터 **Local Usage / Non Local Usage**(대체 카운터 아님), Total Committed·어댑터 카운터 사용 가능, 문제 0.
+- DXGI 어댑터 2개(둘 다 "Microsoft Basic Render Driver"): 소프트웨어 어댑터 LUID `0x00000000_0x00005E4A`에 카운터 인스턴스 12개가 붙음
+  (**카운터 LUID와 DXGI LUID 짝짓기 확인**), 전용 사용 0 B(측정된 0), 공유 24 KiB. 다른 하나(`0x00005DB9`, 소프트웨어 표시 없음)는 카운터가 없어 N/A.
+- 프로세스 식별: 시작 시각 확인 19 · 측정 직후 종료 2 · 시작 시각 확인 불가 1. 한 번 읽는 데 4.7 ms(간격 10초, 화면 밖).
+- 이 값은 GPU가 없는 러너의 것이므로 RTX 5080의 값이나 정확도를 뜻하지 않습니다.
+
 ## 실기에서 아직 확인하지 않은 것
 
 아래는 CI 러너(가상 머신, GPU 없음)로 확인할 수 없어 **사용자 PC에서 확인이 필요**합니다.

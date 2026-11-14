@@ -236,9 +236,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var processes = s.Processes.Where(p => p.Luid == adapter.Luid).ToList();
             var rows = new List<MemoryValueRow>
             {
-                new("전용 GPU 메모리 사용", Pair(adapter.DedicatedUsageBytes, info?.DedicatedVideoMemoryBytes), "측정 · 용량은 DXGI 보고",
+                new("전용 GPU 메모리 사용", Pair(adapter.DedicatedUsageBytes, info?.DedicatedVideoMemoryBytes), $"{Measured(s.IsMock)} · 용량은 DXGI 보고",
                     s.AdapterCountersAvailable ? "GPU Adapter Memory › Dedicated Usage" : "어댑터 카운터를 쓸 수 없어 N/A"),
-                new("공유 GPU 메모리 사용", Pair(adapter.SharedUsageBytes, info?.SharedSystemMemoryBytes), "측정 · 한도는 DXGI 보고",
+                new("공유 GPU 메모리 사용", Pair(adapter.SharedUsageBytes, info?.SharedSystemMemoryBytes), $"{Measured(s.IsMock)} · 한도는 DXGI 보고",
                     "GPU가 쓰는 시스템 RAM (GPU Adapter Memory › Shared Usage). LLM 오프로딩 양과 같지 않음"),
             };
             if (info is { IsNvidia: true, IsSoftware: false })
@@ -248,7 +248,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                     var gpu = hubFresh ? hubSample!.Gpu(devices[0].Index) : null;
                     rows.Add(new MemoryValueRow("NVML 장치 VRAM (공통 센서)",
                         gpu is null ? Text.NA : Pair(gpu.MemoryUsedBytes, gpu.MemoryTotalBytes),
-                        gpu is null ? "N/A" : "측정 (NVML)",
+                        gpu is null ? "N/A" : _hub.IsMock ? "MOCK (측정 아님)" : "측정 (NVML)",
                         gpu is null ? "공통 센서의 최근 측정값이 없습니다." : $"측정 {Text.Clock(hubSample!.Timestamp)} · 장치 전체 기준이라 Windows 카운터와 다를 수 있음"));
                 }
                 else
@@ -303,7 +303,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             .ToList();
         Replace(Processes, listed.Select(p => Row(current, p, linked.Contains(p.ProcessId))).ToList());
         var hidden = current.Processes.Count - listed.Count;
-        ProcessSummary = $"{listed.Count}개 표시 · 전용 1 MiB·공유/커밋 16 MiB 미만 {hidden}개 숨김 · 바이트 값은 모두 Windows 측정값";
+        ProcessSummary = $"{listed.Count}개 표시 · 전용 1 MiB·공유/커밋 16 MiB 미만 {hidden}개 숨김 · "
+                         + (current.IsMock ? "바이트 값은 모두 MOCK 가상 값 (측정 아님)" : "바이트 값은 모두 Windows 측정값");
         ProcessEmptyText = listed.Count == 0 ? "GPU 메모리를 쓰는 프로세스가 보고되지 않았습니다." : "";
     }
 
@@ -375,7 +376,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var holders = link.Processes.Where(p => p.Memory.Any(m => m.DedicatedBytes > 0)).ToList();
             rows.Add(new MemoryValueRow("Strata 프로세스의 GPU 메모리",
                 memory.Count == 0 ? "GPU 메모리를 쓰는 프로세스 없음" : $"전용 {Text.Bytes(dedicated)} · 공유 {Text.Bytes(shared)}",
-                holders.Count <= 1 && memory.Count <= 1 ? "측정 (Windows)" : "계산 (측정값의 합)",
+                current!.IsMock ? "MOCK (측정 아님)" : holders.Count <= 1 && memory.Count <= 1 ? "측정 (Windows)" : "계산 (측정값의 합)",
                 $"{string.Join(", ", link.Processes.Select(p => $"{p.Process.Name}({p.Process.ProcessId})"))} — 연결 근거는 아래", Level.Good));
             Replace(StrataProcesses, link.Processes.SelectMany(p => p.Memory.Count == 0
                     ? new[]
@@ -478,6 +479,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         return slot;
     }
+
+    /// <summary>The origin tag of a Windows value: never "측정" for MOCK readings.</summary>
+    private static string Measured(bool isMock) => isMock ? "MOCK (측정 아님)" : "측정";
 
     private static string Relation(int depth) => depth == 0 ? "포트 소유 프로세스" : $"하위 프로세스 ({depth}단계)";
 

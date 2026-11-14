@@ -70,7 +70,7 @@ if ($real -and $real.sensor.isMock) { $failures.Add('real: the run used mock sen
 # The real Windows GPU counters: a reading, or "unavailable" with a reason (a runner without a GPU driver may have no counters).
 if ($real -and $real.gpuMemory.isMock) { $failures.Add('real: the GPU memory reader used its MOCK provider') }
 if ($real -and $real.gpuMemory.state -eq 'Unavailable' -and -not $real.gpuMemory.reason) { $failures.Add('real: GPU memory unavailable without a reason') }
-if ($real) { Write-Host "GPU memory (real): state=$($real.gpuMemory.state) provider=$($real.gpuMemory.provider) variant=$($real.gpuMemory.variant) adapters=$(@($real.gpuMemory.adapters).Count) processes=$($real.gpuMemory.processes) cost=$($real.gpuMemory.lastCollectionMs) ms reason=$($real.gpuMemory.reason)" }
+if ($real) { Write-Host "GPU memory (real): state=$($real.gpuMemory.state) provider=$($real.gpuMemory.provider) variant=$($real.gpuMemory.variant) adapters=$(if ($null -eq $real.gpuMemory.adapters) { 0 } else { @($real.gpuMemory.adapters).Count }) processes=$($real.gpuMemory.processes) cost=$($real.gpuMemory.lastCollectionMs) ms reason=$($real.gpuMemory.reason)" }
 
 # Abnormal end while every module records.
 $killData = Join-Path $temp "pcc-smoke-kill-$(Get-Random)"
