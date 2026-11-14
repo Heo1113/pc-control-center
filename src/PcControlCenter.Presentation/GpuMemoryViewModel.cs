@@ -824,7 +824,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         var hidden = s.Processes.Count - listed.Count;
         var filtering = filter.Length > 0 || KindFilter is not null;
         CountText = filtering ? $"{visible}/{listed.Count}개 표시"
-            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
+            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · {hidden}개 숨김" : ""); // next to the "작은 프로세스 포함" box
         EmptyText = visible > 0 ? ""
             : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (KindFilter is { } k1 ? $" ({KindLabels[k1]} 종류 안에서)" : "")
             : KindFilter is { } k2 ? $"{KindLabels[k2]} 종류의 프로세스가 없습니다"
