@@ -221,6 +221,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     [ObservableProperty] public partial string MessageDetail { get; set; } = "";
     [ObservableProperty] public partial bool HasValues { get; set; }
     [ObservableProperty] public partial string CountText { get; set; } = "";
+
+    /// <summary>Why the table is empty while there are values (nothing above the listing threshold, or the filter matches nothing).</summary>
+    [ObservableProperty] public partial string EmptyText { get; set; } = "";
     [ObservableProperty] public partial bool ShowGpuColumn { get; set; }
     [ObservableProperty] public partial string StrataText { get; set; } = "";
     [ObservableProperty] public partial Level StrataLevel { get; set; } = Level.Muted;
@@ -527,6 +530,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             Processes.Clear();
             _rows.Clear();
             CountText = "";
+            EmptyText = "";
             ShowGpuColumn = false;
             SelectedProcess = null;
             Detail = null;
@@ -559,6 +563,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         var hidden = s.Processes.Count - listed.Count;
         CountText = $"프로세스 {visible.Count}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
+        EmptyText = visible.Count > 0 ? ""
+            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다"
+            : hidden > 0 ? $"GPU 메모리를 1 MiB 넘게 쓰는 프로세스가 없습니다 · '작은 프로세스 포함'으로 {hidden}개를 볼 수 있습니다"
+            : "GPU 메모리를 쓰는 프로세스가 없습니다";
         ShowGpuColumn = visible.Select(p => p.Luid).Distinct().Count() > 1;
         if (SelectedProcess is null || !Processes.Contains(SelectedProcess))
         {

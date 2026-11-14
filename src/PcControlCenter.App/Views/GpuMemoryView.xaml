@@ -360,6 +360,8 @@
                               Visibility="{Binding Data.ShowGpuColumn, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}" />
         </DataGrid.Columns>
       </DataGrid>
+      <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,48,16,0"
+                 TextAlignment="Center" IsHitTestVisible="False" Visibility="{Binding EmptyText, Converter={StaticResource NotEmptyToVisibility}}" />
       <Border Background="{StaticResource PageBrush}" Visibility="{Binding HasValues, Converter={StaticResource InverseBoolToVisibility}}">
         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560">
           <TextBlock Text="{Binding Message}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"

@@ -605,6 +605,11 @@ public class GpuMemoryViewModelTests
     {
         var (vm, _, _) = OpenWithStrata();
 
+        Assert.Equal("", vm.EmptyText);
+        vm.Filter = "no-such-process";
+        Assert.Empty(vm.Processes);
+        Assert.Null(vm.Detail);
+        Assert.Equal("'no-such-process'와 맞는 프로세스가 없습니다", vm.EmptyText);
         vm.Filter = "CHROME";
         Assert.Equal(["chrome.exe"], vm.Processes.Select(r => r.Name));
         Assert.Same(vm.Processes[0], vm.SelectedProcess); // the selection follows the filter
@@ -616,6 +621,22 @@ public class GpuMemoryViewModelTests
         vm.ShowAll = true;
         Assert.Contains(vm.Processes, r => r.Name == "notepad.exe");
         Assert.DoesNotContain("숨김", vm.CountText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_empty_table_says_why()
+    {
+        var (vm, monitor, _) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            processes: [new GpuProcessMemory { ProcessId = 100, Luid = 1, DedicatedBytes = 0, SharedBytes = 24 * 1024, CommittedBytes = 24 * 1024 }])));
+        monitor.ReadNow();
+        vm.Refresh();
+
+        Assert.True(vm.HasValues); // a reading, just nothing worth listing (a PC whose GPU is idle, the CI runner)
+        Assert.Empty(vm.Processes);
+        Assert.Contains("'작은 프로세스 포함'으로 1개", vm.EmptyText, StringComparison.Ordinal);
+        vm.ShowAll = true;
+        Assert.Single(vm.Processes);
+        Assert.Equal("", vm.EmptyText);
     }
 
     [Fact]
