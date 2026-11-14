@@ -108,8 +108,12 @@ public sealed class GpuMemoryPageSettings
 {
     public static readonly IReadOnlySet<string> ColumnKeys = new HashSet<string>(StringComparer.Ordinal)
     {
-        "Name", "Pid", "KindLabel", "Dedicated", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
+        "Name", "Pid", "KindLabel", "Dedicated", "Delta", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
     };
+
+    public static readonly IReadOnlySet<string> ChartMetrics = new HashSet<string>(StringComparer.Ordinal) { "Dedicated", "Shared", "Gpu" };
+
+    public static readonly IReadOnlyList<int> ChartWindows = [5, 15, 30];
 
     /// <summary>Sort column; null = dedicated memory, largest first.</summary>
     public string? SortColumn { get; set; }
@@ -125,6 +129,12 @@ public sealed class GpuMemoryPageSettings
     /// <summary>Height of the detail panel in device-independent pixels; 0 = share the height with the table.</summary>
     public double DetailHeight { get; set; }
 
+    /// <summary>What the detail chart shows: Dedicated, Shared or Gpu (the busiest engine, %).</summary>
+    public string ChartMetric { get; set; } = "Dedicated";
+
+    /// <summary>The detail chart's window in minutes (5, 15 or 30; the reader keeps 30).</summary>
+    public int ChartMinutes { get; set; } = 15;
+
     public void Normalize()
     {
         if (SortColumn is not null && !ColumnKeys.Contains(SortColumn))
@@ -137,6 +147,16 @@ public sealed class GpuMemoryPageSettings
         if (double.IsNaN(DetailHeight) || DetailHeight is < 0 or > 4000)
         {
             DetailHeight = 0;
+        }
+
+        if (ChartMetric is null || !ChartMetrics.Contains(ChartMetric))
+        {
+            ChartMetric = "Dedicated";
+        }
+
+        if (!ChartWindows.Contains(ChartMinutes))
+        {
+            ChartMinutes = 15;
         }
     }
 }

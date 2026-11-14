@@ -37,7 +37,11 @@ public sealed record AdapterView(
     bool HasCapacity,
     bool IsCompact = false,
     string LegendText = "",
-    string? FreeText = null);
+    string? FreeText = null,
+    string? DeltaText = null);
+
+/// <summary>One choice of a small chooser (the chart's metric and window): what it says, and the value it stands for.</summary>
+public sealed record ChoiceOption(string Label, object Value);
 
 /// <summary>
 /// One adapter's place in the header. The slot stays while its adapter does and only its <see cref="View"/> changes, so
@@ -119,6 +123,13 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial long Committed { get; set; }
     [ObservableProperty] public partial string CommittedText { get; set; } = "";
 
+    /// <summary>Change of dedicated memory since the baseline, for sorting; long.MinValue without a baseline or a value.</summary>
+    [ObservableProperty] public partial long Delta { get; set; } = long.MinValue;
+    [ObservableProperty] public partial string DeltaText { get; set; } = "";
+
+    /// <summary>How the row relates to the baseline: started after it, restarted (another PID), or null for the same process.</summary>
+    [ObservableProperty] public partial string? DeltaNote { get; set; }
+
     /// <summary>Busiest engine in percent; -1 = not read.</summary>
     [ObservableProperty] public partial double Gpu { get; set; }
     [ObservableProperty] public partial string GpuText { get; set; } = "";
@@ -144,7 +155,6 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
 /// </summary>
 public sealed partial class GpuMemoryViewModel : ObservableObject
 {
-    public static readonly TimeSpan ChartWindow = TimeSpan.FromMinutes(15);
 
     /// <summary>A Strata poll older than this is not used to link processes (the port may belong to someone else by then).</summary>
     public static readonly TimeSpan StrataMaxAge = TimeSpan.FromSeconds(15);
@@ -212,6 +222,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private readonly GpuMemoryPageSettings _page;
     private readonly Action? _savePage;
     private (string Name, int Pid)? _lost;
+    private Baseline? _baseline;
+    private Dictionary<(ProcessKey, long), (long? Delta, string? Note)> _deltas = [];
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
     private RuntimeSnapshot? _strataSnapshot;
@@ -233,6 +245,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _page.Normalize();
         _savePage = savePage;
         ShowAll = _page.ShowAll;
+        ChartMetric = _page.ChartMetric;
+        ChartMinutes = _page.ChartMinutes;
     }
 
     public ObservableCollection<AdapterSlot> Adapters { get; } = [];
@@ -274,6 +288,23 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// <summary>Only processes of this kind (set by clicking a legend entry); null = all.</summary>
     [ObservableProperty] public partial ProcessKind? KindFilter { get; set; }
     [ObservableProperty] public partial string KindFilterText { get; set; } = "";
+
+    /// <summary>A baseline is held: rows and adapters show the change since it (B1).</summary>
+    [ObservableProperty] public partial bool HasBaseline { get; set; }
+
+    /// <summary>When the baseline was taken and how each adapter changed since.</summary>
+    [ObservableProperty] public partial string BaselineText { get; set; } = "";
+
+    /// <summary>Processes listed at the baseline that are no longer in the list (ended or released their GPU memory).</summary>
+    [ObservableProperty] public partial string BaselineGone { get; set; } = "";
+
+    /// <summary>The detail chart's metric (Dedicated, Shared, Gpu) and window in minutes; remembered in the shell settings.</summary>
+    [ObservableProperty] public partial string ChartMetric { get; set; } = "Dedicated";
+    [ObservableProperty] public partial int ChartMinutes { get; set; } = 15;
+
+    public IReadOnlyList<ChoiceOption> ChartMetricOptions { get; } = [new("전용", "Dedicated"), new("공유", "Shared"), new("GPU %", "Gpu")];
+
+    public IReadOnlyList<ChoiceOption> ChartWindowOptions { get; } = [new("5분", 5), new("15분", 15), new("30분", 30)];
 
     /// <summary>The detail panel's text while no process is selected (why, when the selected one went away).</summary>
     [ObservableProperty] public partial string DetailPlaceholder { get; set; } = DefaultPlaceholder;
@@ -342,6 +373,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearKindFilter() => KindFilter = null;
+
+    /// <summary>Takes a baseline now, or drops the one held.</summary>
+    [RelayCommand]
+    private void ToggleBaseline() => HasBaseline = !HasBaseline;
 
     [RelayCommand]
     private void ClearFilter() => Filter = "";
@@ -523,6 +558,85 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     }
 
     partial void OnFilterChanged(string value) => RebuildRows(force: true, userAction: true);
+
+    partial void OnHasBaselineChanged(bool value)
+    {
+        if (value && _current is { } s)
+        {
+            _baseline = Baseline.Of(s);
+        }
+        else if (value)
+        {
+            HasBaseline = false; // nothing measured to compare against yet
+            return;
+        }
+        else
+        {
+            _baseline = null;
+        }
+
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true);
+    }
+
+    partial void OnChartMetricChanged(string value)
+    {
+        if (!GpuMemoryPageSettings.ChartMetrics.Contains(value))
+        {
+            ChartMetric = "Dedicated";
+            return;
+        }
+
+        if (_page.ChartMetric != value)
+        {
+            _page.ChartMetric = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    partial void OnChartMinutesChanged(int value)
+    {
+        if (!GpuMemoryPageSettings.ChartWindows.Contains(value))
+        {
+            ChartMinutes = 15;
+            return;
+        }
+
+        if (_page.ChartMinutes != value)
+        {
+            _page.ChartMinutes = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    /// <summary>The comparison with the baseline as text: adapters, the listed processes and those gone since.</summary>
+    public string? BaselineReport()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        var lines = new List<string> { $"기준점 {Text.DateTime(b.At)} → {Text.DateTime(s.Timestamp)} (전용 메모리 변화, 측정값의 차)" };
+        lines.AddRange(s.Adapters.Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+            ? $"{a.Info?.Name ?? GpuLuid.Format(a.Luid)}\t{Signed(d)}" : null).OfType<string>());
+        lines.AddRange(Processes.OrderByDescending(r => r.Delta).Select(r =>
+            string.Join('\t', r.Name, r.Pid.ToString(CultureInfo.InvariantCulture), r.DeltaText, r.DeltaNote ?? "", r.DedicatedText)));
+        if (BaselineGone.Length > 0)
+        {
+            lines.Add(BaselineGone);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
 
     partial void OnKindFilterChanged(ProcessKind? value)
     {
@@ -756,7 +870,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 capacity > 0,
                 IsCompact: views.Count > 0,
                 LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
-                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null)));
+                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null,
+                DeltaText: _baseline is { } b && b.AdapterDedicated.TryGetValue(adapter.Luid, out var then) && Diff(used, then) is long change
+                    ? $"기준점 대비 {Signed(change)}" : null)));
         }
 
         return views;
@@ -788,6 +904,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         var filter = Filter.Trim();
         var listed = s.Processes.Where(p => ShowAll || GpuMemoryRules.IsListed(p)).ToList();
+        CompareWithBaseline(s);
         var keys = new HashSet<(ProcessKey, long)>();
         var luids = new HashSet<long>();
         foreach (var p in listed)
@@ -909,6 +1026,18 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.DedicatedShareText = capacity > 0 && p.DedicatedBytes is not null ? $"카드 VRAM의 {Percent(row.DedicatedShare)}" : null;
         row.Shared = p.SharedBytes ?? -1;
         row.SharedText = Text.Bytes(p.SharedBytes);
+        if (_baseline is not null && _deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+        {
+            row.Delta = change.Delta ?? long.MinValue;
+            row.DeltaText = change.Delta is long d2 ? Signed(d2) : Text.NA;
+            row.DeltaNote = change.Note;
+        }
+        else
+        {
+            row.Delta = long.MinValue;
+            row.DeltaText = "";
+            row.DeltaNote = null;
+        }
         row.Committed = p.CommittedBytes ?? -1;
         row.CommittedText = s.CommittedAvailable ? Text.Bytes(p.CommittedBytes) : Text.NA;
         row.Gpu = p.Engines?.Busiest ?? -1;
@@ -1060,39 +1189,122 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     private ChartModel BuildChart(GpuProcessRow row, GpuProcessMemory p)
     {
-        var history = _monitor.History(ChartWindow);
+        // Missing values stay out of the series, so the chart shows a gap (never 0) where nothing was read.
+        var history = _monitor.History(TimeSpan.FromMinutes(ChartMinutes));
+        var gpu = ChartMetric == "Gpu";
+        const double GiB = 1024.0 * 1024 * 1024;
+        double? ProcessValue(GpuProcessHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedBytes / GiB,
+        };
+        double? AdapterValue(GpuAdapterHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedUsageBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedUsageBytes / GiB,
+        };
         var processPoints = history
-            .Select(h => (h.Timestamp, Value: h.Processes.FirstOrDefault(x => x.Key == row.Key && x.Luid == p.Luid).DedicatedBytes))
+            .Select(h => (h.Timestamp, Value: h.Processes.Where(x => x.Key == row.Key && x.Luid == p.Luid).Select(ProcessValue).FirstOrDefault()))
             .Where(x => x.Value is not null)
             .ToList();
         var adapterPoints = history
-            .Select(h => (h.Timestamp, Value: h.Adapters.FirstOrDefault(a => a.Luid == p.Luid).DedicatedUsageBytes))
+            .Select(h => (h.Timestamp, Value: h.Adapters.Where(a => a.Luid == p.Luid).Select(AdapterValue).FirstOrDefault()))
             .Where(x => x.Value is not null)
             .ToList();
         var series = new List<ChartSeries>();
         if (adapterPoints.Count > 0)
         {
             series.Add(new ChartSeries("GPU 전체", [.. adapterPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. adapterPoints.Select(x => x.Value!.Value / (1024.0 * 1024 * 1024))], "#8A8984"));
+                [.. adapterPoints.Select(x => x.Value!.Value)], "#8A8984"));
         }
 
         if (processPoints.Count > 0)
         {
             series.Add(new ChartSeries(row.Name, [.. processPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. processPoints.Select(x => x.Value!.Value / (1024.0 * 1024 * 1024))], row.KindColor));
+                [.. processPoints.Select(x => x.Value!.Value)], row.KindColor));
         }
 
+        var metric = ChartMetricOptions.First(o => (string)o.Value == ChartMetric).Label;
         return new ChartModel
         {
-            Title = "전용 메모리 · 15분",
-            Unit = "GiB",
+            Title = $"{metric} · {ChartMinutes}분",
+            Unit = gpu ? "%" : "GiB",
             Series = series,
             XIsTime = true,
             GapThreshold = ChartGapDays,
             YMin = 0,
-            ValueFormat = "0.00",
-            EmptyText = "기록 없음",
+            YMax = gpu ? 100 : null,
+            ValueFormat = gpu ? "0" : "0.00",
+            EmptyText = gpu ? "GPU 사용률은 이 화면을 보는 동안만 기록합니다" : "기록 없음",
         };
+    }
+
+    private void CompareWithBaseline(GpuMemorySnapshot s)
+    {
+        _deltas = [];
+        if (_baseline is not { } b)
+        {
+            BaselineText = "";
+            BaselineGone = "";
+            return;
+        }
+
+        // Same process (PID and start time) on the same adapter: the change. A new process with the name of one that is gone
+        // since: restarted, compared with that one. Otherwise it started (or began using the GPU) after the baseline.
+        var live = s.Processes.Select(p => (Key: KeyOf(s, p), p.Luid)).ToHashSet();
+        var restartedFrom = new HashSet<Baseline.Entry>();
+        foreach (var p in s.Processes)
+        {
+            var key = KeyOf(s, p);
+            var entry = s.Process(p.ProcessId);
+            if (b.Processes.FirstOrDefault(x => x.Key == key && x.Luid == p.Luid) is { } same)
+            {
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null);
+                continue;
+            }
+
+            var name = entry?.Name ?? $"PID {p.ProcessId}";
+            if (b.Processes.Where(x => x.Name == name && x.Luid == p.Luid && !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x))
+                    .OrderByDescending(x => x.Dedicated ?? 0).FirstOrDefault() is { } previous)
+            {
+                restartedFrom.Add(previous);
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})");
+                continue;
+            }
+
+            var startedAfter = entry?.StartTime is { } started && started > b.At;
+            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작");
+        }
+
+        var gone = b.Processes
+            .Where(x => !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x) && (x.Dedicated >= GpuMemoryRules.MiB || x.Shared >= 16 * GpuMemoryRules.MiB))
+            .OrderByDescending(x => x.Dedicated ?? 0)
+            .ToList();
+        BaselineGone = gone.Count == 0 ? ""
+            : $"사라짐 {gone.Count}개: " + string.Join(", ", gone.Take(4).Select(x => $"{x.Name} (PID {x.Pid}) {Signed(-(x.Dedicated ?? 0))}"))
+              + (gone.Count > 4 ? " 외" : "") + " (종료했거나 GPU 메모리를 놓음)";
+        var adapters = s.Adapters
+            .Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+                ? $"{ShortAdapterName(a.Info?.Name ?? GpuLuid.Format(a.Luid))} 전용 {Signed(d)}" : null)
+            .OfType<string>();
+        BaselineText = string.Join(" · ", new[] { $"기준점 {Text.Clock(b.At)} ({Text.Age(s.Timestamp - b.At)})" }.Concat(adapters));
+    }
+
+    private static long? Diff(long? now, long? then) => now is long n && then is long t ? n - t : null;
+
+    private static string Signed(long bytes) => bytes > 0 ? "+" + Text.Bytes(bytes) : bytes < 0 ? "\u2212" + Text.Bytes(-bytes) : "0";
+
+    /// <summary>The memory picture at the moment the baseline was taken.</summary>
+    private sealed record Baseline(DateTimeOffset At, IReadOnlyList<Baseline.Entry> Processes, IReadOnlyDictionary<long, long?> AdapterDedicated)
+    {
+        public sealed record Entry(ProcessKey Key, string Name, int Pid, long Luid, long? Dedicated, long? Shared);
+
+        public static Baseline Of(GpuMemorySnapshot s) => new(
+            s.Timestamp,
+            [.. s.Processes.Select(p => new Entry(KeyOf(s, p), s.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", p.ProcessId, p.Luid, p.DedicatedBytes, p.SharedBytes))],
+            s.Adapters.ToDictionary(a => a.Luid, a => a.DedicatedUsageBytes));
     }
 
     private KindResult KindOf(GpuMemorySnapshot s, GpuProcessMemory p)

@@ -1035,6 +1035,98 @@ public class GpuMemoryViewModelTests
     }
 
     [Fact]
+    public void The_baseline_shows_changes_and_tells_new_restarted_and_gone_processes_apart()
+    {
+        var start = GpuMemoryFixtures.Start.AddMinutes(-30);
+        var processes = new List<(int Pid, string Name, long Dedicated, DateTimeOffset Started)>
+        {
+            (100, "app.exe", 4 * GiB, start), (200, "game.exe", 2 * GiB, start), (300, "llama-server.exe", GiB, start),
+        };
+        var (vm, monitor, time) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            processes: [.. processes.Select(p => new GpuProcessMemory { ProcessId = p.Pid, Luid = 1, DedicatedBytes = p.Dedicated, SharedBytes = 0, CommittedBytes = p.Dedicated })],
+            table: processes.ToDictionary(p => p.Pid, p => new ProcessEntry(p.Pid, 10, p.Name, p.Started, ProcessIdentityState.Verified)))));
+        void Read()
+        {
+            time.Advance(TimeSpan.FromSeconds(2));
+            monitor.ReadNow();
+            vm.Refresh();
+        }
+
+        vm.HasBaseline = true; // nothing measured yet: no baseline
+        Assert.False(vm.HasBaseline);
+        Read();
+        vm.HasBaseline = true;
+        Assert.True(vm.HasBaseline);
+        Assert.Equal("0", Row(vm, "app.exe").DeltaText);
+
+        var baselineTime = time.GetUtcNow();
+        processes[0] = (100, "app.exe", 5 * GiB, start);                                   // grew
+        processes.RemoveAt(1);                                                              // game.exe gone
+        processes[1] = (310, "llama-server.exe", GiB + 512 * MiB, baselineTime.AddSeconds(1)); // restarted: new PID
+        processes.Add((400, "new.exe", 512 * MiB, baselineTime.AddSeconds(1)));             // started after the baseline
+        processes.Add((500, "old.exe", 64 * MiB, start));                                   // ran before, began using the GPU after
+        Read();
+
+        Assert.Equal(("+1.00 GiB", (string?)null), (Row(vm, "app.exe").DeltaText, Row(vm, "app.exe").DeltaNote));
+        Assert.Equal(GiB, Row(vm, "app.exe").Delta);
+        Assert.Equal(("+512 MiB", "재시작 (이전 PID 300)"), (Row(vm, "llama-server.exe").DeltaText, Row(vm, "llama-server.exe").DeltaNote));
+        Assert.Equal(("+512 MiB", "기준점 뒤 시작"), (Row(vm, "new.exe").DeltaText, Row(vm, "new.exe").DeltaNote));
+        Assert.Equal("기준점 뒤 GPU 사용 시작", Row(vm, "old.exe").DeltaNote);
+        Assert.StartsWith("사라짐 1개: game.exe (PID 200) −2.00 GiB", vm.BaselineGone, StringComparison.Ordinal);
+        Assert.Contains("Test GPU 전용 0", vm.BaselineText, StringComparison.Ordinal); // the fixture's adapter total did not move
+        Assert.Equal("기준점 대비 0", vm.Adapters.Single().View.DeltaText);
+        var report = vm.BaselineReport()!;
+        Assert.Contains("app.exe\t100\t+1.00 GiB\t\t5.00 GiB", report, StringComparison.Ordinal);
+        Assert.Contains("game.exe (PID 200)", report, StringComparison.Ordinal);
+
+        vm.ToggleBaselineCommand.Execute(null);
+        Assert.False(vm.HasBaseline);
+        Assert.Equal("", Row(vm, "app.exe").DeltaText);
+        Assert.Equal(long.MinValue, Row(vm, "app.exe").Delta);
+        Assert.Equal("", vm.BaselineText);
+        Assert.Null(vm.Adapters.Single().View.DeltaText);
+        Assert.Null(vm.BaselineReport());
+    }
+
+    [Fact]
+    public void The_chart_shows_the_chosen_value_and_window_with_gaps_where_nothing_was_read()
+    {
+        var page = new GpuMemoryPageSettings();
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, page, () => { });
+        monitor.ReadNow(); // page not open: memory only, no engine counters
+        time.Advance(TimeSpan.FromSeconds(10));
+        vm.IsVisible = true;
+        for (var i = 0; i < 3; i++)
+        {
+            monitor.ReadNow();
+            time.Advance(TimeSpan.FromSeconds(2));
+        }
+
+        vm.Refresh();
+        Assert.Equal("전용 · 15분", vm.Detail!.Chart!.Title);
+        Assert.Equal(4, vm.Detail.Chart.Series.Single(x => x.Label == "strata.exe").Y.Length);
+
+        vm.ChartMetric = "Gpu";
+        var gpu = vm.Detail!.Chart!;
+        Assert.Equal(("GPU % · 15분", "%", (double?)100), (gpu.Title, gpu.Unit, gpu.YMax));
+        Assert.Equal(3, gpu.Series.Single(x => x.Label == "strata.exe").Y.Length); // the reading without engines is a gap, not 0 %
+        Assert.All(gpu.Series.Single(x => x.Label == "strata.exe").Y, y => Assert.InRange(y, 30, 60));
+
+        vm.ChartMetric = "Shared";
+        Assert.Equal("GiB", vm.Detail!.Chart!.Unit);
+        vm.ChartMinutes = 5;
+        Assert.Equal("공유 · 5분", vm.Detail!.Chart!.Title);
+        Assert.Equal(("Shared", 5), (page.ChartMetric, page.ChartMinutes)); // remembered
+
+        vm.ChartMetric = "Bogus";
+        Assert.Equal("Dedicated", vm.ChartMetric);
+        vm.ChartMinutes = 7;
+        Assert.Equal(15, vm.ChartMinutes);
+    }
+
+    [Fact]
     public void Help_lists_where_each_value_comes_from()
     {
         var (vm, _, _) = Create();
