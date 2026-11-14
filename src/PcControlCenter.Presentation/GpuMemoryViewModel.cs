@@ -122,6 +122,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial string KindColor { get; set; } = GpuMemoryViewModel.KindColors[ProcessKind.App];
     [ObservableProperty] public partial string KindBasis { get; set; } = "";
 
+    /// <summary>The kind was given by the user (by executable name), not classified from evidence.</summary>
+    [ObservableProperty] public partial bool KindOverridden { get; set; }
+
     /// <summary>Bytes for sorting; -1 = N/A (sorts last when the largest come first).</summary>
     [ObservableProperty] public partial long Dedicated { get; set; }
     [ObservableProperty] public partial string DedicatedText { get; set; } = "";
@@ -1054,6 +1057,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.KindLabel = KindLabels[kind.Kind];
         row.KindColor = KindColors[kind.Kind];
         row.KindBasis = $"분류 근거: {kind.Basis}";
+        row.KindOverridden = OverrideOf(p.ProcessId, row.Name) is not null;
         row.Dedicated = p.DedicatedBytes ?? -1;
         row.DedicatedText = Text.Bytes(p.DedicatedBytes);
         row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
@@ -1348,8 +1352,69 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             s.Adapters.ToDictionary(a => a.Luid, a => a.DedicatedUsageBytes));
     }
 
+    /// <summary>The kind from the evidence, or the one the user gave this executable name (the basis then says both).</summary>
     private KindResult KindOf(GpuMemorySnapshot s, GpuProcessMemory p)
-        => ProcessKinds.Classify(p.ProcessId, s.Process(p.ProcessId)?.Name ?? "", s.Detail(p.ProcessId), p.Engines, IsStrata(p.ProcessId));
+    {
+        var name = s.Process(p.ProcessId)?.Name ?? "";
+        var classified = ProcessKinds.Classify(p.ProcessId, name, s.Detail(p.ProcessId), p.Engines, IsStrata(p.ProcessId));
+        return OverrideOf(p.ProcessId, name) is { } kind
+            ? new KindResult(kind, $"사용자가 지정함 (자동 분류: {KindLabels[classified.Kind]} — {classified.Basis})")
+            : classified;
+    }
+
+    private ProcessKind? OverrideOf(int pid, string name)
+        => pid > 4 && name.Length > 0 && _page.KindOverrides.TryGetValue(name, out var value) && Enum.TryParse<ProcessKind>(value, out var kind)
+            ? kind
+            : null;
+
+    /// <summary>The kinds the row menu offers (the kernel's is the System process's own).</summary>
+    public IReadOnlyList<ProcessKind> AssignableKinds { get; } =
+    [
+        ProcessKind.Llm, ProcessKind.Ai, ProcessKind.Compute, ProcessKind.Graphics3D, ProcessKind.Video, ProcessKind.Browser,
+        ProcessKind.Compositor, ProcessKind.System, ProcessKind.App,
+    ];
+
+    /// <summary>A process with an executable name (not the kernel, not an unknown PID) can be given a kind.</summary>
+    public bool CanOverrideKind(GpuProcessRow row) => row.Pid > 4 && GpuMemoryPageSettings.IsExecutableName(row.Name) && !row.Name.StartsWith("PID ", StringComparison.Ordinal);
+
+    /// <summary>The kind the user gave this row's executable name, if any.</summary>
+    public ProcessKind? KindOverrideOf(GpuProcessRow row) => OverrideOf(row.Pid, row.Name);
+
+    /// <summary>
+    /// Gives every process with this row's executable name the kind (null: back to the classification), remembered in the
+    /// shell settings. The table, the device legend and the detail follow at once.
+    /// </summary>
+    public void SetKindOverride(GpuProcessRow row, ProcessKind? kind)
+    {
+        if (!CanOverrideKind(row))
+        {
+            return;
+        }
+
+        var name = row.Name.Trim().ToLowerInvariant();
+        if (kind is { } set)
+        {
+            if (_page.KindOverrides.TryGetValue(name, out var old) ? old == set.ToString() : _page.KindOverrides.Count >= GpuMemoryPageSettings.MaxKindOverrides)
+            {
+                return;
+            }
+
+            _page.KindOverrides[name] = set.ToString();
+        }
+        else if (!_page.KindOverrides.Remove(name))
+        {
+            return;
+        }
+
+        SavePage();
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true, userAction: true);
+        BuildDetail();
+    }
 
     private bool IsStrata(int pid) => _link is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
 

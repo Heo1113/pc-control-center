@@ -104,7 +104,7 @@ public sealed partial class ShellViewModel : ObservableObject
 
         operatorSummary ??= runtime.Operator is { } operatorModule ? operatorModule.Summary : () => null;
         Dashboard = new DashboardViewModel(runtime.Hub, runtime.LocalAi, runtime.Economics, runtime.Diagnostics, operatorSummary, ui,
-            key => Navigate(key), _time);
+            key => Navigate(key), _time, runtime.GpuMemory);
         Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
         // The page's layout (sort, columns, panel size) is remembered in the shell settings, which the settings page saves too.

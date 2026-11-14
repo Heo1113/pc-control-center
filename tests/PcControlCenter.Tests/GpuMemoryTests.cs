@@ -1139,6 +1139,56 @@ public class GpuMemoryViewModelTests
         Assert.NotEmpty(vm.Checks);
     }
 
+    [Fact]
+    public void A_kind_given_to_an_executable_name_replaces_the_classification_everywhere_and_is_remembered()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var page = new GpuMemoryPageSettings();
+        var saves = 0;
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, page, () => saves++);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        var chrome = Row(vm, "chrome.exe");
+        vm.SelectedProcess = chrome;
+        Assert.Equal(ProcessKind.Browser, chrome.Kind);
+        Assert.DoesNotContain(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video);
+
+        vm.SetKindOverride(chrome, ProcessKind.Video);
+
+        Assert.Same(chrome, Row(vm, "chrome.exe")); // updated in place
+        Assert.Equal(ProcessKind.Video, chrome.Kind);
+        Assert.Equal("영상", chrome.KindLabel);
+        Assert.True(chrome.KindOverridden);
+        Assert.StartsWith("분류 근거: 사용자가 지정함 (자동 분류: 브라우저 — ", chrome.KindBasis, StringComparison.Ordinal);
+        Assert.Contains(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video); // the device legend follows
+        Assert.Equal("영상", vm.Detail!.Kind);
+        Assert.Equal(ProcessKind.Video, vm.KindOverrideOf(chrome));
+        Assert.Equal(new Dictionary<string, string> { ["chrome.exe"] = "Video" }, page.KindOverrides);
+        Assert.Equal(1, saves);
+        vm.SetKindOverride(chrome, ProcessKind.Video); // the same kind again: nothing to save
+        Assert.Equal(1, saves);
+
+        monitor.ReadNow(); // the next reading keeps it
+        vm.Refresh();
+        Assert.Equal(ProcessKind.Video, Row(vm, "chrome.exe").Kind);
+
+        vm.SetKindOverride(chrome, null);
+        Assert.Equal(ProcessKind.Browser, chrome.Kind);
+        Assert.False(chrome.KindOverridden);
+        Assert.Empty(page.KindOverrides);
+        Assert.Equal(2, saves);
+
+        // The kernel's row has no executable name to remember.
+        vm.ShowAll = true;
+        var kernel = vm.Processes.Single(r => r.Pid == 4);
+        Assert.False(vm.CanOverrideKind(kernel));
+        vm.SetKindOverride(kernel, ProcessKind.App);
+        Assert.Empty(page.KindOverrides);
+        Assert.DoesNotContain(ProcessKind.Kernel, vm.AssignableKinds);
+    }
+
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
 
     [Fact]
@@ -1394,9 +1444,69 @@ public class GpuMemoryShellTests
         var settings = store.Load().Settings;
         settings.GpuMemoryPage.SortColumn = "Gpu";
         settings.GpuMemoryPage.DetailHeight = 300;
+        settings.GpuMemoryPage.KindOverrides["myrenderer.exe"] = "Graphics3D";
         store.Save(settings);
         var reloaded = store.Load().Settings.GpuMemoryPage;
         Assert.Equal(("Gpu", 300.0), (reloaded.SortColumn, reloaded.DetailHeight));
+        Assert.Equal("Graphics3D", reloaded.KindOverrides["MyRenderer.EXE"]); // names compare without case
+    }
+
+    [Fact]
+    public void Kind_overrides_keep_bare_executable_names_and_known_kinds_only()
+    {
+        var page = new GpuMemoryPageSettings
+        {
+            KindOverrides = new()
+            {
+                [" MyApp.EXE "] = "Llm", [@"C:\tools\a.exe"] = "Llm", ["b.exe"] = "Spaceship", [""] = "App", ["tab\t.exe"] = "App",
+                ["c.exe"] = null!, [new string('x', 300)] = "App",
+            },
+        };
+        page.Normalize();
+        Assert.Equal(new Dictionary<string, string> { ["myapp.exe"] = "Llm" }, page.KindOverrides);
+
+        var many = new GpuMemoryPageSettings { KindOverrides = Enumerable.Range(0, 250).ToDictionary(i => $"app{i}.exe", _ => "App") };
+        many.Normalize();
+        Assert.Equal(GpuMemoryPageSettings.MaxKindOverrides, many.KindOverrides.Count);
+
+        // The names kept in the settings are the classifier's kinds (the settings library cannot see the enum).
+        Assert.Equal(Enum.GetNames<ProcessKind>().Order(StringComparer.Ordinal), GpuMemoryPageSettings.KindNames.Order(StringComparer.Ordinal));
+    }
+
+    [Fact(Timeout = 180_000)]
+    public async Task The_dashboard_card_lists_the_largest_processes_and_opens_the_page()
+    {
+        using var temp = new TempDir();
+        await using var runtime = ShellRuntime.Create(new ShellOptions
+        {
+            DataDirectory = temp.Sub("data"),
+            ExecutableDirectory = temp.Path,
+            MockSensors = true,
+            Unattended = true,
+            LegacyLocations = [],
+        });
+        await runtime.StartAsync(TestContext.Current.CancellationToken);
+        var shell = new ShellViewModel(runtime, new LockedDispatcher(), new RecordingShellDialogs());
+        var dashboard = shell.Dashboard;
+
+        Assert.True(await Eventually(() =>
+        {
+            dashboard.Tick();
+            return runtime.GpuMemory.Latest is not null && dashboard.GpuMemoryLargest != Text.NA;
+        }, TimeSpan.FromSeconds(20)));
+        var latest = runtime.GpuMemory.Latest!;
+        var largest = latest.Processes.OrderByDescending(p => p.DedicatedBytes).First();
+        Assert.StartsWith(latest.Process(largest.ProcessId)!.Name, dashboard.GpuMemoryState, StringComparison.Ordinal);
+        Assert.Equal(Text.Bytes(largest.DedicatedBytes), dashboard.GpuMemoryLargest);
+        Assert.InRange(dashboard.GpuMemoryTop.Count, 1, 3);
+        Assert.Equal(Level.Warning, dashboard.GpuMemoryLevel); // MOCK is never "good"
+        Assert.Contains("MOCK", dashboard.GpuMemoryNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("합계", dashboard.GpuMemoryNote, StringComparison.Ordinal);
+
+        dashboard.OpenCommand.Execute("hardware/gpu-memory");
+        shell.Tick();
+        Assert.Same(shell.GpuMemory, shell.CurrentSection!.SelectedTab!.Content);
+        Assert.True(shell.GpuMemory.IsVisible);
     }
 
     private static async Task<bool> Eventually(Func<bool> condition, TimeSpan timeout)

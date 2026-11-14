@@ -24,6 +24,7 @@ public partial class GpuMemoryView : UserControl
     private readonly ContextMenu _rowMenu = new();
     private readonly ContextMenu _columnMenu = new();
     private readonly MenuItem _kindItem;
+    private readonly MenuItem _kindSetItem = new() { Header = "종류 지정" };
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private GpuMemoryViewModel? _vm;
     private bool _hovering;
@@ -44,6 +45,7 @@ public partial class GpuMemoryView : UserControl
             }
         });
         _rowMenu.Items.Add(_kindItem);
+        _rowMenu.Items.Add(_kindSetItem);
         Table.ContextMenu = _rowMenu;
         _noticeTimer.Tick += (_, _) =>
         {
@@ -226,7 +228,29 @@ public partial class GpuMemoryView : UserControl
         }
 
         _kindItem.Header = _vm.KindFilter == row.Kind ? "모든 종류 보기" : $"{row.KindLabel}만 보기";
+        BuildKindSetMenu(_vm, row);
         Table.ContextMenu = _rowMenu;
+    }
+
+    /// <summary>"종류 지정": the kinds to give this executable name, and the way back to the classification.</summary>
+    private void BuildKindSetMenu(GpuMemoryViewModel vm, GpuProcessRow row)
+    {
+        _kindSetItem.Items.Clear();
+        _kindSetItem.IsEnabled = vm.CanOverrideKind(row);
+        _kindSetItem.ToolTip = _kindSetItem.IsEnabled ? $"이름이 {row.Name}인 프로세스에 모두 적용되고 공통 설정에 저장됩니다" : null;
+        ToolTipService.SetShowOnDisabled(_kindSetItem, true);
+        var current = vm.KindOverrideOf(row);
+        foreach (var kind in vm.AssignableKinds)
+        {
+            var item = new MenuItem { Header = GpuMemoryViewModel.KindLabels[kind], IsCheckable = true, IsChecked = current == kind };
+            item.Click += (_, _) => vm.SetKindOverride(row, kind);
+            _kindSetItem.Items.Add(item);
+        }
+
+        _kindSetItem.Items.Add(new Separator());
+        var reset = Item("자동 분류로 되돌리기", null, () => vm.SetKindOverride(row, null));
+        reset.IsEnabled = current is not null;
+        _kindSetItem.Items.Add(reset);
     }
 
     private void BuildColumnMenu()

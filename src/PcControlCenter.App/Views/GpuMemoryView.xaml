@@ -596,8 +596,18 @@
             </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
-                <TextBlock Text="{Binding KindLabel}" Style="{StaticResource Cell}" ToolTip="{Binding KindBasis}"
-                           Foreground="{Binding KindColor, Converter={StaticResource HexBrush}}" />
+                <TextBlock Text="{Binding KindLabel}" ToolTip="{Binding KindBasis}" Foreground="{Binding KindColor, Converter={StaticResource HexBrush}}">
+                  <TextBlock.Style>
+                    <!-- A kind the user gave is set in italics (the tooltip says so and what the classification was). -->
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource Cell}">
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding KindOverridden}" Value="True">
+                          <Setter Property="FontStyle" Value="Italic" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
