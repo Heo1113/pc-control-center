@@ -116,6 +116,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial string GpuText { get; set; } = "";
     [ObservableProperty] public partial string Runtimes { get; set; } = "";
     [ObservableProperty] public partial string Inside { get; set; } = "";
+
+    /// <summary><see cref="Inside"/> is what processes of this kind usually hold, not something found in this one.</summary>
+    [ObservableProperty] public partial bool InsideIsGeneric { get; set; }
     [ObservableProperty] public partial string Adapter { get; set; } = "";
     [ObservableProperty] public partial bool IsStrata { get; set; }
     /// <summary>Why the row's identity is uncertain; null when it was verified (no tooltip then).</summary>
@@ -615,10 +618,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.Gpu = p.Engines?.Busiest ?? -1;
         row.GpuText = p.Engines is { } e ? e.Busiest.ToString("0", Ko) : "";
         row.Runtimes = detail is null ? "" : detail.AccessDenied ? "권한 없음" : string.Join(" · ", detail.Runtimes.Take(3));
-        row.Inside = model is not null && kind.Kind is ProcessKind.Llm or ProcessKind.Ai
+        var found = model is not null && kind.Kind is ProcessKind.Llm or ProcessKind.Ai
             ? string.Join(" · ", new[] { model.Name, ParamsLabel(model.Parameters), model.Quantization }.Where(x => !string.IsNullOrEmpty(x)))
             : strata && _strataSnapshot?.Model?.Id is { } id ? id
-            : detail?.Models.FirstOrDefault()?.FileName ?? InsideOf(kind.Kind);
+            : detail?.Models.FirstOrDefault()?.FileName;
+        row.Inside = found ?? InsideOf(kind.Kind);
+        row.InsideIsGeneric = found is null && row.Inside.Length > 0;
         row.Adapter = s.Adapter(p.Luid)?.Info?.Name ?? GpuLuid.Format(p.Luid);
         row.IsStrata = strata;
         row.IsUncertain = entry?.State is not ProcessIdentityState.Verified;

@@ -30,6 +30,17 @@
     <Style x:Key="MutedCell" TargetType="TextBlock" BasedOn="{StaticResource Cell}">
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
     </Style>
+    <!-- Found in the process (model file, Strata's model) in plain text; what the kind usually holds in italics. -->
+    <Style x:Key="InsideCell" TargetType="TextBlock" BasedOn="{StaticResource Cell}">
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding InsideIsGeneric}" Value="True">
+          <Setter Property="FontStyle" Value="Italic" />
+          <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+          <Setter Property="ToolTip" Value="이 종류의 프로세스가 보통 담는 것입니다. 이 프로세스에서 확인한 내용이 아닙니다." />
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
     <Style x:Key="StatLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
@@ -418,7 +429,7 @@
           <DataGridTextColumn Header="공유" Binding="{Binding SharedText}" SortMemberPath="Shared" Width="90" ElementStyle="{StaticResource Num}" />
           <DataGridTextColumn Header="GPU %" Binding="{Binding GpuText}" SortMemberPath="Gpu" Width="64" ElementStyle="{StaticResource Num}" />
           <DataGridTextColumn Header="런타임" Binding="{Binding Runtimes}" SortMemberPath="Runtimes" Width="*" MinWidth="90" ElementStyle="{StaticResource Cell}" />
-          <DataGridTextColumn Header="안에 든 것" Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource MutedCell}" />
+          <DataGridTextColumn Header="안에 든 것" Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource InsideCell}" />
           <DataGridTextColumn Header="GPU" Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="130" ElementStyle="{StaticResource MutedCell}"
                               Visibility="{Binding Data.ShowGpuColumn, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}" />
         </DataGrid.Columns>
