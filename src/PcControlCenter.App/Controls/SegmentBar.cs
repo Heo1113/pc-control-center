@@ -129,7 +129,10 @@ public sealed class SegmentBar : FrameworkElement
     }
 }
 
-/// <summary>A thin fill showing a share (0-1), drawn behind a number in a table cell (as Process Explorer does).</summary>
+/// <summary>
+/// A thin bar under a right-aligned number: its length is the value's share (0-1) of the card, growing leftwards from the
+/// number's right edge so it reads with the number. Nothing is drawn for 0; a tiny share still shows a 2 px mark.
+/// </summary>
 public sealed class ShareBar : FrameworkElement
 {
     public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(
@@ -137,6 +140,12 @@ public sealed class ShareBar : FrameworkElement
 
     public static readonly DependencyProperty ColorProperty = DependencyProperty.Register(
         nameof(Color), typeof(string), typeof(ShareBar), new FrameworkPropertyMetadata("#3987E5", FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>Space kept free on the right (the number's margin), so the bar ends under the number's last digit.</summary>
+    public static readonly DependencyProperty EndMarginProperty = DependencyProperty.Register(
+        nameof(EndMargin), typeof(double), typeof(ShareBar), new FrameworkPropertyMetadata(10.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public ShareBar() => SnapsToDevicePixels = true;
 
     public double Value
     {
@@ -150,16 +159,26 @@ public sealed class ShareBar : FrameworkElement
         set => SetValue(ColorProperty, value);
     }
 
+    public double EndMargin
+    {
+        get => (double)GetValue(EndMarginProperty);
+        set => SetValue(EndMarginProperty, value);
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var v = Math.Clamp(Value, 0, 1);
-        if (v <= 0 || ActualWidth <= 0)
+        var span = ActualWidth - EndMargin - 6;
+        if (v <= 0 || span <= 0 || ActualHeight < 6)
         {
             return;
         }
 
-        dc.PushOpacity(0.28);
-        dc.DrawRectangle(SegmentBar.BrushOf(Color), null, new Rect(ActualWidth * (1 - v), 0, ActualWidth * v, ActualHeight));
+        const double Thickness = 3;
+        var width = Math.Max(2, span * v);
+        var right = ActualWidth - EndMargin;
+        dc.PushOpacity(0.85);
+        dc.DrawRoundedRectangle(SegmentBar.BrushOf(Color), null, new Rect(right - width, ActualHeight - Thickness - 3, width, Thickness), 1.5, 1.5);
         dc.Pop();
     }
 }

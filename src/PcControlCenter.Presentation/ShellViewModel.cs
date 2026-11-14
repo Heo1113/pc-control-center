@@ -106,7 +106,9 @@ public sealed partial class ShellViewModel : ObservableObject
             key => Navigate(key), _time);
         Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
-        GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time);
+        // The page's layout (sort, columns, panel size) is remembered in the shell settings, which the settings page saves too.
+        GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time,
+            runtime.Settings.GpuMemoryPage, () => runtime.SettingsStore.Save(runtime.Settings));
         History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);

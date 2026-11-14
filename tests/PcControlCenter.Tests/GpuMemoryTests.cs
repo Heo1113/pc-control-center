@@ -800,6 +800,186 @@ public class GpuMemoryViewModelTests
     }
 
     [Fact]
+    public void A_legend_entry_filters_the_table_by_kind_and_the_same_entry_shows_all_again()
+    {
+        var (vm, _, _) = OpenWithStrata();
+        var all = vm.Processes.Count;
+        var browser = vm.Adapters[0].View.Legend.Single(l => l.Label == "브라우저");
+        Assert.Equal(ProcessKind.Browser, browser.Kind);
+        Assert.Null(vm.Adapters[0].View.Legend.Single(l => l.Label == "나뉘지 않음").Kind); // computed, not a kind: not a filter
+
+        vm.FilterKindCommand.Execute(browser.Kind);
+        Assert.Equal(["chrome.exe"], vm.Processes.Select(r => r.Name));
+        Assert.Equal("종류: 브라우저", vm.KindFilterText);
+        Assert.Equal($"1/{all}개 표시", vm.CountText);
+        Assert.True(vm.Adapters[0].View.Legend.Single(l => l.Label == "브라우저").IsActive);
+        Assert.Equal("chrome.exe", vm.SelectedProcess!.Name); // the selection follows the filter
+
+        vm.FilterKindCommand.Execute(browser.Kind);
+        Assert.Null(vm.KindFilter);
+        Assert.Equal("", vm.KindFilterText);
+        Assert.Equal(all, vm.Processes.Count);
+
+        vm.FilterKindCommand.Execute(ProcessKind.Video);
+        Assert.Empty(vm.Processes);
+        Assert.Equal("영상 종류의 프로세스가 없습니다", vm.EmptyText);
+        vm.ClearKindFilterCommand.Execute(null);
+        Assert.Equal(all, vm.Processes.Count);
+    }
+
+    [Fact]
+    public void Find_looks_at_kind_runtimes_and_found_contents_but_not_at_generic_descriptions()
+    {
+        var (vm, _, _) = OpenWithStrata();
+        vm.Filter = "ggml";
+        Assert.Equal(["strata.exe"], vm.Processes.Select(r => r.Name));
+        vm.Filter = "qwen";
+        Assert.Equal(["strata.exe"], vm.Processes.Select(r => r.Name));
+        vm.Filter = "브라우저";
+        Assert.Equal(["chrome.exe"], vm.Processes.Select(r => r.Name));
+        vm.Filter = "텍스처"; // only in the italic "what this kind usually holds" text
+        Assert.Empty(vm.Processes);
+        Assert.Equal("'텍스처'와 맞는 프로세스가 없습니다", vm.EmptyText);
+        vm.ClearFilterCommand.Execute(null);
+        Assert.Equal("", vm.Filter);
+        Assert.NotEmpty(vm.Processes);
+    }
+
+    [Fact]
+    public void A_restarted_process_keeps_the_selection_and_a_vanished_one_is_reported_not_replaced()
+    {
+        var start = GpuMemoryFixtures.Start.AddMinutes(-30);
+        var processes = new List<(int Pid, string Name, long Dedicated)> { (100, "llama-server.exe", 6 * GiB), (200, "app.exe", 512 * MiB) };
+        var (vm, monitor, time) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            processes: [.. processes.Select(p => new GpuProcessMemory { ProcessId = p.Pid, Luid = 1, DedicatedBytes = p.Dedicated, SharedBytes = 0, CommittedBytes = p.Dedicated })],
+            table: processes.ToDictionary(p => p.Pid, p => new ProcessEntry(p.Pid, 10, p.Name, start.AddSeconds(p.Pid), ProcessIdentityState.Verified)))));
+        void Read()
+        {
+            time.Advance(TimeSpan.FromSeconds(2));
+            monitor.ReadNow();
+            vm.Refresh();
+        }
+
+        Read();
+        Assert.Equal(100, vm.SelectedProcess!.Pid);
+
+        processes[0] = (300, "llama-server.exe", 6 * GiB); // restarted: a new PID with the same name
+        Read();
+        Assert.Equal(300, vm.SelectedProcess!.Pid);
+
+        processes.RemoveAt(0); // gone, and no process of that name
+        Read();
+        Assert.Null(vm.SelectedProcess); // not silently replaced by app.exe
+        Assert.Null(vm.Detail);
+        Assert.Contains("llama-server.exe (PID 300)", vm.DetailPlaceholder, StringComparison.Ordinal);
+        Read();
+        Assert.Null(vm.SelectedProcess);
+
+        processes.Add((400, "llama-server.exe", 5 * GiB)); // back later
+        Read();
+        Assert.Equal(400, vm.SelectedProcess!.Pid);
+        Assert.DoesNotContain("사라졌습니다", vm.DetailPlaceholder, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Rows_and_details_copy_as_text_with_their_kind_of_value()
+    {
+        var (vm, _, _) = OpenWithStrata();
+        var engine = Row(vm, "strata.exe");
+        var fields = GpuMemoryViewModel.RowText(engine).Split('\t');
+        Assert.Equal(9, fields.Length);
+        Assert.Equal(["strata.exe", "7412", "LLM"], fields[..3]);
+        Assert.EndsWith(" GiB", fields[3], StringComparison.Ordinal);
+        Assert.EndsWith("%", fields[5], StringComparison.Ordinal);
+        Assert.Equal("ggml · CUDA", fields[6]);
+        Assert.Equal("MOCK Qwen3 14B · 14.8B · Q4_K_M", fields[7]);
+        Assert.Equal("MOCK NVIDIA GeForce RTX 5080", fields[8]);
+        Assert.Equal("", GpuMemoryViewModel.RowText(Row(vm, "chrome.exe")).Split('\t')[7]); // generic descriptions are not copied as facts
+
+        var detail = vm.DetailText()!;
+        Assert.StartsWith("strata.exe (PID 7412) · LLM — 분류 근거:", detail, StringComparison.Ordinal);
+        Assert.Contains("구성 (추정): 가중치 8.00 GiB", detail, StringComparison.Ordinal);
+        Assert.Contains("Strata 보고: 모델 test-model-30b", detail, StringComparison.Ordinal);
+        Assert.Contains("출처 MOCK 가상 GPU 메모리 (측정 아님)", detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_device_strip_shows_free_memory_and_rows_short_adapter_names()
+    {
+        var (vm, _, _) = OpenWithStrata();
+        Assert.StartsWith("여유 ", vm.Adapters[0].View.FreeText, StringComparison.Ordinal);
+        Assert.Equal("여유 98 MiB", vm.Adapters[1].View.FreeText); // 128 MiB − 30 MiB
+        var engine = Row(vm, "strata.exe");
+        Assert.Equal("MOCK RTX 5080", engine.Adapter);
+        Assert.Equal("MOCK NVIDIA GeForce RTX 5080", engine.AdapterFull);
+        Assert.StartsWith("카드 VRAM의 ", engine.DedicatedShareText, StringComparison.Ordinal);
+        Assert.Equal("카드 VRAM의 1% 미만", Row(vm, "System").DedicatedShareText); // 12 MiB of 15.7 GiB
+        Assert.StartsWith("VRAM의 ", vm.Detail!.DedicatedShare, StringComparison.Ordinal);
+        Assert.StartsWith("분류 근거:", vm.Detail.KindBasis, StringComparison.Ordinal);
+        Assert.DoesNotContain("분류 근거", vm.Detail.Subtitle, StringComparison.Ordinal);
+
+        Assert.Equal("RTX 5080", GpuMemoryViewModel.ShortAdapterName("NVIDIA GeForce RTX 5080"));
+        Assert.Equal("Radeon RX 7900 XTX", GpuMemoryViewModel.ShortAdapterName("AMD Radeon(TM) RX 7900 XTX"));
+        Assert.Equal("Arc A770 Graphics", GpuMemoryViewModel.ShortAdapterName("Intel(R) Arc(TM) A770 Graphics"));
+        Assert.Equal("Basic Render Driver", GpuMemoryViewModel.ShortAdapterName("Microsoft Basic Render Driver"));
+        Assert.Equal("NVIDIA", GpuMemoryViewModel.ShortAdapterName("NVIDIA")); // nothing left: the original
+    }
+
+    [Fact]
+    public void The_strata_status_selects_the_strata_process_even_when_a_filter_hides_it()
+    {
+        var (vm, _, _) = OpenWithStrata();
+        vm.Filter = "chrome";
+        Assert.True(vm.ShowStrataCommand.CanExecute(null));
+
+        vm.ShowStrataCommand.Execute(null);
+
+        Assert.Equal("", vm.Filter);
+        Assert.Equal("strata.exe", vm.SelectedProcess!.Name);
+        Assert.Contains(vm.SelectedProcess, vm.Processes);
+    }
+
+    [Fact]
+    public void The_layout_is_remembered_in_the_shell_settings()
+    {
+        var page = new GpuMemoryPageSettings();
+        var saves = 0;
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        GpuMemoryViewModel New() => new(new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time), GpuMemoryFixtures.Hub(time),
+            () => new StrataContext(null, "꺼짐"), time, page, () => saves++);
+        var vm = New();
+        Assert.Equal(("Dedicated", true), (vm.SortColumn, vm.SortDescending));
+
+        vm.SetSort("Shared", false);
+        vm.SetSort("Shared", false); // unchanged: not written again
+        vm.SetSort("Bogus", true); // unknown column: ignored
+        vm.SetColumnHidden("Runtimes", true);
+        vm.SetColumnHidden("Name", true); // the name column stays
+        vm.SetDetailHeight(260.4);
+        vm.ShowAll = true;
+
+        Assert.Equal(("Shared", false), (page.SortColumn, page.SortDescending));
+        Assert.Equal(["Runtimes"], page.HiddenColumns);
+        Assert.Equal(260, page.DetailHeight);
+        Assert.True(page.ShowAll);
+        Assert.Equal(4, saves);
+
+        var again = New(); // a later visit or start
+        Assert.True(again.ShowAll);
+        Assert.Equal(("Shared", false), (again.SortColumn, again.SortDescending));
+        Assert.Contains("Runtimes", again.HiddenColumns);
+        again.ResetColumns();
+        again.SetDetailHeight(-5);
+        Assert.Empty(page.HiddenColumns);
+        Assert.Equal(0, page.DetailHeight);
+
+        var failing = new GpuMemoryViewModel(new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time), GpuMemoryFixtures.Hub(time),
+            () => new StrataContext(null, "꺼짐"), time, new GpuMemoryPageSettings(), () => throw new IOException("disk full (test)"));
+        failing.SetSort("Pid", false); // the page keeps working; only the remembered layout is lost
+        Assert.Equal("Pid", failing.SortColumn);
+    }
+
+    [Fact]
     public void Help_lists_where_each_value_comes_from()
     {
         var (vm, _, _) = Create();
@@ -886,6 +1066,36 @@ public class GpuMemoryShellTests
         var monitor = GpuMemoryMonitor.Create(enabled: false, useMock: false);
         Assert.Equal(GpuMemoryMonitorState.Disabled, monitor.Health.State);
         Assert.Contains("꺼져", monitor.Health.UnavailableReason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_page_layout_survives_a_save_and_bad_values_are_dropped()
+    {
+        using var temp = new TempDir();
+        var path = temp.Sub("shell-settings.json");
+        var store = new ShellSettingsStore(path);
+        File.WriteAllText(path, """{ "SchemaVersion": 1 }""");
+        var older = store.Load().Settings.GpuMemoryPage; // files written before the page remembered its layout
+        Assert.Equal((null, true, false, 0.0), (older.SortColumn, older.SortDescending, older.ShowAll, older.DetailHeight));
+        Assert.Empty(older.HiddenColumns);
+
+        File.WriteAllText(path, """
+            { "SchemaVersion": 1, "GpuMemoryPage": { "SortColumn": "Bogus", "SortDescending": false, "HiddenColumns": ["Name", "Bogus", "Pid", "Pid"],
+              "DetailHeight": -1, "ShowAll": true } }
+            """);
+        var damaged = store.Load().Settings.GpuMemoryPage;
+        Assert.Null(damaged.SortColumn);
+        Assert.True(damaged.SortDescending);
+        Assert.Equal(["Pid"], damaged.HiddenColumns);
+        Assert.Equal(0, damaged.DetailHeight);
+        Assert.True(damaged.ShowAll);
+
+        var settings = store.Load().Settings;
+        settings.GpuMemoryPage.SortColumn = "Gpu";
+        settings.GpuMemoryPage.DetailHeight = 300;
+        store.Save(settings);
+        var reloaded = store.Load().Settings.GpuMemoryPage;
+        Assert.Equal(("Gpu", 300.0), (reloaded.SortColumn, reloaded.DetailHeight));
     }
 
     private static async Task<bool> Eventually(Func<bool> condition, TimeSpan timeout)

@@ -8,6 +8,7 @@
   <UserControl.Resources>
     <c:BindingProxy x:Key="Proxy" Data="{Binding}" />
     <c:HexBrushConverter x:Key="HexBrush" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#1FFFFFFF" />
 
     <Style x:Key="Num" TargetType="TextBlock">
       <Setter Property="HorizontalAlignment" Value="Right" />
@@ -40,6 +41,9 @@
         </DataTrigger>
       </Style.Triggers>
     </Style>
+    <Style x:Key="AdapterCell" TargetType="TextBlock" BasedOn="{StaticResource MutedCell}">
+      <Setter Property="ToolTip" Value="{Binding AdapterFull}" />
+    </Style>
     <Style x:Key="StatLabel" TargetType="TextBlock">
       <Setter Property="FontSize" Value="11" />
       <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
@@ -67,6 +71,39 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Background" Value="{StaticResource OriginBrush}" />
     </Style>
+    <Style x:Key="Stat" TargetType="StackPanel">
+      <Setter Property="Margin" Value="0,4,24,4" />
+    </Style>
+
+    <!-- A flat button: no chrome until hovered (toolbar links, small icon buttons, legend entries). -->
+    <Style x:Key="FlatButton" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <ContentPresenter VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource HoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource TextMutedBrush}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Cursor" Value="Arrow" />
+                <Setter TargetName="Chrome" Property="Background" Value="Transparent" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
 
     <!-- Legend entry: swatch, label, value; estimates hatched and italic. -->
     <DataTemplate x:Key="Legend" DataType="{x:Type p:LegendItem}">
@@ -79,9 +116,32 @@
       </StackPanel>
     </DataTemplate>
 
-    <Style x:Key="Stat" TargetType="StackPanel">
-      <Setter Property="Margin" Value="0,4,24,4" />
-    </Style>
+    <!-- Legend entry of the device strip: a process kind filters the table when clicked; the active one is outlined. -->
+    <DataTemplate x:Key="AdapterLegend" DataType="{x:Type p:LegendItem}">
+      <Button Command="{Binding Data.FilterKindCommand, Source={StaticResource Proxy}}" CommandParameter="{Binding Kind}" Margin="0,1,4,0" Padding="5,1,7,1"
+              AutomationProperties.Name="{Binding Label}">
+        <Button.Style>
+          <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="ToolTip" Value="이 종류만 표에 보기 (다시 누르면 전체)" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding Kind}" Value="{x:Null}">
+                <Setter Property="IsHitTestVisible" Value="False" />
+                <Setter Property="Focusable" Value="False" />
+              </DataTrigger>
+              <DataTrigger Binding="{Binding IsActive}" Value="True">
+                <Setter Property="Background" Value="{StaticResource OriginBrush}" />
+                <Setter Property="ToolTip" Value="표에 이 종류만 보는 중 (다시 누르면 전체)" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </Button.Style>
+        <StackPanel Orientation="Horizontal">
+          <c:Swatch Color="{Binding ColorHex}" IsEstimate="{Binding IsEstimate}" Margin="0,0,5,0" />
+          <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+          <TextBlock Text="{Binding Value}" FontSize="12" Margin="5,0,0,0" Foreground="{StaticResource TextPrimaryBrush}" Typography.NumeralAlignment="Tabular" />
+        </StackPanel>
+      </Button>
+    </DataTemplate>
 
     <ItemsPanelTemplate x:Key="Wrap">
       <WrapPanel />
@@ -119,8 +179,17 @@
                 <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Num}" Margin="0" FontSize="13"
                            Foreground="{StaticResource TextPrimaryBrush}" />
               </Grid>
-              <ItemsControl ItemsSource="{Binding Legend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}"
-                            Focusable="False" Margin="34,3,0,2" />
+              <Grid Margin="0,3,0,2">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="34" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="132" />
+                </Grid.ColumnDefinitions>
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding Legend}" ItemTemplate="{StaticResource AdapterLegend}" ItemsPanel="{StaticResource Wrap}"
+                              Focusable="False" Margin="-5,0,0,0" />
+                <TextBlock Grid.Column="2" Text="{Binding FreeText}" Style="{StaticResource Num}" Margin="0" VerticalAlignment="Top" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}" ToolTip="카드 용량 − 사용량 (계산)" />
+              </Grid>
               <TextBlock Text="{Binding LegendNote}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="34,0,0,2"
                          Visibility="{Binding LegendNote, Converter={StaticResource NotEmptyToVisibility}}" />
               <Grid Margin="0,2,0,0">
@@ -168,7 +237,7 @@
             <c:SegmentBar Grid.Column="2" Segments="{Binding DedicatedSegments}" Height="8" VerticalAlignment="Center" ToolTip="{Binding LegendText}"
                           Visibility="{Binding HasCapacity, Converter={StaticResource BoolToVisibility}}" />
             <TextBlock Grid.Column="3" Text="{Binding DedicatedText}" Style="{StaticResource Num}" Margin="0" FontSize="12"
-                       Foreground="{StaticResource TextPrimaryBrush}" />
+                       Foreground="{StaticResource TextPrimaryBrush}" ToolTip="{Binding FreeText}" />
             <TextBlock Grid.Column="4" Margin="18,0,0,0" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
                        Typography.NumeralAlignment="Tabular" ToolTip="GPU가 쓰는 시스템 RAM. LLM이 RAM으로 오프로딩한 양과 같은 뜻이 아닙니다.">
               <Run Text="공유" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
@@ -188,27 +257,37 @@
     <DataTemplate x:Key="DetailTemplate" DataType="{x:Type p:ProcessDetailView}">
       <Grid>
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="2*" />
           <ColumnDefinition Width="16" />
-          <ColumnDefinition Width="300" />
+          <ColumnDefinition Width="*" MinWidth="280" MaxWidth="560" />
         </Grid.ColumnDefinitions>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel>
-            <StackPanel Orientation="Horizontal">
-              <c:Swatch Color="{Binding KindColor}" Width="10" Height="10" Margin="0,0,8,0" />
-              <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
-              <TextBlock Text="{Binding Pid, StringFormat='PID {0}'}" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource StatLabel}" FontSize="12" />
-              <TextBlock Text="{Binding Kind}" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
-                         Foreground="{Binding KindColor, Converter={StaticResource HexBrush}}" />
-              <Border Style="{StaticResource Chip}" Visibility="{Binding IsStrata, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding StrataEvidence}">
+            <DockPanel LastChildFill="False">
+              <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnCopyDetail" ToolTip="이 프로세스의 값을 텍스트로 복사 (출처·추정 표시 포함)"
+                      AutomationProperties.Name="상세 복사">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="&#xE8C8;" Style="{StaticResource Icon}" FontSize="12" />
+                  <TextBlock Text="복사" FontSize="12" Margin="5,0,0,0" />
+                </StackPanel>
+              </Button>
+              <c:Swatch DockPanel.Dock="Left" Color="{Binding KindColor}" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                         VerticalAlignment="Center" />
+              <TextBlock DockPanel.Dock="Left" Text="{Binding Pid, StringFormat='PID {0}'}" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource StatLabel}" FontSize="12" />
+              <TextBlock DockPanel.Dock="Left" Text="{Binding Kind}" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                         Foreground="{Binding KindColor, Converter={StaticResource HexBrush}}" ToolTip="{Binding KindBasis}" />
+              <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" Visibility="{Binding IsStrata, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding StrataEvidence}">
                 <TextBlock Text="Strata" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
               </Border>
-            </StackPanel>
-            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" Margin="0,2,0,2" />
+            </DockPanel>
+            <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" Margin="0,1,0,2" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Subtitle}" />
             <WrapPanel>
               <StackPanel Style="{StaticResource Stat}" ToolTip="GPU 로컬 메모리 (Windows: Local Usage)">
                 <TextBlock Text="전용" Style="{StaticResource StatLabel}" />
                 <TextBlock Text="{Binding Dedicated}" Style="{StaticResource StatValue}" />
+                <TextBlock Text="{Binding DedicatedShare}" Style="{StaticResource StatLabel}" Visibility="{Binding DedicatedShare, Converter={StaticResource NotEmptyToVisibility}}" />
               </StackPanel>
               <StackPanel Style="{StaticResource Stat}" ToolTip="GPU가 쓰는 시스템 RAM (Non Local Usage). LLM이 RAM으로 오프로딩한 양과 같은 뜻이 아닙니다.">
                 <TextBlock Text="공유" Style="{StaticResource StatLabel}" />
@@ -297,25 +376,51 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
-      <RowDefinition Height="3*" MinHeight="120" />
+      <RowDefinition x:Name="TableRow" Height="3*" MinHeight="120" />
       <RowDefinition Height="6" />
-      <RowDefinition Height="2*" MinHeight="170" MaxHeight="380" />
+      <RowDefinition x:Name="DetailRow" Height="2*" MinHeight="170" MaxHeight="900" />
     </Grid.RowDefinitions>
 
-    <!-- Toolbar: filter on the left; Strata, freshness, pause and help on the right. -->
+    <!-- Toolbar: find and filters on the left; Strata, freshness, pause and help on the right. -->
     <DockPanel Margin="0,0,0,6" LastChildFill="False">
-      <Grid DockPanel.Dock="Left" Width="210">
+      <Grid DockPanel.Dock="Left" Width="250">
         <TextBox x:Name="FilterBox" Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" VerticalContentAlignment="Center"
-                 AutomationProperties.Name="프로세스 이름 또는 PID로 찾기" ToolTip="이름 또는 PID (Ctrl+F)" />
-        <TextBlock Text="이름 또는 PID" Margin="11,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Foreground="{StaticResource TextMutedBrush}"
+                 AutomationProperties.Name="이름, PID, 종류, 런타임 또는 모델로 찾기"
+                 ToolTip="이름·PID·종류·런타임·모델로 찾기 (Ctrl+F). Esc로 지우고 Enter나 ↓로 표로 이동" />
+        <TextBlock Text="찾기: 이름·PID·종류·모델" Margin="11,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Foreground="{StaticResource TextMutedBrush}"
                    Visibility="{Binding Filter, Converter={StaticResource EmptyToVisibility}}" />
+        <!-- The theme's own clear button shows while the box has focus; this one keeps the filter visible and clearable after. -->
+        <Button HorizontalAlignment="Right" Margin="0,0,4,0" Padding="6,4" Command="{Binding ClearFilterCommand}" ToolTip="찾기 지우기 (Esc)"
+                AutomationProperties.Name="찾기 지우기">
+          <Button.Style>
+            <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Filter}" Value="">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=FilterBox}" Value="True">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </Button.Style>
+          <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="9" />
+        </Button>
       </Grid>
       <CheckBox DockPanel.Dock="Left" Content="작은 프로세스 포함" IsChecked="{Binding ShowAll}" Margin="12,0,0,0" VerticalAlignment="Center"
                 ToolTip="전용 1 MiB, 공유·커밋 16 MiB 미만인 프로세스도 표시" />
+      <Button DockPanel.Dock="Left" Style="{StaticResource FlatButton}" Command="{Binding ClearKindFilterCommand}" Margin="10,0,0,0" Padding="8,3"
+              Background="{StaticResource OriginBrush}" ToolTip="종류 필터 해제" AutomationProperties.Name="종류 필터 해제"
+              Visibility="{Binding KindFilterText, Converter={StaticResource NotEmptyToVisibility}}">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="{Binding KindFilterText}" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" />
+          <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="9" Margin="7,0,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+        </StackPanel>
+      </Button>
       <TextBlock DockPanel.Dock="Left" Text="{Binding CountText}" Margin="12,0,0,0" VerticalAlignment="Center" Style="{StaticResource Caption}" />
 
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}" IsChecked="{Binding HelpOpen}"
-                    ToolTip="값의 뜻과 출처" AutomationProperties.Name="도움말">
+                    ToolTip="사용법과 값의 뜻" AutomationProperties.Name="도움말">
         <TextBlock Text="&#xE897;" Style="{StaticResource Icon}" />
       </ToggleButton>
       <ToggleButton DockPanel.Dock="Right" Style="{StaticResource ToolToggle}" IsChecked="{Binding IsPaused}"
@@ -329,15 +434,20 @@
               Visibility="{Binding IsMock, Converter={StaticResource BoolToVisibility}}" ToolTip="테스트용 가상 값입니다 (--mock-sensors). 실제 측정이 아닙니다.">
         <TextBlock Text="MOCK" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource WarningBrush}" />
       </Border>
-      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center" ToolTip="{Binding StatusToolTip}"
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center" ToolTip="{Binding StatusToolTip}"
                   AutomationProperties.AutomationId="GpuMemoryStatus">
         <Ellipse Style="{StaticResource StatusDot}" Width="8" Height="8" Fill="{Binding StatusLevel, Converter={StaticResource LevelBrush}}" />
         <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Typography.NumeralAlignment="Tabular" />
       </StackPanel>
-      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" ToolTip="{Binding StrataToolTip}">
-        <Ellipse Style="{StaticResource StatusDot}" Width="8" Height="8" Fill="{Binding StrataLevel, Converter={StaticResource LevelBrush}}" />
-        <TextBlock Text="{Binding StrataText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
-      </StackPanel>
+      <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding ShowStrataCommand}" ToolTip="{Binding StrataToolTip}"
+              ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Strata 프로세스 선택">
+        <StackPanel Orientation="Horizontal">
+          <Ellipse Style="{StaticResource StatusDot}" Width="8" Height="8" Fill="{Binding StrataLevel, Converter={StaticResource LevelBrush}}" />
+          <TextBlock Text="{Binding StrataText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+        </StackPanel>
+      </Button>
+      <TextBlock x:Name="Notice" DockPanel.Dock="Right" Margin="0,0,10,0" VerticalAlignment="Center" FontSize="12" Visibility="Collapsed"
+                 Foreground="{StaticResource TextPrimaryBrush}" AutomationProperties.LiveSetting="Polite" />
     </DockPanel>
 
     <!-- One strip per GPU: memory bar by process kind, shared memory, engine activity. -->
@@ -357,7 +467,7 @@
       </Grid.ColumnDefinitions>
       <DataGrid x:Name="Table" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
                 AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="None" CanUserAddRows="False"
-                CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="28"
+                CanUserResizeRows="False" CanUserReorderColumns="False" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="28"
                 AutomationProperties.AutomationId="GpuMemoryProcesses">
         <DataGrid.Resources>
           <!-- The theme draws a selected row with these two brushes (its bright accent fill with dark text). A quiet tint
@@ -366,7 +476,10 @@
           <SolidColorBrush x:Key="DataGridRowSelectedForegroundThemeBrush" Color="#F0EFEC" />
         </DataGrid.Resources>
         <DataGrid.Columns>
-          <DataGridTemplateColumn Header="프로세스" SortMemberPath="Name" Width="1.5*" MinWidth="150">
+          <DataGridTemplateColumn SortMemberPath="Name" Width="1.5*" MinWidth="150">
+            <DataGridTemplateColumn.Header>
+              <TextBlock Text="프로세스" ToolTip="실행 파일 이름. 흐린 이름은 시작 시각을 확인하지 못한 프로세스" />
+            </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
                 <StackPanel Orientation="Horizontal" Margin="6,0,0,0" ToolTip="{Binding Identity}">
@@ -389,8 +502,15 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="PID" Binding="{Binding Pid}" SortMemberPath="Pid" Width="64" ElementStyle="{StaticResource Num}" />
-          <DataGridTemplateColumn Header="종류" SortMemberPath="KindLabel" Width="80">
+          <DataGridTextColumn Binding="{Binding Pid}" SortMemberPath="Pid" Width="64" ElementStyle="{StaticResource Num}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="PID" ToolTip="프로세스 ID. 찾기 칸에 PID를 넣으면 그 프로세스만" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTemplateColumn SortMemberPath="KindLabel" Width="80">
+            <DataGridTemplateColumn.Header>
+              <TextBlock Text="종류" ToolTip="불러온 라이브러리·모델 파일·엔진·이름으로 분류한 것 (측정 아님). 근거는 칸의 툴팁" />
+            </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
                 <TextBlock Text="{Binding KindLabel}" Style="{StaticResource Cell}" ToolTip="{Binding KindBasis}"
@@ -398,22 +518,44 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="전용" SortMemberPath="Dedicated" Width="104">
+          <DataGridTemplateColumn SortMemberPath="Dedicated" Width="104">
+            <DataGridTemplateColumn.Header>
+              <TextBlock Text="전용" ToolTip="GPU 로컬 메모리(VRAM), Windows Local Usage. 아래 막대는 카드 용량 대비" />
+            </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
-                <Grid>
-                  <c:ShareBar Value="{Binding DedicatedShare}" Color="{Binding KindColor}" Margin="0,4,6,4" />
+                <Grid ToolTip="{Binding DedicatedShareText}">
+                  <c:ShareBar Value="{Binding DedicatedShare}" Color="{Binding KindColor}" />
                   <TextBlock Text="{Binding DedicatedText}" Style="{StaticResource Num}" FontWeight="SemiBold" />
                 </Grid>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTextColumn Header="공유" Binding="{Binding SharedText}" SortMemberPath="Shared" Width="90" ElementStyle="{StaticResource Num}" />
-          <DataGridTextColumn Header="GPU %" Binding="{Binding GpuText}" SortMemberPath="Gpu" Width="64" ElementStyle="{StaticResource Num}" />
-          <DataGridTextColumn Header="런타임" Binding="{Binding Runtimes}" SortMemberPath="Runtimes" Width="*" MinWidth="90" ElementStyle="{StaticResource Cell}" />
-          <DataGridTextColumn Header="안에 든 것" Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource InsideCell}" />
-          <DataGridTextColumn Header="GPU" Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="130" ElementStyle="{StaticResource MutedCell}"
-                              Visibility="{Binding Data.ShowGpuColumn, Source={StaticResource Proxy}, Converter={StaticResource BoolToVisibility}}" />
+          <DataGridTextColumn Binding="{Binding SharedText}" SortMemberPath="Shared" Width="90" ElementStyle="{StaticResource Num}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="공유" ToolTip="GPU가 쓰는 시스템 RAM, Windows Non Local Usage. 오프로딩의 증거는 아님" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Binding="{Binding GpuText}" SortMemberPath="Gpu" Width="64" ElementStyle="{StaticResource Num}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="GPU %" ToolTip="가장 바쁜 엔진의 사용률 (작업 관리자와 같은 기준). 화면을 보는 동안만 읽음" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Binding="{Binding Runtimes}" SortMemberPath="Runtimes" Width="*" MinWidth="90" ElementStyle="{StaticResource Cell}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="런타임" ToolTip="불러온 DLL 이름으로 감지한 런타임. GPU 작업의 증거는 아님" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="120" ElementStyle="{StaticResource InsideCell}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="내용" ToolTip="매핑된 모델 파일이나 Strata 모델. 기울임꼴은 종류에 따른 일반적인 내용 (확인한 것이 아님)" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="120" ElementStyle="{StaticResource AdapterCell}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="GPU" ToolTip="이 메모리가 있는 어댑터 (어댑터가 둘 이상일 때)" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
         </DataGrid.Columns>
       </DataGrid>
       <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,48,16,0"
@@ -431,14 +573,26 @@
               AutomationProperties.AutomationId="GpuMemoryHelp">
         <DockPanel>
           <DockPanel DockPanel.Dock="Top" Margin="14,8,6,2">
-            <Button DockPanel.Dock="Right" Command="{Binding ToggleHelpCommand}" Padding="7,4" Background="Transparent" BorderThickness="0"
+            <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding ToggleHelpCommand}" Padding="7,4"
                     ToolTip="닫기" AutomationProperties.Name="도움말 닫기">
               <TextBlock Text="&#xE711;" Style="{StaticResource Icon}" FontSize="10" />
             </Button>
-            <TextBlock Text="이 화면의 값" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
+            <TextBlock Text="사용법" Style="{StaticResource CardTitle}" VerticalAlignment="Center" />
           </DockPanel>
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="14,0,14,12">
             <StackPanel>
+              <ItemsControl ItemsSource="{Binding Tips}" Focusable="False">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type p:DetailFact}">
+                    <StackPanel Margin="0,3">
+                      <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" />
+                      <TextBlock Text="{Binding Value}" Style="{StaticResource Caption}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+
+              <TextBlock Text="값의 종류" Style="{StaticResource CardTitle}" Margin="0,12,0,2" />
               <ItemsControl ItemsSource="{Binding ValueKinds}" Focusable="False">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate DataType="{x:Type p:LegendItem}">
@@ -483,17 +637,16 @@
       </Border>
     </Grid>
 
-    <GridSplitter Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="6" Background="Transparent"
-                  ResizeDirection="Rows" ToolTip="끌어서 상세 영역 크기 조절" />
+    <GridSplitter x:Name="Splitter" Grid.Row="3" HorizontalAlignment="Stretch" VerticalAlignment="Center" Height="6" Background="Transparent"
+                  ResizeDirection="Rows" ToolTip="끌어서 상세 영역 크기 조절 (두 번 누르면 기본 크기)" />
 
     <!-- The selected process. -->
     <Border Grid.Row="4" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,10">
       <Grid>
         <ContentControl Content="{Binding Detail}" ContentTemplate="{StaticResource DetailTemplate}" Focusable="False" />
-        <TextBlock Text="표에서 프로세스를 고르면 자세한 내용이 여기에 나옵니다." Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                   Visibility="{Binding Detail, Converter={StaticResource EmptyToVisibility}}" />
+        <TextBlock Text="{Binding DetailPlaceholder}" Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                   MaxWidth="640" Visibility="{Binding Detail, Converter={StaticResource EmptyToVisibility}}" />
       </Grid>
     </Border>
-
   </Grid>
 </UserControl>
