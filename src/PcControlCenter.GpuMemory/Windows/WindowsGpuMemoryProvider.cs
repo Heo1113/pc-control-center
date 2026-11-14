@@ -16,6 +16,8 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
 {
     private static readonly TimeSpan AdapterRefresh = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan UnknownLuidRefresh = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan InspectionBudget = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan DeviceMapRefresh = TimeSpan.FromSeconds(60);
 
     private readonly TimeProvider _time;
     private readonly IAppLogger _log;
@@ -23,6 +25,9 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
     private IReadOnlyList<GpuAdapterInfo> _adapters;
     private string? _adapterError;
     private long _adaptersReadAt;
+    private readonly ProcessInspector _inspector;
+    private readonly BackgroundInspection _inspection;
+    private DosDevices? _devices;
 
     public WindowsGpuMemoryProvider(TimeProvider? time = null, IAppLogger? log = null)
     {
@@ -31,6 +36,9 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
         _counters = PdhGpuCounters.Open(_time, out var error);
         _adapters = DxgiAdapters.Enumerate(out _adapterError);
         _adaptersReadAt = Stopwatch.GetTimestamp();
+        _inspector = new ProcessInspector((pid, budget) => ProcessScanner.Scan(pid, Devices(), budget), _time);
+        // Scans, file lookups and model headers run beside the counters, never in front of them.
+        _inspection = new BackgroundInspection((processes, table) => _inspector.Inspect(processes, table, InspectionBudget), _time);
         if (_counters is null)
         {
             UnavailableReason = error;
@@ -76,6 +84,29 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
                 $"형식을 알 수 없는 카운터 인스턴스 {unrecognized}개를 제외했습니다 (Windows 버전에 따라 이름 형식이 다를 수 있음)."));
         }
 
+        // Engine activity and process details cost more than the memory counters: only while the page is visible.
+        IReadOnlyDictionary<long, EngineUsage> adapterEngines = new Dictionary<long, EngineUsage>();
+        var enginesRead = false;
+        if (request.IncludeDetails && _counters.EnginesAvailable)
+        {
+            var (items, _) = _counters.CollectEngines(issues);
+            if (items is not null)
+            {
+                var (perProcess, perAdapter) = CounterInstances.MergeEngines(items, out var unknownEngines);
+                processes = [.. processes.Select(p => perProcess.TryGetValue((p.ProcessId, p.Luid), out var e) ? p with { Engines = e } : p)];
+                adapterEngines = perAdapter;
+                enginesRead = true;
+                if (unknownEngines > 0)
+                {
+                    issues.Add(new SensorIssue("Windows PDH", "engine.instances", SensorStatus.Error, $"형식을 알 수 없는 엔진 인스턴스 {unknownEngines}개를 제외했습니다."));
+                }
+            }
+        }
+        else
+        {
+            _counters.PauseEngines();
+        }
+
         RefreshAdaptersIfNeeded(processes.Select(p => p.Luid).Concat(adapterUsage.Keys));
         if (_adapterError is not null)
         {
@@ -98,6 +129,7 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
                     Info = _adapters.FirstOrDefault(a => a.Luid == luid),
                     DedicatedUsageBytes = usage.Dedicated,
                     SharedUsageBytes = usage.Shared,
+                    Engines = enginesRead ? adapterEngines.GetValueOrDefault(luid, EngineUsage.Idle) : null,
                 };
             })
             .OrderBy(a => a.Info is null ? 2 : a.Info.IsSoftware ? 1 : 0)
@@ -106,8 +138,14 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
             .ToList();
 
         // Only the listeners of watched ports (the Strata server's): other services are never looked up.
-        var listeners = request.WatchedPorts.Count == 0 ? [] : ProcessQueries.Listeners(issues).Where(l => request.WatchedPorts.Contains(l.Port)).ToList();
+        List<TcpListenerEntry>? all = null;
+        List<TcpListenerEntry> AllListeners() => all ??= ProcessQueries.Listeners(issues);
+        var listeners = request.WatchedPorts.Count == 0 ? [] : AllListeners().Where(l => request.WatchedPorts.Contains(l.Port)).ToList();
         var table = ProcessQueries.Table(processes.Select(p => p.ProcessId).Concat(listeners.Select(l => l.ProcessId)), collected.CollectedAt, issues);
+        var details = request.IncludeDetails ? _inspection.Next(processes, table, issues) : new Dictionary<int, ProcessDetail>();
+        // Local AI servers among these processes and their parents (an Ollama server holds no GPU memory itself; its runner does).
+        var servers = request.IncludeDetails ? table.Values.Where(e => LocalAiServers.IsServerName(e.Name)).Select(e => e.ProcessId).ToHashSet() : [];
+        var serviceListeners = servers.Count == 0 ? [] : AllListeners().Where(l => servers.Contains(l.ProcessId)).ToList();
         return new GpuMemorySnapshot
         {
             Timestamp = collected.CollectedAt,
@@ -119,12 +157,25 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
             Processes = processes,
             ProcessTable = table,
             Listeners = listeners,
+            ServiceListeners = serviceListeners,
+            EnginesRead = enginesRead,
+            Details = details,
             Issues = issues,
             CollectionTime = Stopwatch.GetElapsedTime(started),
         };
     }
 
     public void Dispose() => _counters?.Dispose();
+
+    private DosDevices Devices()
+    {
+        if (_devices is null || DateTimeOffset.UtcNow - _devices.LoadedAt > DeviceMapRefresh)
+        {
+            _devices = DosDevices.Load();
+        }
+
+        return _devices;
+    }
 
     private void RefreshAdaptersIfNeeded(IEnumerable<long> seenLuids)
     {

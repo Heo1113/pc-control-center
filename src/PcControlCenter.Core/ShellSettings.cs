@@ -17,6 +17,9 @@ public sealed class ShellSettings
     public ShellUiSettings Ui { get; set; } = new();
     public OperatorHostSettings Operator { get; set; } = new();
 
+    /// <summary>How the hardware › GPU 메모리 page was left (sort, columns, panel size). Missing in older files = defaults.</summary>
+    public GpuMemoryPageSettings GpuMemoryPage { get; set; } = new();
+
     /// <summary>Fixes out-of-range values. Returns a note for each change (shown to the user, never silent).</summary>
     public IReadOnlyList<string> Normalize()
     {
@@ -25,6 +28,8 @@ public sealed class ShellSettings
         Modules ??= new ModuleSwitches();
         Ui ??= new ShellUiSettings();
         Operator ??= new OperatorHostSettings();
+        GpuMemoryPage ??= new GpuMemoryPageSettings();
+        GpuMemoryPage.Normalize();
         if (Hardware.MaxIntervalMs is < SharedHardwareSettings.MinIntervalMs or > SharedHardwareSettings.MaxIntervalMsLimit)
         {
             notes.Add($"공통 센서 최대 간격 {Hardware.MaxIntervalMs} ms는 허용 범위({SharedHardwareSettings.MinIntervalMs}~{SharedHardwareSettings.MaxIntervalMsLimit} ms)를 벗어나 1000 ms로 바꿨습니다.");
@@ -93,6 +98,96 @@ public sealed class ModuleSwitches
 public sealed class ShellUiSettings
 {
     public double FontScale { get; set; } = 1.0;
+}
+
+/// <summary>
+/// View state of the GPU memory page, remembered across visits and restarts. Column keys are the table's sort member
+/// names; unknown keys (from a newer or edited file) are dropped silently since they only affect the layout.
+/// </summary>
+public sealed class GpuMemoryPageSettings
+{
+    public static readonly IReadOnlySet<string> ColumnKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Name", "Pid", "KindLabel", "Dedicated", "Delta", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
+    };
+
+    public static readonly IReadOnlySet<string> ChartMetrics = new HashSet<string>(StringComparer.Ordinal) { "Dedicated", "Shared", "Gpu" };
+
+    public static readonly IReadOnlyList<int> ChartWindows = [5, 15, 30];
+
+    /// <summary>The kinds a process can be given (the names of PcControlCenter.GpuMemory.ProcessKind).</summary>
+    public static readonly IReadOnlySet<string> KindNames = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "Llm", "Ai", "Compute", "Graphics3D", "Video", "Browser", "Compositor", "System", "Kernel", "App",
+    };
+
+    public const int MaxKindOverrides = 200;
+
+    /// <summary>Sort column; null = dedicated memory, largest first.</summary>
+    public string? SortColumn { get; set; }
+
+    public bool SortDescending { get; set; } = true;
+
+    /// <summary>Also list processes below the listing thresholds.</summary>
+    public bool ShowAll { get; set; }
+
+    /// <summary>Hidden table columns (never the process name).</summary>
+    public List<string> HiddenColumns { get; set; } = [];
+
+    /// <summary>Height of the detail panel in device-independent pixels; 0 = share the height with the table.</summary>
+    public double DetailHeight { get; set; }
+
+    /// <summary>What the detail chart shows: Dedicated, Shared or Gpu (the busiest engine, %).</summary>
+    public string ChartMetric { get; set; } = "Dedicated";
+
+    /// <summary>The detail chart's window in minutes (5, 15 or 30; the reader keeps 30).</summary>
+    public int ChartMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Kinds the user gave by executable name (lower case, such as "myapp.exe"), used instead of the classification from
+    /// loaded libraries, model files and names. Only the name and the kind are kept.
+    /// </summary>
+    public Dictionary<string, string> KindOverrides { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>A bare executable name: no folder, no control characters, at most 260 characters.</summary>
+    public static bool IsExecutableName(string? name)
+        => name is { Length: > 0 and <= 260 } && name.Trim().Length > 0 && name.IndexOfAny(['\\', '/', ':']) < 0 && !name.Any(char.IsControl);
+
+    public void Normalize()
+    {
+        if (SortColumn is not null && !ColumnKeys.Contains(SortColumn))
+        {
+            SortColumn = null;
+            SortDescending = true;
+        }
+
+        HiddenColumns = [.. (HiddenColumns ?? []).Where(k => k is not null && ColumnKeys.Contains(k) && k != "Name").Distinct()];
+        if (double.IsNaN(DetailHeight) || DetailHeight is < 0 or > 4000)
+        {
+            DetailHeight = 0;
+        }
+
+        if (ChartMetric is null || !ChartMetrics.Contains(ChartMetric))
+        {
+            ChartMetric = "Dedicated";
+        }
+
+        if (!ChartWindows.Contains(ChartMinutes))
+        {
+            ChartMinutes = 15;
+        }
+
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, kind) in KindOverrides ?? [])
+        {
+            if (overrides.Count < MaxKindOverrides && IsExecutableName(name) && kind is not null && KindNames.Contains(kind))
+            {
+                overrides[name.Trim().ToLowerInvariant()] = kind;
+            }
+        }
+
+        KindOverrides = overrides;
+    }
 }
 
 public sealed class OperatorHostSettings

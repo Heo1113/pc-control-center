@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -114,8 +115,56 @@ internal sealed class SmokeTestRunner(
                 checks["gpu-memory-mock-rows"] = shell.GpuMemory.Processes.Count > 0 || runtime.GpuMemory.Latest?.Processes.Count > 0;
             }
 
+            // The page open for longer: engine activity and process details are read only then (recorded, not required: a
+            // runner may lack the engine counters). Counts only; no process, library or file names go into the report.
+            if (runtime.GpuMemory.Health.State is not (GpuMemoryMonitorState.Unavailable or GpuMemoryMonitorState.Disabled))
+            {
+                shell.Navigate(SectionKeys.Hardware, "hardware/gpu-memory");
+                await WaitUntil(() => runtime.GpuMemory.Latest is { } s && (s.EnginesRead || s.Details.Count > 0), TimeSpan.FromSeconds(15));
+                await Task.Delay(2500); // a further reading: engine rates need two collections
+                if (runtime.GpuMemory.Latest is { } open)
+                {
+                    details["gpu-memory-open"] = $"engines {(open.EnginesRead ? "read" : "not read")}, details {open.Details.Count} "
+                                                 + $"(refused {open.Details.Values.Count(d => d.AccessDenied)}, with known runtimes {open.Details.Values.Count(d => d.Runtimes.Count > 0)}, "
+                                                 + $"model files {open.Details.Values.Sum(d => d.Models.Count)}), {open.CollectionTime.TotalMilliseconds:0} ms"
+                                                 + (open.Issues.Count > 0 ? "; issue scopes: " + string.Join(", ", open.Issues.Select(i => i.Scope).Distinct()) : "");
+                }
+
+                await Capture("hardware-gpu-memory-open");
+
+                // A kind picked from the legend and the help panel, as a user would open them.
+                if (shell.GpuMemory.Adapters.FirstOrDefault()?.View.Legend.FirstOrDefault(l => l.Kind is not null)?.Kind is { } kind)
+                {
+                    shell.GpuMemory.FilterKindCommand.Execute(kind);
+                }
+
+                shell.GpuMemory.HelpOpen = true;
+                await Task.Delay(1500);
+                await Capture("hardware-gpu-memory-filter-help");
+                shell.GpuMemory.ClearKindFilterCommand.Execute(null);
+                shell.GpuMemory.HelpOpen = false;
+
+                // MOCK: the Ollama runner with what its server reported (sizes, context), shown apart from the measured values.
+                if (runtime.Hub.IsMock && shell.GpuMemory.Processes.FirstOrDefault(r => r.Name.StartsWith("ollama", StringComparison.OrdinalIgnoreCase)) is { } runner)
+                {
+                    shell.GpuMemory.SelectedProcess = runner;
+                    checks["gpu-memory-runtime-report"] = await WaitUntil(() => shell.GpuMemory.Detail?.Reports.Count > 0, TimeSpan.FromSeconds(15));
+                    await Task.Delay(800);
+                    BringIntoView("런타임 보고"); // the detail panel scrolls in a small window
+                    await Task.Delay(300);
+                    await Capture("hardware-gpu-memory-runtime");
+                }
+            }
+
             shell.Navigate(SectionKeys.Dashboard);
             checks["dashboard-live"] = await WaitUntil(() => shell.Dashboard.CpuUtil != Text.NA, TimeSpan.FromSeconds(10));
+            if (runtime.Hub.IsMock)
+            {
+                // The dashboard's GPU memory card: the largest processes from the reader (MOCK here).
+                checks["dashboard-gpu-memory"] = await WaitUntil(() => shell.Dashboard.GpuMemoryLargest != Text.NA, TimeSpan.FromSeconds(15));
+                await Task.Delay(800);
+                await Capture("dashboard-gpu-memory");
+            }
 
             // A: a manual inference session through A's own recorder.
             if (runtime.LocalAi.Service is { } service && service.Recorder is not null)
@@ -425,6 +474,31 @@ internal sealed class SmokeTestRunner(
         }
 
         return condition();
+    }
+
+    /// <summary>Scrolls the first visible element with this automation name into view.</summary>
+    private void BringIntoView(string automationName)
+    {
+        static FrameworkElement? Find(DependencyObject node, string name)
+        {
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                if (child is FrameworkElement { IsVisible: true } element && AutomationProperties.GetName(element) == name)
+                {
+                    return element;
+                }
+
+                if (Find(child, name) is { } found)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        Find(window, automationName)?.BringIntoView();
     }
 
     private async Task Capture(string name)

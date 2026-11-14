@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Core.Runtime;
 using PcControlCenter.Core;
+using PcControlCenter.GpuMemory;
 using PcControlCenter.Hardware;
 using PcControlCenter.Modules;
 using WinDiag.Core.Events;
@@ -11,6 +12,12 @@ using WinDiag.Core.Events;
 namespace PcControlCenter.Presentation;
 
 public sealed record EventLine(string Time, string Title, string Category, string Severity, Level Level, bool IsVirtual);
+
+/// <summary>A process in the dashboard's GPU memory card: its name, measured dedicated memory and (several GPUs) which one.</summary>
+public sealed record GpuMemoryTopRow(string Name, string Value, string? Adapter)
+{
+    public string AdapterSuffix => Adapter is { Length: > 0 } a ? $" · {a}" : "";
+}
 
 /// <summary>
 /// The integrated dashboard: hardware (shared reader), Strata (A), power and electricity cost (B), recent Windows
@@ -30,13 +37,15 @@ public sealed partial class DashboardViewModel : ObservableObject
     private readonly IShellDispatcher _ui;
     private readonly TimeProvider _time;
     private readonly Action<string> _navigate;
+    private readonly GpuMemoryMonitor? _gpuMemory;
     private DateTimeOffset _lastEconomics = DateTimeOffset.MinValue;
     private DateTimeOffset _lastDiagnostics = DateTimeOffset.MinValue;
     private int _economicsBusy;
     private int _diagnosticsBusy;
 
+    /// <param name="gpuMemory">The per-process GPU memory reader, for the card with the largest processes; null leaves the card empty.</param>
     public DashboardViewModel(SharedHardwareHub hub, LocalAiModule? localAi, GpuEconomicsModule? economics, DiagnosticsModule? diagnostics,
-        Func<OperatorSummary?> operatorSummary, IShellDispatcher ui, Action<string> navigate, TimeProvider? time = null)
+        Func<OperatorSummary?> operatorSummary, IShellDispatcher ui, Action<string> navigate, TimeProvider? time = null, GpuMemoryMonitor? gpuMemory = null)
     {
         _hub = hub;
         _localAi = localAi;
@@ -46,6 +55,7 @@ public sealed partial class DashboardViewModel : ObservableObject
         _ui = ui;
         _navigate = navigate;
         _time = time ?? TimeProvider.System;
+        _gpuMemory = gpuMemory;
         IsMock = hub.IsMock;
     }
 
@@ -110,6 +120,17 @@ public sealed partial class DashboardViewModel : ObservableObject
 
     public ObservableCollection<ModuleStatusRow> Modules { get; } = [];
 
+    // GPU memory (the per-process reader): the processes holding the most dedicated memory, measured; never summed into a total.
+    [ObservableProperty] public partial Level GpuMemoryLevel { get; set; } = Level.Muted;
+
+    /// <summary>The largest process's name, or the reader's state (waiting, switched off, unavailable, no new reading).</summary>
+    [ObservableProperty] public partial string GpuMemoryState { get; set; } = "측정 대기";
+    [ObservableProperty] public partial string GpuMemoryLargest { get; set; } = Text.NA;
+
+    /// <summary>The next largest processes (up to three).</summary>
+    public ObservableCollection<GpuMemoryTopRow> GpuMemoryTop { get; } = [];
+    [ObservableProperty] public partial string GpuMemoryNote { get; set; } = "";
+
     [ObservableProperty] public partial string UpdatedAt { get; set; } = Text.NA;
 
     /// <summary>Called every second on the UI thread.</summary>
@@ -117,6 +138,7 @@ public sealed partial class DashboardViewModel : ObservableObject
     {
         var now = _time.GetUtcNow();
         UpdateHardware(now);
+        UpdateGpuMemory(now);
         UpdateLocalAi();
         UpdateOperator();
         UpdatedAt = Text.Clock(now);
@@ -159,6 +181,67 @@ public sealed partial class DashboardViewModel : ObservableObject
     {
         Invalidate();
         Tick();
+    }
+
+    /// <summary>The largest processes by measured dedicated memory, from the reader's latest reading (it reads every 10 s off the page).</summary>
+    private void UpdateGpuMemory(DateTimeOffset now)
+    {
+        var health = _gpuMemory?.Health;
+        var latest = _gpuMemory?.Latest;
+        var state = health?.State switch
+        {
+            null => "사용하지 않음",
+            GpuMemoryMonitorState.Disabled => "꺼져 있음",
+            GpuMemoryMonitorState.Unavailable => "사용 불가",
+            _ when latest is null => "측정 대기",
+            _ when now - latest.Timestamp > GpuMemoryViewModel.StaleAfter(latest) => $"새 측정 없음 · 마지막 {Text.Clock(latest.Timestamp)}",
+            _ => null,
+        };
+        if (state is not null || latest is null || health is null)
+        {
+            // No reading to show as current: nothing old is shown in its place.
+            GpuMemoryState = state ?? "측정 대기";
+            GpuMemoryLargest = Text.NA;
+            SyncTop([]);
+            GpuMemoryLevel = health?.State switch
+            {
+                GpuMemoryMonitorState.Unavailable => Level.Warning,
+                _ when latest is not null && health?.State is not GpuMemoryMonitorState.Disabled => Level.Error,
+                _ => Level.Muted,
+            };
+            GpuMemoryNote = health?.State switch
+            {
+                GpuMemoryMonitorState.Disabled => "설정 › 공통 › 공통 센서에서 켤 수 있습니다.",
+                GpuMemoryMonitorState.Unavailable => health.UnavailableReason ?? "",
+                _ => "",
+            };
+            return;
+        }
+
+        var listed = latest.Processes.Where(p => p.DedicatedBytes >= 1L << 20).OrderByDescending(p => p.DedicatedBytes).ThenBy(p => p.ProcessId).ToList();
+        var severalGpus = listed.Select(p => p.Luid).Distinct().Count() > 1;
+        var top = listed.Take(4).Select(p => new GpuMemoryTopRow(latest.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", Text.Bytes(p.DedicatedBytes),
+            severalGpus && latest.Adapter(p.Luid)?.Info?.Name is { Length: > 0 } adapter ? GpuMemoryViewModel.ShortAdapterName(adapter) : null)).ToList();
+        GpuMemoryState = top.Count > 0 ? top[0].Name + top[0].AdapterSuffix : "전용 메모리를 1 MiB 이상 쓰는 프로세스 없음";
+        GpuMemoryLargest = top.Count > 0 ? top[0].Value : Text.NA;
+        SyncTop(top.Skip(1).ToList());
+        GpuMemoryLevel = latest.IsMock || latest.Variant != ProcessCounterVariant.LocalNonLocal || latest.Issues.Count > 0 ? Level.Warning : Level.Good;
+        GpuMemoryNote = (latest.IsMock ? "MOCK 가상 값 — 실제 측정이 아닙니다. " : "")
+                        + $"프로세스별 전용 GPU 메모리 (Windows 카운터) · 측정 {Text.Clock(latest.Timestamp)} · {health.Interval.TotalSeconds:0.#}초마다";
+    }
+
+    private void SyncTop(IReadOnlyList<GpuMemoryTopRow> rows)
+    {
+        if (rows.SequenceEqual(GpuMemoryTop))
+        {
+            return;
+        }
+
+        GpuMemoryTop.Clear();
+        foreach (var row in rows)
+        {
+            GpuMemoryTop.Add(row);
+        }
     }
 
     private void UpdateHardware(DateTimeOffset now)

@@ -37,12 +37,17 @@ internal static unsafe partial class NativeMethods
     [LibraryImport("pdh.dll", EntryPoint = "PdhCloseQuery")]
     public static partial uint PdhCloseQuery(nint query);
 
-    /// <summary>PDH_FMT_COUNTERVALUE: DWORD status, then an 8-byte aligned union (LONGLONG with PDH_FMT_LARGE).</summary>
-    [StructLayout(LayoutKind.Sequential)]
+    public const uint PdhFmtDouble = 0x00000200;
+    public const uint PdhInvalidData = 0xC0000BC6;
+    public const uint PdhCstatusInvalidData = 0xC0000BBA;
+
+    /// <summary>PDH_FMT_COUNTERVALUE: DWORD status, then an 8-byte aligned union (LONGLONG or double).</summary>
+    [StructLayout(LayoutKind.Explicit)]
     public struct PdhFmtCounterValue
     {
-        public uint CStatus;
-        public long LargeValue;
+        [FieldOffset(0)] public uint CStatus;
+        [FieldOffset(8)] public long LargeValue;
+        [FieldOffset(8)] public double DoubleValue;
     }
 
     /// <summary>PDH_FMT_COUNTERVALUE_ITEM_W: the instance name (points into the same buffer) and its value.</summary>
@@ -95,6 +100,37 @@ internal static unsafe partial class NativeMethods
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool CloseHandle(nint handle);
+
+    // ---- Address space walk: names of mapped files only, never their contents (kernel32 / psapi) ----
+    public const uint ProcessQueryInformation = 0x0400;
+    public const uint ProcessVmRead = 0x0010;
+    public const uint MemFree = 0x10000;
+    public const uint MemImage = 0x1000000;
+    public const uint MemMapped = 0x40000;
+
+    /// <summary>MEMORY_BASIC_INFORMATION (64-bit layout; PartitionId sits in the former padding).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MemoryBasicInformation
+    {
+        public nint BaseAddress;
+        public nint AllocationBase;
+        public uint AllocationProtect;
+        public ushort PartitionId;
+        public nuint RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial nuint VirtualQueryEx(nint process, nint address, MemoryBasicInformation* buffer, nuint length);
+
+    /// <summary>The file a mapped view or image belongs to, as an NT device path (\Device\HarddiskVolume3\...).</summary>
+    [LibraryImport("psapi.dll", EntryPoint = "GetMappedFileNameW", SetLastError = true)]
+    public static partial uint GetMappedFileName(nint process, nint address, char* fileName, uint size);
+
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryDosDeviceW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint QueryDosDevice(string deviceName, char* targetPath, uint max);
 
     // ---- TCP listeners (iphlpapi.dll) ----
     public const uint AfInet = 2;
