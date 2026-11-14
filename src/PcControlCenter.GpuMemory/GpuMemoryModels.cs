@@ -271,6 +271,12 @@ public sealed record GpuMemorySnapshot
 
     public IReadOnlyList<TcpListenerEntry> Listeners { get; init; } = [];
 
+    /// <summary>
+    /// Ports that local AI servers listen on (Ollama, llama.cpp's server), found among the processes of this reading and their
+    /// parents, only while the page is visible: the page asks those servers about themselves. Nothing else is looked up.
+    /// </summary>
+    public IReadOnlyList<TcpListenerEntry> ServiceListeners { get; init; } = [];
+
     /// <summary>Engine counters were read for this reading (they are read only while the page is visible).</summary>
     public bool EnginesRead { get; init; }
 

@@ -571,6 +571,7 @@ public class GpuProcessInspectionTests
 
         var first = inspection.Next([Memory(100, 500)], table, issues); // returns at once with what is known (nothing yet)
         Assert.Empty(first);
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref calls) == 1, TimeSpan.FromSeconds(10))); // started on the pool
         Assert.Empty(inspection.Next([Memory(100, 500)], table, issues)); // still running: not started twice
         Assert.Equal(1, Volatile.Read(ref calls));
 

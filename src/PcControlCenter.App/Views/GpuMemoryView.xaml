@@ -379,6 +379,30 @@
               </WrapPanel>
             </StackPanel>
 
+            <!-- What the runtimes said about themselves: settings or their last report, never the current use (A1, A2). -->
+            <ItemsControl ItemsSource="{Binding Reports}" Focusable="False" Visibility="{Binding Reports, Converter={StaticResource NotEmptyToVisibility}}"
+                          AutomationProperties.Name="런타임 보고">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type p:ReportGroup}">
+                  <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="{Binding Title}" Style="{StaticResource StatLabel}" />
+                    <ItemsControl ItemsSource="{Binding Facts}" Focusable="False" ItemsPanel="{StaticResource Wrap}"
+                                  Visibility="{Binding Facts, Converter={StaticResource NotEmptyToVisibility}}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type p:DetailFact}">
+                          <StackPanel Style="{StaticResource Stat}" ToolTip="{Binding ToolTip}">
+                            <TextBlock Text="{Binding Label}" Style="{StaticResource StatLabel}" />
+                            <TextBlock Text="{Binding Value}" Style="{StaticResource StatValue}" FontSize="13" />
+                          </StackPanel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
             <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Margin="0,6,0,0" />
           </StackPanel>
         </ScrollViewer>

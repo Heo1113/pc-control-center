@@ -138,9 +138,14 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
             .ToList();
 
         // Only the listeners of watched ports (the Strata server's): other services are never looked up.
-        var listeners = request.WatchedPorts.Count == 0 ? [] : ProcessQueries.Listeners(issues).Where(l => request.WatchedPorts.Contains(l.Port)).ToList();
+        List<TcpListenerEntry>? all = null;
+        List<TcpListenerEntry> AllListeners() => all ??= ProcessQueries.Listeners(issues);
+        var listeners = request.WatchedPorts.Count == 0 ? [] : AllListeners().Where(l => request.WatchedPorts.Contains(l.Port)).ToList();
         var table = ProcessQueries.Table(processes.Select(p => p.ProcessId).Concat(listeners.Select(l => l.ProcessId)), collected.CollectedAt, issues);
         var details = request.IncludeDetails ? _inspection.Next(processes, table, issues) : new Dictionary<int, ProcessDetail>();
+        // Local AI servers among these processes and their parents (an Ollama server holds no GPU memory itself; its runner does).
+        var servers = request.IncludeDetails ? table.Values.Where(e => LocalAiServers.IsServerName(e.Name)).Select(e => e.ProcessId).ToHashSet() : [];
+        var serviceListeners = servers.Count == 0 ? [] : AllListeners().Where(l => servers.Contains(l.ProcessId)).ToList();
         return new GpuMemorySnapshot
         {
             Timestamp = collected.CollectedAt,
@@ -152,6 +157,7 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
             Processes = processes,
             ProcessTable = table,
             Listeners = listeners,
+            ServiceListeners = serviceListeners,
             EnginesRead = enginesRead,
             Details = details,
             Issues = issues,

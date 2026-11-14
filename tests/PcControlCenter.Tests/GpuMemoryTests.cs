@@ -423,19 +423,20 @@ public class GpuMemoryViewModelTests
     private const long GiB = GpuMemoryFixtures.GiB;
 
     private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) Create(Func<StrataContext>? strata = null,
-        Func<ManualTime, IGpuMemoryProvider>? provider = null)
+        Func<ManualTime, IGpuMemoryProvider>? provider = null, IRuntimeHttp? http = null)
     {
         var time = new ManualTime(GpuMemoryFixtures.Start);
         var monitor = new GpuMemoryMonitor(() => provider?.Invoke(time) ?? new MockGpuMemoryProvider(time), time);
-        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), strata ?? (() => new StrataContext(null, "로컬 AI 모듈 꺼짐 (테스트)")), time);
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), strata ?? (() => new StrataContext(null, "로컬 AI 모듈 꺼짐 (테스트)")), time,
+            runtimeHttp: http);
         return (vm, monitor, time);
     }
 
     /// <summary>The page is open (details and engines are read), Strata is polled now and serves the MOCK port.</summary>
-    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) OpenWithStrata()
+    private static (GpuMemoryViewModel Vm, GpuMemoryMonitor Monitor, ManualTime Time) OpenWithStrata(IRuntimeHttp? http = null, string? keyVariable = null)
     {
         ManualTime? clock = null;
-        var created = Create(() => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null));
+        var created = Create(() => new StrataContext(GpuMemoryFixtures.Strata(clock!.GetUtcNow()), null, keyVariable), http: http);
         clock = created.Time;
         created.Vm.IsVisible = true;
         created.Monitor.ReadNow();
@@ -1136,6 +1137,159 @@ public class GpuMemoryViewModelTests
         Assert.Contains(vm.ValueKinds, k => k.Label == "추정" && k.IsEstimate);
         Assert.Contains(vm.Knowable, k => k.Label.StartsWith("가중치", StringComparison.Ordinal) && k.Value.Contains("추정", StringComparison.Ordinal));
         Assert.NotEmpty(vm.Checks);
+    }
+
+    private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
+
+    [Fact]
+    public async Task Ollama_is_asked_about_the_selected_runner_only_and_its_sizes_are_not_turned_into_ram_use()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers[":11434/api/ps"] = FakeRuntimeHttp.Ok("""
+            {"models":[{"name":"gemma3:4b","size":3500000000,"size_vram":1600000000,"context_length":8192,"details":{"parameter_size":"4.3B","quantization_level":"Q4_K_M"}}]}
+            """);
+        var (vm, monitor, _) = Create(http: http);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.SelectedProcess = Row(vm, "chrome.exe");
+        await vm.ReportsIdle();
+        Assert.Empty(http.Calls); // not a runtime: nothing is asked
+        Assert.Empty(vm.Detail!.Reports);
+
+        // The runner holds the GPU memory; the server (its parent) listens on 11434 and is the one asked.
+        vm.SelectedProcess = Row(vm, "ollama.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        Assert.Equal("http://127.0.0.1:11434/api/ps", Assert.Single(http.Calls).Url);
+        var group = Assert.Single(vm.Detail!.Reports);
+        Assert.Equal("Ollama · gemma3:4b", group.Title);
+        var facts = Facts(group);
+        Assert.Equal("3.26 GiB", facts["전체 (Ollama 계산)"]);
+        Assert.Equal("1.49 GiB", facts["VRAM (Ollama 계산)"]);
+        Assert.Equal("8,192 토큰", facts["컨텍스트"]);
+        Assert.DoesNotContain(facts.Keys, k => k.Contains("RAM", StringComparison.Ordinal) && !k.Contains("VRAM", StringComparison.Ordinal));
+        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Note, StringComparison.Ordinal);
+        Assert.Contains("모델 파일 크기", group.Note, StringComparison.Ordinal);
+        Assert.Contains("Ollama · gemma3:4b: 전체 (Ollama 계산) 3.26 GiB", vm.DetailText(), StringComparison.Ordinal);
+        // The runner's model does not fit on the GPU whole: the two numbers are shown apart, no split.
+        Assert.Empty(vm.Detail.Breakdown);
+        Assert.Equal(["가중치 (모든 층 GPU 가정, 이론값)", "이 프로세스 전용 (측정)"], vm.Detail.BreakdownLegend.Select(l => l.Label));
+
+        vm.IsVisible = false; // closing the page forgets the answers and asks nothing more
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        await vm.ReportsIdle();
+        Assert.Equal(2, http.Calls.Count); // asked again after reopening, not in between
+    }
+
+    [Fact]
+    public async Task Strata_engine_report_keeps_start_settings_apart_from_its_last_report_and_from_the_measurement()
+    {
+        var (vm, monitor, _) = OpenWithStrata(new MockRuntimeHttp());
+        vm.SelectedProcess = Row(vm, "strata.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        var reports = vm.Detail!.Reports;
+        Assert.Equal(["Strata 엔진 · 시작 때 정한 값", "Strata 엔진 · 마지막 보고 (VRAM 조정 시)"], reports.Select(g => g.Title));
+        var start = Facts(reports[0]);
+        Assert.Equal("int8", start["KV 형식"]);
+        Assert.Equal("32,768 토큰", start["컨텍스트"]);
+        Assert.Equal("4.00 GiB", start["대화 캐시 상한 (RAM)"]);
+        var last = Facts(reports[1]);
+        Assert.Equal("1,200 (최대 3,700)", last["전문가 슬롯"]);
+        Assert.Equal("1.50 GiB (최대 4.79 GiB)", last["전문가 캐시"]); // the adjusted size, not the start's 4.79 GiB
+        Assert.Equal("5.96 GiB", last["여유 VRAM (그때 장치 전체)"]);
+        Assert.Equal("5.86 GiB", last["요청한 예약"]);
+        Assert.Contains("Windows 측정", reports[1].Note, StringComparison.Ordinal);
+        Assert.Equal(Row(vm, "strata.exe").DedicatedText, vm.Detail.Dedicated); // the measurement stays the measurement
+        Assert.Empty(vm.Detail.Breakdown);
+        Assert.Contains("Strata 엔진 · 마지막 보고 (VRAM 조정 시): 전문가 슬롯 1,200 (최대 3,700)", vm.DetailText(), StringComparison.Ordinal);
+        Assert.NotNull(monitor.Latest);
+    }
+
+    [Fact]
+    public async Task A_refused_strata_request_is_a_reason_and_a_paused_page_asks_nothing()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers["/metrics"] = new RuntimeHttpResponse(401, null, null);
+        var (vm, monitor, time) = OpenWithStrata(http, keyVariable: "PCC_TEST_UNSET_" + Guid.NewGuid().ToString("N"));
+        Assert.Same(Row(vm, "strata.exe"), vm.SelectedProcess); // the largest process is selected when the page opens
+        await vm.ReportsIdle();
+        var call = Assert.Single(http.Calls);
+        Assert.Equal("http://127.0.0.1:18500/metrics", call.Url);
+        Assert.Null(call.Bearer); // the named variable is not set: no key
+
+        vm.IsPaused = true;
+        time.Advance(RuntimeReportPoller.Interval);
+        monitor.ReadNow(); // the reader keeps reading while the page is paused
+        vm.SelectedProcess = Row(vm, "chrome.exe");
+        vm.SelectedProcess = Row(vm, "strata.exe");
+        vm.Refresh();
+        await vm.ReportsIdle();
+        Assert.Single(http.Calls); // paused: nothing new is asked
+
+        vm.IsPaused = false;
+        await vm.ReportsIdle();
+        vm.Refresh();
+        Assert.Equal(2, http.Calls.Count);
+        var group = Assert.Single(vm.Detail!.Reports);
+        Assert.True(group.IsError);
+        Assert.Equal("Strata 엔진 보고 · 읽지 못함", group.Title);
+        Assert.Contains("API 키", group.Note, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_llama_router_child_shows_its_own_settings_and_only_the_instance_whose_file_it_maps()
+    {
+        var http = new FakeRuntimeHttp();
+        http.Answers[":49152/props"] = FakeRuntimeHttp.Ok("""{"default_generation_settings":{"n_ctx":131072},"total_slots":1,"model_path":"D:\\m\\gemma-3-4b-it-Q4_K_M.gguf","build_info":"b7000"}""");
+        http.Answers[":8080/props"] = new RuntimeHttpResponse(400, """{"error":"model name is missing from the request"}""", null);
+        http.Answers[":8080/models"] = FakeRuntimeHttp.Ok("""
+            {"data":[
+              {"id":"gemma","path":"/m/gemma-3-4b-it-Q4_K_M.gguf","memory":{"status":"measured","min":{"n_ctx":4096,"devices":[]},
+                "max":{"n_ctx":262144,"devices":[{"kind":"device","name":"CUDA0","model":1,"context":99999999999,"compute":1}]},
+                "effective":{"n_ctx":131072,"devices":[{"kind":"device","name":"CUDA0","model":4986635264,"context":536870912,"compute":301989888}]}}},
+              {"id":"other","path":"/m/other.gguf","memory":{"status":"measured","effective":{"n_ctx":4096,"devices":[{"kind":"device","name":"CUDA0","model":1,"context":1,"compute":1}]}}}
+            ]}
+            """);
+        var at = GpuMemoryFixtures.Start;
+        var provider = (ManualTime time) => new ScriptedGpuMemoryProvider(request => GpuMemoryFixtures.Snapshot(time.GetUtcNow(),
+            [new GpuProcessMemory { ProcessId = 300, Luid = 1, DedicatedBytes = 5 * GiB, SharedBytes = 0, CommittedBytes = 5 * GiB }],
+            new Dictionary<int, ProcessEntry>
+            {
+                [300] = new(300, 200, "llama-server.exe", at.AddMinutes(-2), ProcessIdentityState.Verified),
+                [200] = new(200, 10, "llama-server.exe", at.AddMinutes(-9), ProcessIdentityState.Verified),
+            }) with
+        {
+            ServiceListeners = [new(8080, 200, false, true), new(49152, 300, false, true)],
+            Details = new Dictionary<int, ProcessDetail>
+            {
+                [300] = new() { Runtimes = ["llama.cpp", "CUDA"], ScannedAt = at, Models = [new ModelFile("gemma-3-4b-it-Q4_K_M.gguf", 3_000_000_000, "GGUF", null)] },
+            },
+        });
+        var (vm, monitor, _) = Create(provider: provider, http: http);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.SelectedProcess = Row(vm, "llama-server.exe");
+        await vm.ReportsIdle();
+        vm.Refresh();
+
+        Assert.Equal(4, http.Calls.Count); // the child's /props and /models, the router's /props and /models
+        var reports = vm.Detail!.Reports;
+        Assert.Equal(["llama.cpp 서버 · 설정", "llama.cpp 라우터 · 이 인스턴스"], reports.Select(g => g.Title));
+        Assert.Equal("131,072 토큰", Facts(reports[0])["컨텍스트 (n_ctx)"]);
+        Assert.Equal("gemma-3-4b-it-Q4_K_M.gguf", Facts(reports[0])["모델 파일"]); // the file name, never the path
+        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Note, StringComparison.Ordinal);
+        var instance = Facts(reports[1]);
+        Assert.Equal("가중치 4.64 GiB · 컨텍스트 512 MiB · 계산 288 MiB", instance["CUDA0"]); // effective, not max
+        Assert.DoesNotContain(reports[1].Facts, f => f.Value.Contains("93.13 GiB", StringComparison.Ordinal));
+        Assert.Contains("min·max", reports[1].Note, StringComparison.Ordinal);
+        Assert.DoesNotContain("D:", vm.DetailText(), StringComparison.Ordinal);
     }
 }
 
