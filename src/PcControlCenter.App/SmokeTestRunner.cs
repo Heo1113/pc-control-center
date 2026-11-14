@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -149,6 +150,8 @@ internal sealed class SmokeTestRunner(
                     shell.GpuMemory.SelectedProcess = runner;
                     checks["gpu-memory-runtime-report"] = await WaitUntil(() => shell.GpuMemory.Detail?.Reports.Count > 0, TimeSpan.FromSeconds(15));
                     await Task.Delay(800);
+                    BringIntoView("런타임 보고"); // the detail panel scrolls in a small window
+                    await Task.Delay(300);
                     await Capture("hardware-gpu-memory-runtime");
                 }
             }
@@ -471,6 +474,31 @@ internal sealed class SmokeTestRunner(
         }
 
         return condition();
+    }
+
+    /// <summary>Scrolls the first visible element with this automation name into view.</summary>
+    private void BringIntoView(string automationName)
+    {
+        static FrameworkElement? Find(DependencyObject node, string name)
+        {
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+            {
+                var child = VisualTreeHelper.GetChild(node, i);
+                if (child is FrameworkElement { IsVisible: true } element && AutomationProperties.GetName(element) == name)
+                {
+                    return element;
+                }
+
+                if (Find(child, name) is { } found)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        Find(window, automationName)?.BringIntoView();
     }
 
     private async Task Capture(string name)

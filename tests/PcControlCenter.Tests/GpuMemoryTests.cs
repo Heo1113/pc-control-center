@@ -1189,6 +1189,27 @@ public class GpuMemoryViewModelTests
         Assert.DoesNotContain(ProcessKind.Kernel, vm.AssignableKinds);
     }
 
+    [Fact]
+    public void Strata_engine_by_name_gets_no_header_split_even_when_strata_is_not_connected()
+    {
+        // Without the local AI module's link, strata.exe is still Strata's engine (its Windows executable name): the
+        // llama.cpp-style split from the GGUF header would be wrong for it, so none is drawn.
+        var (vm, monitor, _) = Create();
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.SelectedProcess = Row(vm, "strata.exe");
+
+        var detail = vm.Detail!;
+        Assert.False(detail.IsStrata); // not linked
+        Assert.Empty(detail.Breakdown);
+        Assert.Empty(detail.BreakdownLegend);
+        Assert.Contains("strata.exe", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.NotEmpty(detail.Models); // the model file is still shown
+        Assert.True(ProcessKinds.IsStrataEngineName("STRATA.EXE"));
+        Assert.False(ProcessKinds.IsStrataEngineName("strata-gguf.exe"));
+    }
+
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
 
     [Fact]
