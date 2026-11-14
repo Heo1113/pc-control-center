@@ -114,6 +114,24 @@ internal sealed class SmokeTestRunner(
                 checks["gpu-memory-mock-rows"] = shell.GpuMemory.Processes.Count > 0 || runtime.GpuMemory.Latest?.Processes.Count > 0;
             }
 
+            // The page open for longer: engine activity and process details are read only then (recorded, not required: a
+            // runner may lack the engine counters). Counts only; no process, library or file names go into the report.
+            if (runtime.GpuMemory.Health.State is not (GpuMemoryMonitorState.Unavailable or GpuMemoryMonitorState.Disabled))
+            {
+                shell.Navigate(SectionKeys.Hardware, "hardware/gpu-memory");
+                await WaitUntil(() => runtime.GpuMemory.Latest is { } s && (s.EnginesRead || s.Details.Count > 0), TimeSpan.FromSeconds(15));
+                await Task.Delay(2500); // a further reading: engine rates need two collections
+                if (runtime.GpuMemory.Latest is { } open)
+                {
+                    details["gpu-memory-open"] = $"engines {(open.EnginesRead ? "read" : "not read")}, details {open.Details.Count} "
+                                                 + $"(refused {open.Details.Values.Count(d => d.AccessDenied)}, with known runtimes {open.Details.Values.Count(d => d.Runtimes.Count > 0)}, "
+                                                 + $"model files {open.Details.Values.Sum(d => d.Models.Count)}), {open.CollectionTime.TotalMilliseconds:0} ms"
+                                                 + (open.Issues.Count > 0 ? "; issue scopes: " + string.Join(", ", open.Issues.Select(i => i.Scope).Distinct()) : "");
+                }
+
+                await Capture("hardware-gpu-memory-open");
+            }
+
             shell.Navigate(SectionKeys.Dashboard);
             checks["dashboard-live"] = await WaitUntil(() => shell.Dashboard.CpuUtil != Text.NA, TimeSpan.FromSeconds(10));
 

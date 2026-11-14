@@ -8,6 +8,7 @@
   <UserControl.Resources>
     <c:BindingProxy x:Key="Proxy" Data="{Binding}" />
     <c:HexBrushConverter x:Key="HexBrush" />
+    <SolidColorBrush x:Key="SelectedRowBrush" Color="#26364B" />
 
     <Style x:Key="Num" TargetType="TextBlock">
       <Setter Property="HorizontalAlignment" Value="Right" />
@@ -76,60 +77,99 @@
       <WrapPanel />
     </ItemsPanelTemplate>
 
-    <!-- One adapter. -->
+    <!-- One adapter: the first in full (bar split by process kind, legend, shared memory), the others on one line. -->
     <DataTemplate x:Key="AdapterTemplate" DataType="{x:Type p:AdapterView}">
       <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6"
-              Padding="12,8" Margin="0,0,0,6">
+              Margin="0,0,0,6">
         <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="190" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <StackPanel VerticalAlignment="Top" Margin="0,0,12,0">
-            <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
-                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
-            <TextBlock Text="{Binding Meta}" Style="{StaticResource Caption}" />
-            <TextBlock Text="{Binding Nvml}" Style="{StaticResource Caption}" ToolTip="공통 센서(NVML)의 장치 전체 사용량. 집계 방식이 달라 위 값과 다를 수 있습니다."
-                       Visibility="{Binding Nvml, Converter={StaticResource NotEmptyToVisibility}}" />
-          </StackPanel>
-          <StackPanel Grid.Column="1">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="34" />
-                <ColumnDefinition />
-                <ColumnDefinition Width="132" />
-              </Grid.ColumnDefinitions>
-              <TextBlock Text="전용" Style="{StaticResource StatLabel}" VerticalAlignment="Center"
-                         ToolTip="GPU 전용 메모리(VRAM). 색은 프로세스 종류별 합계이고, '나뉘지 않음'은 어댑터 사용량 − 프로세스 합계(계산)입니다. 커널·드라이버 할당, 읽지 못한 프로세스, 수집 시점 차이가 섞여 있습니다." />
-              <c:SegmentBar Grid.Column="1" Segments="{Binding DedicatedSegments}" Height="10" VerticalAlignment="Center"
-                            Visibility="{Binding HasCapacity, Converter={StaticResource BoolToVisibility}}" />
-              <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Num}" Margin="0" FontSize="13"
-                         Foreground="{StaticResource TextPrimaryBrush}" />
-            </Grid>
-            <ItemsControl ItemsSource="{Binding Legend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}"
-                          Focusable="False" Margin="34,3,0,2" />
-            <TextBlock Text="{Binding LegendNote}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="34,0,0,2"
-                       Visibility="{Binding LegendNote, Converter={StaticResource NotEmptyToVisibility}}" />
-            <Grid Margin="0,2,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="34" />
-                <ColumnDefinition />
-                <ColumnDefinition Width="132" />
-              </Grid.ColumnDefinitions>
-              <TextBlock Text="공유" Style="{StaticResource StatLabel}" VerticalAlignment="Center"
-                         ToolTip="GPU가 쓰는 시스템 RAM. LLM이 RAM으로 오프로딩한 양과 같은 뜻이 아닙니다." />
-              <c:SegmentBar Grid.Column="1" Segments="{Binding SharedSegments}" Height="6" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="2" Text="{Binding SharedText}" Style="{StaticResource Num}" Margin="0" FontSize="12"
-                         Foreground="{StaticResource TextSecondaryBrush}" />
-            </Grid>
-          </StackPanel>
-          <StackPanel Grid.Column="2" Margin="18,0,0,0" MinWidth="64" VerticalAlignment="Top"
-                      Visibility="{Binding Utilization, Converter={StaticResource NotEmptyToVisibility}}" ToolTip="{Binding Engines}">
-            <TextBlock Text="{Binding Utilization}" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
-                       HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular" />
-            <TextBlock Text="{Binding UtilizationLabel}" Style="{StaticResource StatLabel}" HorizontalAlignment="Right" />
-          </StackPanel>
+          <Grid Margin="12,8" Visibility="{Binding IsCompact, Converter={StaticResource InverseBoolToVisibility}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="210" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel VerticalAlignment="Top" Margin="0,0,12,0">
+              <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                         TextTrimming="CharacterEllipsis" ToolTip="{Binding Name}" />
+              <TextBlock Text="{Binding Meta}" Style="{StaticResource Caption}" />
+              <TextBlock Text="{Binding Nvml}" Style="{StaticResource Caption}" ToolTip="공통 센서(NVML)의 장치 전체 사용량. 집계 방식이 달라 위 값과 다를 수 있습니다."
+                         Visibility="{Binding Nvml, Converter={StaticResource NotEmptyToVisibility}}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="34" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="132" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="전용" Style="{StaticResource StatLabel}" VerticalAlignment="Center"
+                           ToolTip="GPU 전용 메모리(VRAM). 색은 프로세스 종류별 합계이고, '나뉘지 않음'은 어댑터 사용량 − 프로세스 합계(계산)입니다. 커널·드라이버 할당, 읽지 못한 프로세스, 수집 시점 차이가 섞여 있습니다." />
+                <c:SegmentBar Grid.Column="1" Segments="{Binding DedicatedSegments}" Height="10" VerticalAlignment="Center"
+                              Visibility="{Binding HasCapacity, Converter={StaticResource BoolToVisibility}}" />
+                <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Num}" Margin="0" FontSize="13"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Legend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}"
+                            Focusable="False" Margin="34,3,0,2" />
+              <TextBlock Text="{Binding LegendNote}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="34,0,0,2"
+                         Visibility="{Binding LegendNote, Converter={StaticResource NotEmptyToVisibility}}" />
+              <Grid Margin="0,2,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="34" />
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="132" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="공유" Style="{StaticResource StatLabel}" VerticalAlignment="Center"
+                           ToolTip="GPU가 쓰는 시스템 RAM. LLM이 RAM으로 오프로딩한 양과 같은 뜻이 아닙니다." />
+                <c:SegmentBar Grid.Column="1" Segments="{Binding SharedSegments}" Height="6" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding SharedText}" Style="{StaticResource Num}" Margin="0" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+              </Grid>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Margin="18,0,0,0" MinWidth="64" VerticalAlignment="Top"
+                        Visibility="{Binding Utilization, Converter={StaticResource NotEmptyToVisibility}}" ToolTip="{Binding Engines}">
+              <TextBlock Text="{Binding Utilization}" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"
+                         HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular" />
+              <TextBlock Text="{Binding UtilizationLabel}" Style="{StaticResource StatLabel}" HorizontalAlignment="Right" />
+            </StackPanel>
+          </Grid>
+
+          <Grid Margin="12,6" Visibility="{Binding IsCompact, Converter={StaticResource BoolToVisibility}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="210" />
+              <ColumnDefinition Width="34" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="132" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0">
+              <TextBlock.ToolTip>
+                <TextBlock>
+                  <Run Text="{Binding Name, Mode=OneWay}" />
+                  <Run Text=" · " />
+                  <Run Text="{Binding Meta, Mode=OneWay}" />
+                </TextBlock>
+              </TextBlock.ToolTip>
+              <Run Text="{Binding Name, Mode=OneWay}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+              <Run Text="{Binding Meta, Mode=OneWay}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+            </TextBlock>
+            <TextBlock Grid.Column="1" Text="전용" Style="{StaticResource StatLabel}" VerticalAlignment="Center" />
+            <c:SegmentBar Grid.Column="2" Segments="{Binding DedicatedSegments}" Height="8" VerticalAlignment="Center" ToolTip="{Binding LegendText}"
+                          Visibility="{Binding HasCapacity, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock Grid.Column="3" Text="{Binding DedicatedText}" Style="{StaticResource Num}" Margin="0" FontSize="12"
+                       Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Grid.Column="4" Margin="18,0,0,0" VerticalAlignment="Center" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                       Typography.NumeralAlignment="Tabular" ToolTip="GPU가 쓰는 시스템 RAM. LLM이 RAM으로 오프로딩한 양과 같은 뜻이 아닙니다.">
+              <Run Text="공유" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+              <Run Text="{Binding SharedText, Mode=OneWay}" />
+            </TextBlock>
+            <TextBlock Grid.Column="5" Margin="18,0,0,0" MinWidth="64" TextAlignment="Right" VerticalAlignment="Center" ToolTip="{Binding Engines}"
+                       Visibility="{Binding Utilization, Converter={StaticResource NotEmptyToVisibility}}">
+              <Run Text="{Binding Utilization, Mode=OneWay}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" />
+              <Run Text="GPU" FontSize="11" Foreground="{StaticResource TextMutedBrush}" />
+            </TextBlock>
+          </Grid>
         </Grid>
       </Border>
     </DataTemplate>
@@ -247,9 +287,9 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" MinHeight="120" />
+      <RowDefinition Height="3*" MinHeight="120" />
       <RowDefinition Height="6" />
-      <RowDefinition Height="230" MinHeight="110" />
+      <RowDefinition Height="2*" MinHeight="170" MaxHeight="380" />
     </Grid.RowDefinitions>
 
     <!-- Toolbar: filter on the left; Strata, freshness, pause and help on the right. -->
@@ -309,6 +349,29 @@
                 AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="None" CanUserAddRows="False"
                 CanUserResizeRows="False" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="28"
                 AutomationProperties.AutomationId="GpuMemoryProcesses">
+        <DataGrid.RowStyle>
+          <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+            <Style.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource SelectedRowBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+        </DataGrid.RowStyle>
+        <DataGrid.CellStyle>
+          <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource SelectedRowBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+              </Trigger>
+            </Style.Triggers>
+          </Style>
+        </DataGrid.CellStyle>
         <DataGrid.Columns>
           <DataGridTemplateColumn Header="프로세스" SortMemberPath="Name" Width="1.5*" MinWidth="150">
             <DataGridTemplateColumn.CellTemplate>

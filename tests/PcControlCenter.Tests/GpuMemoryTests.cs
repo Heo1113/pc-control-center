@@ -433,9 +433,36 @@ public class GpuMemoryViewModelTests
         Assert.StartsWith("GPU", nvidia.UtilizationLabel, StringComparison.Ordinal);
         Assert.Single(nvidia.SharedSegments);
 
+        Assert.False(nvidia.IsCompact);
+
         var integrated = vm.Adapters[1].View;
+        Assert.True(integrated.IsCompact); // further adapters on one line, the legend in a tooltip
+        Assert.Equal("화면 합성 22 MiB · 나뉘지 않음 8 MiB", integrated.LegendText);
         Assert.Contains("통합 GPU일 수 있음", integrated.Meta, StringComparison.Ordinal);
         Assert.Null(integrated.Nvml);
+    }
+
+    [Fact]
+    public void Counter_timing_noise_is_no_double_counting_warning_and_a_display_only_adapter_is_not_called_integrated()
+    {
+        var (vm, monitor, _) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            processes: [new GpuProcessMemory { ProcessId = 100, Luid = 1, DedicatedBytes = 5 * GiB + 3 * MiB, SharedBytes = 0, CommittedBytes = 5 * GiB }]) with
+        {
+            Adapters =
+            [
+                new GpuAdapterMemory { Luid = 1, Info = new GpuAdapterInfo(1, "Test GPU", GpuVendors.Nvidia, 16 * GiB, 32 * GiB, false), DedicatedUsageBytes = 5 * GiB, SharedUsageBytes = GiB },
+                new GpuAdapterMemory { Luid = 2, Info = new GpuAdapterInfo(2, "Display Adapter", GpuVendors.Microsoft, 0, 8 * GiB, false) },
+            ],
+        }));
+        monitor.ReadNow();
+        vm.Refresh();
+
+        Assert.Null(vm.Adapters[0].View.LegendNote); // 3 MiB over the adapter: counter timing, not shared resources counted twice
+        var display = vm.Adapters[1].View;
+        Assert.True(display.IsCompact);
+        Assert.Contains("전용 메모리 없음", display.Meta, StringComparison.Ordinal);
+        Assert.DoesNotContain("통합 GPU", display.Meta, StringComparison.Ordinal);
+        Assert.Equal(Text.NA, display.DedicatedText);
     }
 
     [Fact]
