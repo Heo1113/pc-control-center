@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LocalAiPerf.Core.Runtime;
 using LocalAiPerf.Presentation.Charts;
+using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
 using PcControlCenter.Hardware;
 
@@ -12,8 +13,9 @@ namespace PcControlCenter.Presentation;
 /// <summary>A part of a bar: its share of the whole (0-1), color, label, and whether it is an estimate (drawn hatched).</summary>
 public sealed record BarSegment(double Fraction, string ColorHex, string Label, bool IsEstimate = false);
 
-/// <summary>A legend entry under a bar.</summary>
-public sealed record LegendItem(string ColorHex, string Label, string Value, bool IsEstimate = false, string? ToolTip = null);
+/// <summary>A legend entry under a bar. <see cref="Kind"/>: the process kind it stands for (clicking it filters the table).</summary>
+public sealed record LegendItem(string ColorHex, string Label, string Value, bool IsEstimate = false, string? ToolTip = null,
+    ProcessKind? Kind = null, bool IsActive = false);
 
 /// <summary>
 /// One adapter in the header: name, local and system-RAM memory bars, engine activity, NVML for comparison. Adapters after
@@ -34,7 +36,8 @@ public sealed record AdapterView(
     string? Nvml,
     bool HasCapacity,
     bool IsCompact = false,
-    string LegendText = "");
+    string LegendText = "",
+    string? FreeText = null);
 
 /// <summary>
 /// One adapter's place in the header. The slot stays while its adapter does and only its <see cref="View"/> changes, so
@@ -65,9 +68,11 @@ public sealed record ProcessDetailView(
     string Pid,
     string Kind,
     string KindColor,
+    string KindBasis,
     bool IsStrata,
     string Subtitle,
     string Dedicated,
+    string? DedicatedShare,
     string Shared,
     string Committed,
     string Gpu,
@@ -104,8 +109,11 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial long Dedicated { get; set; }
     [ObservableProperty] public partial string DedicatedText { get; set; } = "";
 
-    /// <summary>Share of the adapter's dedicated capacity (0-1), for the bar behind the number.</summary>
+    /// <summary>Share of the adapter's dedicated capacity (0-1), for the bar under the number.</summary>
     [ObservableProperty] public partial double DedicatedShare { get; set; }
+
+    /// <summary>"카드 VRAM의 61%"; null when the capacity is unknown.</summary>
+    [ObservableProperty] public partial string? DedicatedShareText { get; set; }
     [ObservableProperty] public partial long Shared { get; set; }
     [ObservableProperty] public partial string SharedText { get; set; } = "";
     [ObservableProperty] public partial long Committed { get; set; }
@@ -119,7 +127,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
 
     /// <summary><see cref="Inside"/> is what processes of this kind usually hold, not something found in this one.</summary>
     [ObservableProperty] public partial bool InsideIsGeneric { get; set; }
+    /// <summary>Short adapter name for the column ("RTX 5080"); <see cref="AdapterFull"/> for the tooltip.</summary>
     [ObservableProperty] public partial string Adapter { get; set; } = "";
+    [ObservableProperty] public partial string AdapterFull { get; set; } = "";
     [ObservableProperty] public partial bool IsStrata { get; set; }
     /// <summary>Why the row's identity is uncertain; null when it was verified (no tooltip then).</summary>
     [ObservableProperty] public partial string? Identity { get; set; }
@@ -167,6 +177,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         [ProcessKind.App] = "앱",
     };
 
+    private const string DefaultPlaceholder = "표에서 프로세스를 고르면 자세한 내용이 여기에 나옵니다.";
+    private static readonly string[] AdapterNoise = ["NVIDIA GeForce ", "NVIDIA ", "AMD ", "Intel(R) ", "Microsoft ", "(R)", "(TM)"];
     private const string UnattributedColor = "#4A4A46";
     private const long OverlapTolerance = 16L << 20;
     private const string SharedColor = "#C98500";
@@ -195,6 +207,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private readonly Func<StrataContext> _strata;
     private readonly TimeProvider _time;
     private readonly Dictionary<(ProcessKey, long), GpuProcessRow> _rows = [];
+    private readonly HashSet<GpuProcessRow> _shown = [];
+    private readonly GpuMemoryPageSettings _page;
+    private readonly Action? _savePage;
+    private (string Name, int Pid)? _lost;
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
     private RuntimeSnapshot? _strataSnapshot;
@@ -203,12 +219,19 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private bool _renderedStale;
     private string? _renderedKey;
 
-    public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null)
+    /// <param name="page">Where the page's layout is remembered (the shell settings); a private copy when null.</param>
+    /// <param name="savePage">Writes <paramref name="page"/> (the shell settings file); failures only cost the memory of the layout.</param>
+    public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
+        GpuMemoryPageSettings? page = null, Action? savePage = null)
     {
         _monitor = monitor;
         _hub = hub;
         _strata = strata;
         _time = time ?? TimeProvider.System;
+        _page = page ?? new GpuMemoryPageSettings();
+        _page.Normalize();
+        _savePage = savePage;
+        ShowAll = _page.ShowAll;
     }
 
     public ObservableCollection<AdapterSlot> Adapters { get; } = [];
@@ -244,8 +267,15 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// <summary>Also list processes below 1 MiB local / 16 MiB shared or committed.</summary>
     [ObservableProperty] public partial bool ShowAll { get; set; }
 
-    /// <summary>Name or PID.</summary>
+    /// <summary>Name, PID, kind, runtime or model.</summary>
     [ObservableProperty] public partial string Filter { get; set; } = "";
+
+    /// <summary>Only processes of this kind (set by clicking a legend entry); null = all.</summary>
+    [ObservableProperty] public partial ProcessKind? KindFilter { get; set; }
+    [ObservableProperty] public partial string KindFilterText { get; set; } = "";
+
+    /// <summary>The detail panel's text while no process is selected (why, when the selected one went away).</summary>
+    [ObservableProperty] public partial string DetailPlaceholder { get; set; } = DefaultPlaceholder;
     [ObservableProperty] public partial bool HelpOpen { get; set; }
 
     /// <summary>The page is on screen: the reader then reads every 2 s and includes engines and loaded files.</summary>
@@ -271,6 +301,17 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         new("텍스처·텐서 이름", "그래픽 디버거(PIX, Nsight)가 필요 — 알 수 없음"),
     ];
 
+    /// <summary>How the page is used (keys and clicks); the first section of the help panel.</summary>
+    public IReadOnlyList<DetailFact> Tips { get; } =
+    [
+        new("Ctrl+F", "찾기: 이름·PID·종류·런타임·모델. Esc로 지우고 Enter나 ↓로 표로 이동"),
+        new("범례 항목 누르기", "그 종류만 표에 보기. 다시 누르면 전체"),
+        new("머리글", "눌러서 정렬, 오른쪽 클릭으로 열 보이기·숨기기"),
+        new("행 오른쪽 클릭", "이름·PID·행·상세 복사 (Ctrl+C는 행 복사)"),
+        new("표 위의 마우스", "올려 두는 동안 행 순서 고정 (값은 계속 갱신)"),
+        new("구분선", "끌어서 상세 영역 크기 조절, 두 번 누르면 기본 크기"),
+    ];
+
     public IReadOnlyList<string> Checks { get; } =
     [
         "작업 관리자 › 세부 정보 › 열 선택 › 전용·공유 GPU 메모리",
@@ -278,11 +319,162 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         "nvidia-smi --query-gpu=memory.used,memory.total --format=csv (장치 전체)",
     ];
 
+    /// <summary>Sort column of the table (a column key of <see cref="GpuMemoryPageSettings.ColumnKeys"/>).</summary>
+    public string SortColumn => _page.SortColumn ?? "Dedicated";
+
+    public bool SortDescending => _page.SortColumn is null || _page.SortDescending;
+
+    public IReadOnlyCollection<string> HiddenColumns => _page.HiddenColumns;
+
+    /// <summary>Height of the detail panel chosen with the splitter; 0 = the default share.</summary>
+    public double DetailHeight => _page.DetailHeight;
+
     [RelayCommand]
     private void TogglePause() => IsPaused = !IsPaused;
 
     [RelayCommand]
     private void ToggleHelp() => HelpOpen = !HelpOpen;
+
+    /// <summary>Shows only processes of one kind; the same kind again shows all.</summary>
+    [RelayCommand]
+    private void FilterKind(ProcessKind? kind) => KindFilter = KindFilter == kind ? null : kind;
+
+    [RelayCommand]
+    private void ClearKindFilter() => KindFilter = null;
+
+    [RelayCommand]
+    private void ClearFilter() => Filter = "";
+
+    /// <summary>Selects the process that holds the Strata model (clearing filters that hide it).</summary>
+    [RelayCommand(CanExecute = nameof(CanShowStrata))]
+    private void ShowStrata()
+    {
+        if (_rows.Values.Where(r => r.IsStrata).OrderByDescending(r => r.Dedicated).FirstOrDefault() is not { } row)
+        {
+            return;
+        }
+
+        if (!_shown.Contains(row))
+        {
+            Filter = "";
+            KindFilter = null;
+        }
+
+        SelectedProcess = row;
+    }
+
+    private bool CanShowStrata() => _rows.Values.Any(r => r.IsStrata);
+
+    public void SetSort(string column, bool descending)
+    {
+        if (!GpuMemoryPageSettings.ColumnKeys.Contains(column) || (column == SortColumn && descending == SortDescending))
+        {
+            return;
+        }
+
+        _page.SortColumn = column;
+        _page.SortDescending = descending;
+        SavePage();
+    }
+
+    public void SetColumnHidden(string column, bool hidden)
+    {
+        if (!GpuMemoryPageSettings.ColumnKeys.Contains(column) || column == "Name" || _page.HiddenColumns.Contains(column) == hidden)
+        {
+            return;
+        }
+
+        if (hidden)
+        {
+            _page.HiddenColumns.Add(column);
+        }
+        else
+        {
+            _page.HiddenColumns.Remove(column);
+        }
+
+        SavePage();
+    }
+
+    public void ResetColumns()
+    {
+        if (_page.HiddenColumns.Count > 0)
+        {
+            _page.HiddenColumns.Clear();
+            SavePage();
+        }
+    }
+
+    public void SetDetailHeight(double height)
+    {
+        var value = double.IsFinite(height) && height is > 0 and < 4000 ? Math.Round(height) : 0;
+        if (value != _page.DetailHeight)
+        {
+            _page.DetailHeight = value;
+            SavePage();
+        }
+    }
+
+    /// <summary>One row as tab-separated text (pasting into a spreadsheet or a message keeps the columns).</summary>
+    public static string RowText(GpuProcessRow row) => string.Join('\t',
+        row.Name, row.Pid.ToString(CultureInfo.InvariantCulture), row.KindLabel, row.DedicatedText, row.SharedText,
+        row.GpuText.Length > 0 ? row.GpuText + "%" : Text.NA, row.Runtimes, row.InsideIsGeneric ? "" : row.Inside, row.AdapterFull);
+
+    /// <summary>The selected process as plain text, with each value's kind (measured, Strata's report, estimate) and the source.</summary>
+    public string? DetailText()
+    {
+        if (Detail is not { } d || _current is not { } s)
+        {
+            return null;
+        }
+
+        var lines = new List<string>
+        {
+            $"{d.Title} (PID {d.Pid}) · {d.Kind} — {d.KindBasis}",
+            d.Subtitle,
+            $"전용 {d.Dedicated}{(d.DedicatedShare is { } share ? $" ({share})" : "")} · 공유 {d.Shared} · 커밋 {d.Committed} · GPU {d.Gpu}"
+                + (d.Engines.Length > 0 ? $" ({d.Engines})" : ""),
+            $"런타임: {d.Runtimes}",
+        };
+        lines.AddRange(d.Models.Select(m => $"모델 파일: {m.Name} — {m.Summary} ({m.Size})"));
+        if (d.BreakdownLegend.Count > 0)
+        {
+            lines.Add("구성 (추정): " + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}")) + (d.BreakdownNote is { } note ? $" — {note}" : ""));
+        }
+
+        if (d.StrataModel is not null)
+        {
+            lines.Add($"Strata 보고: 모델 {d.StrataModel} · 컨텍스트 {d.StrataWindow} · 슬롯 토큰 {d.StrataSlots}");
+        }
+
+        lines.Add($"측정 {Text.DateTime(s.Timestamp)} · 출처 {s.Source}");
+        return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
+    }
+
+    /// <summary>"RTX 5080" for "NVIDIA GeForce RTX 5080": vendor words and trademark signs dropped (the full name is the tooltip).</summary>
+    public static string ShortAdapterName(string name)
+    {
+        var shortName = name;
+        foreach (var token in AdapterNoise)
+        {
+            shortName = shortName.Replace(token, " ", StringComparison.OrdinalIgnoreCase);
+        }
+
+        shortName = string.Join(' ', shortName.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return shortName.Length > 0 ? shortName : name;
+    }
+
+    private void SavePage()
+    {
+        try
+        {
+            _savePage?.Invoke();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            // Only the remembered layout is lost; the page itself is unaffected.
+        }
+    }
 
     partial void OnIsVisibleChanged(bool value)
     {
@@ -313,11 +505,40 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
     }
 
-    partial void OnShowAllChanged(bool value) => RebuildRows(force: true);
+    partial void OnShowAllChanged(bool value)
+    {
+        if (_page.ShowAll != value)
+        {
+            _page.ShowAll = value;
+            SavePage();
+        }
 
-    partial void OnFilterChanged(string value) => RebuildRows(force: true);
+        RebuildRows(force: true, userAction: true);
+    }
 
-    partial void OnSelectedProcessChanged(GpuProcessRow? value) => BuildDetail();
+    partial void OnFilterChanged(string value) => RebuildRows(force: true, userAction: true);
+
+    partial void OnKindFilterChanged(ProcessKind? value)
+    {
+        KindFilterText = value is { } kind ? $"종류: {KindLabels[kind]}" : "";
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current)); // the active legend entry
+        }
+
+        RebuildRows(force: true, userAction: true);
+    }
+
+    partial void OnSelectedProcessChanged(GpuProcessRow? value)
+    {
+        if (value is not null)
+        {
+            _lost = null;
+            DetailPlaceholder = DefaultPlaceholder;
+        }
+
+        BuildDetail();
+    }
 
     /// <summary>A reading older than three intervals plus two seconds is not shown as current.</summary>
     public static TimeSpan StaleAfter(GpuMemorySnapshot snapshot)
@@ -483,10 +704,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var used = adapter.DedicatedUsageBytes;
             long? unattributed = used is long u && processSum is long sum ? u - sum : null;
             var scale = capacity > 0 ? capacity : Math.Max(1, used ?? byKind.Sum(k => k.Bytes));
-            var parts = byKind.Select(k => (Color: KindColors[k.Kind], Label: KindLabels[k.Kind], k.Bytes)).ToList();
+            var parts = byKind.Select(k => (Color: KindColors[k.Kind], Label: KindLabels[k.Kind], k.Bytes, Kind: (ProcessKind?)k.Kind)).ToList();
             if (unattributed > 0)
             {
-                parts.Add((UnattributedColor, "나뉘지 않음", unattributed.Value));
+                parts.Add((UnattributedColor, "나뉘지 않음", unattributed.Value, null));
             }
 
             // When the process rows add up to more than the adapter reports (shared surfaces counted twice), the bar keeps the
@@ -494,7 +715,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var partsTotal = parts.Sum(p => p.Bytes);
             var factor = used is long usedBytes && partsTotal > usedBytes && partsTotal > 0 ? (double)usedBytes / partsTotal : 1.0;
             var segments = parts.Select(p => new BarSegment(Math.Clamp(p.Bytes * factor / scale, 0, 1), p.Color, p.Label)).ToList();
-            var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes))).ToList();
+            var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes), Kind: p.Kind,
+                IsActive: p.Kind is not null && p.Kind == KindFilter)).ToList();
             // A few MiB either way is the counters' timing; more is shared resources counted for several processes.
             string? legendNote = unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
                 ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)"
@@ -527,37 +749,42 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 nvml,
                 capacity > 0,
                 IsCompact: views.Count > 0,
-                LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")))));
+                LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
+                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null)));
         }
 
         return views;
     }
 
-    private void RebuildRows(bool force)
+    /// <param name="userAction">A filter or checkbox change (not a new reading): a selection hidden by it moves to the largest visible row.</param>
+    private void RebuildRows(bool force, bool userAction = false)
     {
         if (IsPaused && !force)
         {
             return;
         }
 
+        var previous = SelectedProcess; // before the table drops it (a bound DataGrid clears the selection on removal)
         var s = _current;
         if (s is null)
         {
             Processes.Clear();
             _rows.Clear();
+            _shown.Clear();
             CountText = "";
             EmptyText = "";
             ShowGpuColumn = false;
             SelectedProcess = null;
             Detail = null;
+            ShowStrataCommand.NotifyCanExecuteChanged();
             return;
         }
 
         var filter = Filter.Trim();
         var listed = s.Processes.Where(p => ShowAll || GpuMemoryRules.IsListed(p)).ToList();
-        var visible = listed.Where(p => filter.Length == 0 || Matches(s, p, filter)).ToList();
         var keys = new HashSet<(ProcessKey, long)>();
-        foreach (var p in visible)
+        var luids = new HashSet<long>();
+        foreach (var p in listed)
         {
             var key = (KeyOf(s, p), p.Luid);
             keys.Add(key);
@@ -565,33 +792,95 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             {
                 row = new GpuProcessRow(key.Item1, p.Luid);
                 _rows[key] = row;
-                Processes.Add(row);
             }
 
             Update(row, s, p);
+            var show = (KindFilter is not { } kind || row.Kind == kind) && Matches(row, filter);
+            if (show && _shown.Add(row))
+            {
+                Processes.Add(row);
+            }
+            else if (!show && _shown.Remove(row))
+            {
+                Processes.Remove(row);
+            }
+
+            if (show)
+            {
+                luids.Add(row.Luid);
+            }
         }
 
         foreach (var gone in _rows.Where(r => !keys.Contains(r.Key)).ToList())
         {
             _rows.Remove(gone.Key);
-            Processes.Remove(gone.Value);
+            if (_shown.Remove(gone.Value))
+            {
+                Processes.Remove(gone.Value);
+            }
         }
 
+        var visible = Processes.Count;
         var hidden = s.Processes.Count - listed.Count;
-        CountText = $"프로세스 {visible.Count}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
-        EmptyText = visible.Count > 0 ? ""
-            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다"
+        var filtering = filter.Length > 0 || KindFilter is not null;
+        CountText = filtering ? $"{visible}/{listed.Count}개 표시"
+            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
+        EmptyText = visible > 0 ? ""
+            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (KindFilter is { } k1 ? $" ({KindLabels[k1]} 종류 안에서)" : "")
+            : KindFilter is { } k2 ? $"{KindLabels[k2]} 종류의 프로세스가 없습니다"
             : hidden > 0 ? $"GPU 메모리를 1 MiB 넘게 쓰는 프로세스가 없습니다 · '작은 프로세스 포함'으로 {hidden}개를 볼 수 있습니다"
             : "GPU 메모리를 쓰는 프로세스가 없습니다";
-        ShowGpuColumn = visible.Select(p => p.Luid).Distinct().Count() > 1;
-        if (SelectedProcess is null || !Processes.Contains(SelectedProcess))
+        ShowGpuColumn = luids.Count > 1;
+        ShowStrataCommand.NotifyCanExecuteChanged();
+        Select(previous, userAction);
+    }
+
+    /// <summary>
+    /// Keeps the selection on the same process. When it left the table: after a filter change the largest visible row is
+    /// selected; after a reading a process of the same name (a restart) is followed, otherwise the panel says it went away
+    /// and the next process of that name is selected when it appears.
+    /// </summary>
+    private void Select(GpuProcessRow? previous, bool userAction)
+    {
+        if (previous is not null && _shown.Contains(previous))
         {
+            if (!ReferenceEquals(SelectedProcess, previous))
+            {
+                SelectedProcess = previous;
+            }
+            else
+            {
+                BuildDetail();
+            }
+
+            return;
+        }
+
+        if (userAction || (previous is null && _lost is null))
+        {
+            _lost = null;
+            DetailPlaceholder = DefaultPlaceholder;
             SelectedProcess = Processes.OrderByDescending(r => r.Dedicated).FirstOrDefault();
+            return;
         }
-        else
+
+        var name = previous?.Name ?? _lost!.Value.Name;
+        var follow = Processes.Where(r => r.Name == name).OrderByDescending(r => previous is not null && r.Luid == previous.Luid).ThenByDescending(r => r.Dedicated)
+            .FirstOrDefault();
+        if (follow is not null)
         {
-            BuildDetail();
+            SelectedProcess = follow; // clears _lost
+            return;
         }
+
+        if (previous is not null)
+        {
+            _lost = (previous.Name, previous.Pid);
+        }
+
+        SelectedProcess = null;
+        DetailPlaceholder = $"선택했던 프로세스가 목록에서 사라졌습니다: {_lost!.Value.Name} (PID {_lost.Value.Pid}). 종료했거나 GPU 메모리를 놓았습니다. "
+                            + "같은 이름의 프로세스가 나타나면 다시 선택합니다.";
     }
 
     private void Update(GpuProcessRow row, GpuMemorySnapshot s, GpuProcessMemory p)
@@ -611,6 +900,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.Dedicated = p.DedicatedBytes ?? -1;
         row.DedicatedText = Text.Bytes(p.DedicatedBytes);
         row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
+        row.DedicatedShareText = capacity > 0 && p.DedicatedBytes is not null ? $"카드 VRAM의 {Percent(row.DedicatedShare)}" : null;
         row.Shared = p.SharedBytes ?? -1;
         row.SharedText = Text.Bytes(p.SharedBytes);
         row.Committed = p.CommittedBytes ?? -1;
@@ -624,7 +914,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             : detail?.Models.FirstOrDefault()?.FileName;
         row.Inside = found ?? InsideOf(kind.Kind);
         row.InsideIsGeneric = found is null && row.Inside.Length > 0;
-        row.Adapter = s.Adapter(p.Luid)?.Info?.Name ?? GpuLuid.Format(p.Luid);
+        row.AdapterFull = s.Adapter(p.Luid)?.Info?.Name ?? GpuLuid.Format(p.Luid);
+        row.Adapter = ShortAdapterName(row.AdapterFull);
         row.IsStrata = strata;
         row.IsUncertain = entry?.State is not ProcessIdentityState.Verified;
         row.Identity = IdentityText(entry) is { Length: > 0 } identity ? identity : null;
@@ -707,15 +998,16 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             p.ProcessId.ToString(CultureInfo.InvariantCulture),
             KindLabels[kind.Kind],
             KindColors[kind.Kind],
+            $"분류 근거: {kind.Basis}",
             IsStrata(p.ProcessId),
             string.Join(" · ", new[]
             {
                 entry?.StartTime is { } start ? $"시작 {Text.DateTime(start)}" : null,
                 IdentityText(entry) is { Length: > 0 } id ? id : null,
                 s.Adapter(p.Luid)?.Info?.Name,
-                $"분류 근거: {kind.Basis}",
             }.Where(x => x is not null)),
             Text.Bytes(p.DedicatedBytes),
+            row.DedicatedShareText is { } shareText ? shareText.Replace("카드 ", "", StringComparison.Ordinal) : null,
             Text.Bytes(p.SharedBytes),
             s.CommittedAvailable ? Text.Bytes(p.CommittedBytes) : Text.NA,
             engines is null ? Text.NA : $"{engines.Busiest:0}%",
@@ -778,9 +1070,16 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     private static ProcessKey KeyOf(GpuMemorySnapshot s, GpuProcessMemory p) => s.Process(p.ProcessId)?.Key ?? new ProcessKey(p.ProcessId, 0, $"PID {p.ProcessId}");
 
-    private static bool Matches(GpuMemorySnapshot s, GpuProcessMemory p, string filter)
-        => p.ProcessId.ToString(CultureInfo.InvariantCulture) == filter
-           || (s.Process(p.ProcessId)?.Name ?? "").Contains(filter, StringComparison.OrdinalIgnoreCase);
+    /// <summary>The filter text in the name, kind, runtimes or found contents, or the exact PID.</summary>
+    private static bool Matches(GpuProcessRow row, string filter)
+        => filter.Length == 0
+           || row.Pid.ToString(CultureInfo.InvariantCulture) == filter
+           || row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || row.KindLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || row.Runtimes.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || (!row.InsideIsGeneric && row.Inside.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    private static string Percent(double share) => share > 0 && share < 0.01 ? "1% 미만" : (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
 
     private static string IdentityText(ProcessEntry? entry) => entry?.State switch
     {

@@ -130,6 +130,18 @@ internal sealed class SmokeTestRunner(
                 }
 
                 await Capture("hardware-gpu-memory-open");
+
+                // A kind picked from the legend and the help panel, as a user would open them.
+                if (shell.GpuMemory.Adapters.FirstOrDefault()?.View.Legend.FirstOrDefault(l => l.Kind is not null)?.Kind is { } kind)
+                {
+                    shell.GpuMemory.FilterKindCommand.Execute(kind);
+                }
+
+                shell.GpuMemory.HelpOpen = true;
+                await Task.Delay(1500);
+                await Capture("hardware-gpu-memory-filter-help");
+                shell.GpuMemory.ClearKindFilterCommand.Execute(null);
+                shell.GpuMemory.HelpOpen = false;
             }
 
             shell.Navigate(SectionKeys.Dashboard);
