@@ -30,6 +30,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
     [ObservableProperty] public partial bool OperatorEnabled { get; set; }
     [ObservableProperty] public partial bool GpuEnabled { get; set; }
     [ObservableProperty] public partial bool SystemEnabled { get; set; }
+    [ObservableProperty] public partial bool ProcessMemoryEnabled { get; set; }
     [ObservableProperty] public partial int MaxIntervalMs { get; set; }
     [ObservableProperty] public partial double FontScale { get; set; }
     [ObservableProperty] public partial int OperatorRestarts { get; set; }
@@ -55,6 +56,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         OperatorEnabled = _settings.Modules.Operator;
         GpuEnabled = _settings.Hardware.GpuEnabled;
         SystemEnabled = _settings.Hardware.SystemEnabled;
+        ProcessMemoryEnabled = _settings.Hardware.ProcessMemoryEnabled;
         MaxIntervalMs = _settings.Hardware.MaxIntervalMs;
         FontScale = _settings.Ui.FontScale;
         OperatorRestarts = _settings.Operator.MaxAutomaticRestarts;
@@ -77,6 +79,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         var restartNeeded = LocalAiEnabled != _settings.Modules.LocalAi || EconomicsEnabled != _settings.Modules.GpuEconomics
                             || DiagnosticsEnabled != _settings.Modules.Diagnostics || OperatorEnabled != _settings.Modules.Operator
                             || GpuEnabled != _settings.Hardware.GpuEnabled || SystemEnabled != _settings.Hardware.SystemEnabled
+                            || ProcessMemoryEnabled != _settings.Hardware.ProcessMemoryEnabled
                             || MaxIntervalMs != _settings.Hardware.MaxIntervalMs;
         _settings.Modules.LocalAi = LocalAiEnabled;
         _settings.Modules.GpuEconomics = EconomicsEnabled;
@@ -84,6 +87,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         _settings.Modules.Operator = OperatorEnabled;
         _settings.Hardware.GpuEnabled = GpuEnabled;
         _settings.Hardware.SystemEnabled = SystemEnabled;
+        _settings.Hardware.ProcessMemoryEnabled = ProcessMemoryEnabled;
         _settings.Hardware.MaxIntervalMs = MaxIntervalMs;
         _settings.Ui.FontScale = FontScale;
         _settings.Operator.MaxAutomaticRestarts = OperatorRestarts;

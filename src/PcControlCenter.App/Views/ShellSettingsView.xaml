@@ -19,6 +19,8 @@
           <TextBlock Text="공통 센서" Style="{StaticResource SectionTitle}" />
           <CheckBox Content="NVIDIA GPU 센서 (NVML) 읽기" IsChecked="{Binding GpuEnabled}" Margin="0,3" />
           <CheckBox Content="CPU·RAM 읽기 (Windows)" IsChecked="{Binding SystemEnabled}" Margin="0,3" />
+          <CheckBox Content="프로세스별 GPU 메모리 읽기 (Windows 성능 카운터 · 하드웨어 › GPU 메모리)" IsChecked="{Binding ProcessMemoryEnabled}" Margin="0,3"
+                    ToolTip="공통 센서와 별도의 스레드에서 2초(화면을 볼 때)·10초(그 밖) 간격으로 읽습니다. NVML은 열지 않습니다." />
           <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="최대 측정 간격 (ms)" Style="{StaticResource Label}" VerticalAlignment="Center" Width="170" />
             <TextBox Text="{Binding MaxIntervalMs, UpdateSourceTrigger=PropertyChanged}" Width="100" />

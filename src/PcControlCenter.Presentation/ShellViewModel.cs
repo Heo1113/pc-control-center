@@ -25,6 +25,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [
         new(SectionKeys.Dashboard, "dashboard", "통합 대시보드", null),
         new(SectionKeys.Hardware, "hardware/shared", "공통 센서", null),
+        new(SectionKeys.Hardware, "hardware/gpu-memory", "GPU 메모리", null),
         new(SectionKeys.Hardware, "hardware/live", "실시간 센서·그래프", ModuleIds.LocalAi),
         new(SectionKeys.Hardware, "hardware/gpu-power", "GPU 전력·장치", ModuleIds.GpuEconomics),
         new(SectionKeys.Hardware, "hardware/around-events", "오류 시점 센서 기록", ModuleIds.Diagnostics),
@@ -105,6 +106,7 @@ public sealed partial class ShellViewModel : ObservableObject
             key => Navigate(key), _time);
         Operator = runtime.Operator is { } operatorForControls ? new OperatorControlViewModel(operatorForControls, ui) : null;
         SharedSensors = new SharedSensorsViewModel(runtime.Hub, runtime.Intervals, _time);
+        GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time);
         History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);
@@ -125,13 +127,18 @@ public sealed partial class ShellViewModel : ObservableObject
             {
                 "dashboard" => Dashboard,
                 "hardware/shared" => SharedSensors,
+                "hardware/gpu-memory" => GpuMemory,
                 "settings/common" => Settings,
                 "history/timeline" => History,
                 "settings/data" => Data,
                 _ when plan.ModuleId is { } id => new ModuleUnavailableViewModel(id, plan.Title, StatusOf(id), _restarts.GetValueOrDefault(id)),
                 _ => new PendingPageViewModel(plan.Title),
             };
-            section.Tabs.Add(new ShellTab(plan.Key, plan.Title, plan.ModuleId, content));
+            section.Tabs.Add(new ShellTab(plan.Key, plan.Title, plan.ModuleId, content)
+            {
+                // The GPU memory reader reads faster (and right away) while its page is on screen.
+                Activated = ReferenceEquals(content, GpuMemory) ? () => GpuMemory.IsVisible = true : null,
+            });
         }
 
         foreach (var section in Sections)
@@ -164,6 +171,9 @@ public sealed partial class ShellViewModel : ObservableObject
     public ObservableCollection<string> Notices { get; } = [];
     public DashboardViewModel Dashboard { get; }
     public SharedSensorsViewModel SharedSensors { get; }
+
+    /// <summary>Hardware › GPU 메모리 (per-process and per-adapter GPU memory from the Windows counters).</summary>
+    public GpuMemoryViewModel GpuMemory { get; }
     public HistoryViewModel History { get; }
     public DataMigrationViewModel Data { get; }
     public ShellSettingsViewModel Settings { get; }
@@ -236,6 +246,12 @@ public sealed partial class ShellViewModel : ObservableObject
         if (CurrentSection?.SelectedTab?.Content == SharedSensors)
         {
             SharedSensors.Refresh();
+        }
+
+        GpuMemory.IsVisible = CurrentSection?.SelectedTab?.Content == GpuMemory;
+        if (GpuMemory.IsVisible)
+        {
+            GpuMemory.Refresh();
         }
 
         foreach (var handler in _tickHandlers.ToArray())
@@ -320,6 +336,21 @@ public sealed partial class ShellViewModel : ObservableObject
                 Dashboard.Invalidate();
             }
         }
+    }
+
+    /// <summary>The local AI module's latest Strata poll for the GPU memory page, or why there is none.</summary>
+    private static StrataContext StrataOf(ShellRuntime runtime)
+    {
+        var status = runtime.LocalAi.Status;
+        if (!status.IsUsable)
+        {
+            return new StrataContext(null, $"로컬 AI 모듈: {ModuleStateText.ToKorean(status.State)} — Strata 정보를 쓸 수 없습니다.");
+        }
+
+        var service = runtime.LocalAi.Service;
+        return service?.Runtime is null
+            ? new StrataContext(null, "로컬 AI 모듈의 Strata 연결이 꺼져 있습니다 (로컬 AI 설정).")
+            : new StrataContext(service.LatestRuntime, service.LatestRuntime is null ? "로컬 AI 모듈이 Strata에 연결하는 중입니다." : null);
     }
 
     private ModuleStatus StatusOf(string id) => _runtime.Supervisor.Find(id)?.Status
