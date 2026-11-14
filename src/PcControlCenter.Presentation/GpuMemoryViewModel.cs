@@ -15,7 +15,10 @@ public sealed record BarSegment(double Fraction, string ColorHex, string Label, 
 /// <summary>A legend entry under a bar.</summary>
 public sealed record LegendItem(string ColorHex, string Label, string Value, bool IsEstimate = false, string? ToolTip = null);
 
-/// <summary>One adapter in the header: name, local and system-RAM memory bars, engine activity, NVML for comparison.</summary>
+/// <summary>
+/// One adapter in the header: name, local and system-RAM memory bars, engine activity, NVML for comparison. Adapters after
+/// the first are drawn on one line (<see cref="IsCompact"/>, the legend as <see cref="LegendText"/> in a tooltip).
+/// </summary>
 public sealed record AdapterView(
     string Name,
     string Meta,
@@ -29,7 +32,9 @@ public sealed record AdapterView(
     string UtilizationLabel,
     string Engines,
     string? Nvml,
-    bool HasCapacity);
+    bool HasCapacity,
+    bool IsCompact = false,
+    string LegendText = "");
 
 /// <summary>
 /// One adapter's place in the header. The slot stays while its adapter does and only its <see cref="View"/> changes, so
@@ -160,6 +165,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     };
 
     private const string UnattributedColor = "#4A4A46";
+    private const long OverlapTolerance = 16L << 20;
     private const string SharedColor = "#C98500";
     private const string WeightsColor = "#D55181";
     private const string KvColor = "#D95926";
@@ -221,6 +227,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     [ObservableProperty] public partial string MessageDetail { get; set; } = "";
     [ObservableProperty] public partial bool HasValues { get; set; }
     [ObservableProperty] public partial string CountText { get; set; } = "";
+
+    /// <summary>Why the table is empty while there are values (nothing above the listing threshold, or the filter matches nothing).</summary>
+    [ObservableProperty] public partial string EmptyText { get; set; } = "";
     [ObservableProperty] public partial bool ShowGpuColumn { get; set; }
     [ObservableProperty] public partial string StrataText { get; set; } = "";
     [ObservableProperty] public partial Level StrataLevel { get; set; } = Level.Muted;
@@ -483,7 +492,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var factor = used is long usedBytes && partsTotal > usedBytes && partsTotal > 0 ? (double)usedBytes / partsTotal : 1.0;
             var segments = parts.Select(p => new BarSegment(Math.Clamp(p.Bytes * factor / scale, 0, 1), p.Color, p.Label)).ToList();
             var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes))).ToList();
-            string? legendNote = unattributed < 0 ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)" : null;
+            // A few MiB either way is the counters' timing; more is shared resources counted for several processes.
+            string? legendNote = unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
+                ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)"
+                : null;
             var shared = adapter.SharedUsageBytes;
             var sharedCapacity = info?.SharedSystemMemoryBytes ?? 0;
             string? nvml = null;
@@ -494,7 +506,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
             var engines = adapter.Engines;
             var meta = info is null ? "DXGI 목록에 없는 LUID"
-                : info.VendorName + (info.IsSoftware ? " · 소프트웨어" : "") + (info is { IsSoftware: false } && capacity <= 512L << 20 ? " · 통합 GPU일 수 있음" : "");
+                : info.VendorName + (info.IsSoftware ? " · 소프트웨어" : "")
+                  + (info is { IsSoftware: false } && capacity is > 0 and <= 512L << 20 ? " · 통합 GPU일 수 있음" : "")
+                  + (info is { IsSoftware: false } && capacity == 0 ? " · 전용 메모리 없음" : "");
             views.Add((adapter.Luid, new AdapterView(
                 info?.Name ?? $"어댑터 {GpuLuid.Format(adapter.Luid)}",
                 meta,
@@ -508,7 +522,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 engines is null ? "" : BusiestEngine(engines),
                 engines is null ? "" : EnginesText(engines),
                 nvml,
-                capacity > 0)));
+                capacity > 0,
+                IsCompact: views.Count > 0,
+                LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")))));
         }
 
         return views;
@@ -527,6 +543,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             Processes.Clear();
             _rows.Clear();
             CountText = "";
+            EmptyText = "";
             ShowGpuColumn = false;
             SelectedProcess = null;
             Detail = null;
@@ -559,6 +576,10 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         var hidden = s.Processes.Count - listed.Count;
         CountText = $"프로세스 {visible.Count}" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : "");
+        EmptyText = visible.Count > 0 ? ""
+            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다"
+            : hidden > 0 ? $"GPU 메모리를 1 MiB 넘게 쓰는 프로세스가 없습니다 · '작은 프로세스 포함'으로 {hidden}개를 볼 수 있습니다"
+            : "GPU 메모리를 쓰는 프로세스가 없습니다";
         ShowGpuColumn = visible.Select(p => p.Luid).Distinct().Count() > 1;
         if (SelectedProcess is null || !Processes.Contains(SelectedProcess))
         {
