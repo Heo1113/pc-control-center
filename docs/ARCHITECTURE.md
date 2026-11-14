@@ -27,7 +27,7 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 |---|---|
 | `modules/<원본 저장소>/` | A·B·C·E 소스(고정 커밋). 바뀐 파일은 [REUSE.md](REUSE.md) |
 | `src/PcControlCenter.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태 |
-| `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), 화면을 볼 때만 PDH `GPU Engine`·`ProcessInspector`(불러온 DLL·매핑 파일)·`GgufHeader`, `ProcessKinds`·`LlmMemoryEstimate`, MOCK 공급자 |
+| `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), 화면을 볼 때만 PDH `GPU Engine`·`BackgroundInspection`→`ProcessInspector`(불러온 DLL·매핑 파일)·`GgufHeader`·로컬 AI 서버 수신 포트, `ProcessKinds`·`LlmMemoryEstimate`, `RuntimeReportPoller`(Strata `/metrics`·Ollama `/api/ps`·llama.cpp `/props`·`/models`, 루프백 GET), MOCK 공급자 |
 | `src/PcControlCenter.Core` | 데이터 폴더(`ShellPaths`), 기존 프로그램 폴더 보호, 단일 실행 잠금, 공통 설정, 모듈 감독 |
 | `src/PcControlCenter.Modules` | A·B·C·E 모듈 어댑터, 센서 간격 조정, 대시보드 요약, `ShellRuntime`(조립) |
 | `src/PcControlCenter.Operator` | Operator 격리: 프로토콜, 서버(`DesktopServer`), 독립 검사(`HostGuard`), 클라이언트(`RemoteDesktop`), 프로세스 감독 |
@@ -53,8 +53,10 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 - `GpuMemoryMonitor`는 공통 센서와 **별도의 전용 스레드**에서 Windows GPU 성능 카운터를 읽습니다. NVML은 열지 않습니다(공통 센서 소유). WDDM에서 NVML은 프로세스별 메모리를 주지 않으므로 프로세스별 값의 출처는 Windows 카운터뿐입니다.
 - 화면을 보는 동안 2초, 그 밖에는 10초 간격으로 읽습니다. 값은 메모리에 30분만 두고 DB에는 쓰지 않습니다(기존 스키마 변경 없음).
 - 공급자 예외·카운터 없음은 이 화면의 N/A와 이유로만 끝나고, 공통 센서·모듈·대시보드에는 영향이 없습니다. 공통 설정에서 끌 수 있습니다.
-- 엔진 사용률과 프로세스 검사(불러온 DLL·매핑된 파일 이름, 한 번에 150 ms 상한)는 화면을 보는 동안에만 읽습니다. 검사 실패는 문제 목록에 남고 메모리 측정값에는 영향을 주지 않습니다.
-- 값의 종류를 나눠 보여 줍니다: 측정(Windows), 계산(합·차), Strata 보고, 추정(모델 파일 헤더로 계산한 LLM 구성 — 빗금과 "추정" 표시, 측정 총량 안에 들어갈 때만). 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
+- 엔진 사용률과 프로세스 검사(불러온 DLL·매핑된 파일 이름, GGUF 헤더)는 화면을 보는 동안에만 읽습니다. 검사는 카운터 수집과 **별도 작업**에서 돌아 느린 디스크가 측정을 늦추지 않습니다. 검사 실패·지연은 문제 목록에 남고 메모리 측정값에는 영향을 주지 않습니다.
+- 선택한 프로세스에 대해서만, 화면을 보는 동안 10초에 한 번까지 로컬 런타임에 묻습니다(`127.0.0.1`·`[::1]`의 읽기 전용 GET). Strata 키는 로컬 AI 설정의 키 환경 변수에서 요청마다 읽고 저장하지 않습니다.
+- 값의 종류를 나눠 보여 줍니다: 측정(Windows), 계산(합·차), 런타임 보고(설정값·마지막 보고값, 지금의 사용량 아님), 추정(모델 파일 헤더로 계산한 LLM 구성 — 빗금과 "추정" 표시, 측정 총량 안에 들어갈 때만). 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
+- 대시보드의 "GPU 메모리" 카드는 같은 리더의 마지막 측정에서 전용 메모리 상위 프로세스를 보여 주고, 새 측정이 없으면 이전 값을 현재처럼 보여 주지 않습니다.
 
 ## 장애 격리
 
