@@ -8,6 +8,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PcControlCenter.Core\PcControlCenter.Core.csproj" />
     <ProjectReference Include="..\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
+    <ProjectReference Include="..\PcControlCenter.GpuMemory\PcControlCenter.GpuMemory.csproj" />
     <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Presentation\LocalAiPerf.Presentation.csproj" />
     <ProjectReference Include="..\..\modules\gpu-profit-center\src\GpuProfit.Presentation\GpuProfit.Presentation.csproj" />
     <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.Presentation\WinDiag.Presentation.csproj" />

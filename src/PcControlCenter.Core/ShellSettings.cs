@@ -73,6 +73,12 @@ public sealed class SharedHardwareSettings
 
     /// <summary>Windows CPU and RAM counters.</summary>
     public bool SystemEnabled { get; set; } = true;
+
+    /// <summary>
+    /// GPU memory per process and per adapter from the Windows performance counters (hardware › GPU 메모리). Read on a
+    /// thread of its own, not by the shared reader; off = that page shows N/A. Missing in older files = on.
+    /// </summary>
+    public bool ProcessMemoryEnabled { get; set; } = true;
 }
 
 /// <summary>Turns whole modules off (for example the Operator on a PC where no automation should run).</summary>
