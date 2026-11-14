@@ -27,7 +27,7 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 |---|---|
 | `modules/<원본 저장소>/` | A·B·C·E 소스(고정 커밋). 바뀐 파일은 [REUSE.md](REUSE.md) |
 | `src/PcControlCenter.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태 |
-| `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), MOCK 공급자 |
+| `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), 화면을 볼 때만 PDH `GPU Engine`·`ProcessInspector`(불러온 DLL·매핑 파일)·`GgufHeader`, `ProcessKinds`·`LlmMemoryEstimate`, MOCK 공급자 |
 | `src/PcControlCenter.Core` | 데이터 폴더(`ShellPaths`), 기존 프로그램 폴더 보호, 단일 실행 잠금, 공통 설정, 모듈 감독 |
 | `src/PcControlCenter.Modules` | A·B·C·E 모듈 어댑터, 센서 간격 조정, 대시보드 요약, `ShellRuntime`(조립) |
 | `src/PcControlCenter.Operator` | Operator 격리: 프로토콜, 서버(`DesktopServer`), 독립 검사(`HostGuard`), 클라이언트(`RemoteDesktop`), 프로세스 감독 |
@@ -53,7 +53,8 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 - `GpuMemoryMonitor`는 공통 센서와 **별도의 전용 스레드**에서 Windows GPU 성능 카운터를 읽습니다. NVML은 열지 않습니다(공통 센서 소유). WDDM에서 NVML은 프로세스별 메모리를 주지 않으므로 프로세스별 값의 출처는 Windows 카운터뿐입니다.
 - 화면을 보는 동안 2초, 그 밖에는 10초 간격으로 읽습니다. 값은 메모리에 30분만 두고 DB에는 쓰지 않습니다(기존 스키마 변경 없음).
 - 공급자 예외·카운터 없음은 이 화면의 N/A와 이유로만 끝나고, 공통 센서·모듈·대시보드에는 영향이 없습니다. 공통 설정에서 끌 수 있습니다.
-- 값마다 출처를 붙입니다: 측정(Windows), 계산(합·차), 런타임 보고(Strata). 가중치·KV 캐시·작업 버퍼로 나누지 않습니다. 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
+- 엔진 사용률과 프로세스 검사(불러온 DLL·매핑된 파일 이름, 한 번에 150 ms 상한)는 화면을 보는 동안에만 읽습니다. 검사 실패는 문제 목록에 남고 메모리 측정값에는 영향을 주지 않습니다.
+- 값의 종류를 나눠 보여 줍니다: 측정(Windows), 계산(합·차), Strata 보고, 추정(모델 파일 헤더로 계산한 LLM 구성 — 빗금과 "추정" 표시, 측정 총량 안에 들어갈 때만). 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
 
 ## 장애 격리
 
