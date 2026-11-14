@@ -108,11 +108,15 @@ public static class ProcessKinds
 }
 
 /// <summary>
-/// An estimate of how an LLM process's local memory splits, from the model file header and the context size. Every part is
-/// an estimate (llama.cpp-style placement assumed); only the process total is a measurement.
+/// An estimate of how an LLM process's local memory splits, from the model file header and the context size, assuming
+/// llama.cpp's placement with every layer on the GPU. Only the process total is a measurement. When the header's weights
+/// are larger than that total, not every layer can be on the GPU and which part is what is unknown: no split is made
+/// (<see cref="FitsAllLayers"/> false, <see cref="KvCache"/> and <see cref="Rest"/> null) and the two numbers are shown apart.
 /// </summary>
-public sealed record LlmMemoryEstimate(long Total, long Weights, long? KvCache, long Rest, bool WeightsCapped, bool KvIsUpperBound)
+public sealed record LlmMemoryEstimate(long Total, long WeightsAllLayers, long? KvCache, long? Rest, bool KvIsUpperBound)
 {
+    public bool FitsAllLayers => WeightsAllLayers <= Total;
+
     public static LlmMemoryEstimate? From(GgufSummary model, long? processDedicated, long? contextTokens)
     {
         if (processDedicated is not long total || total <= 0 || model.Error is not null || model.GpuWeightBytesAllLayers <= 0)
@@ -120,9 +124,11 @@ public sealed record LlmMemoryEstimate(long Total, long Weights, long? KvCache, 
             return null;
         }
 
-        // A few percent over the total is within the estimate's error; more means part of the model is not in local memory.
-        var weights = Math.Min(model.GpuWeightBytesAllLayers, total);
-        var capped = model.GpuWeightBytesAllLayers > total * 1.03;
+        var weights = model.GpuWeightBytesAllLayers;
+        if (weights > total)
+        {
+            return new LlmMemoryEstimate(total, weights, null, null, false);
+        }
 
         long? kv = contextTokens is long ctx && ctx > 0 && model.KvBytesPerTokenF16 is long perToken ? ctx * perToken : null;
         var rest = total - weights;
@@ -131,6 +137,6 @@ public sealed record LlmMemoryEstimate(long Total, long Weights, long? KvCache, 
             kv = null; // does not fit what is left: no split is shown rather than a wrong one
         }
 
-        return new LlmMemoryEstimate(total, weights, kv, Math.Max(0, rest - (kv ?? 0)), capped, model.SlidingWindow is > 0);
+        return new LlmMemoryEstimate(total, weights, kv, rest - (kv ?? 0), model.SlidingWindow is > 0);
     }
 }

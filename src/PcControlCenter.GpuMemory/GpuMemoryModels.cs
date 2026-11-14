@@ -167,6 +167,9 @@ public sealed record ProcessDetail
 
     public int LoadedLibraries { get; init; }
     public DateTimeOffset ScannedAt { get; init; }
+
+    /// <summary>The process that was scanned (PID and start time): a detail is shown only for that process.</summary>
+    public ProcessKey? Key { get; init; }
 }
 
 /// <summary>A model file mapped into a process. A mapping proves the file is open in the process, not that it sits on the GPU.</summary>

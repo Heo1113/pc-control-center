@@ -26,6 +26,7 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
     private string? _adapterError;
     private long _adaptersReadAt;
     private readonly ProcessInspector _inspector;
+    private readonly BackgroundInspection _inspection;
     private DosDevices? _devices;
 
     public WindowsGpuMemoryProvider(TimeProvider? time = null, IAppLogger? log = null)
@@ -36,6 +37,8 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
         _adapters = DxgiAdapters.Enumerate(out _adapterError);
         _adaptersReadAt = Stopwatch.GetTimestamp();
         _inspector = new ProcessInspector((pid, budget) => ProcessScanner.Scan(pid, Devices(), budget), _time);
+        // Scans, file lookups and model headers run beside the counters, never in front of them.
+        _inspection = new BackgroundInspection((processes, table) => _inspector.Inspect(processes, table, InspectionBudget), _time);
         if (_counters is null)
         {
             UnavailableReason = error;
@@ -137,19 +140,7 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
         // Only the listeners of watched ports (the Strata server's): other services are never looked up.
         var listeners = request.WatchedPorts.Count == 0 ? [] : ProcessQueries.Listeners(issues).Where(l => request.WatchedPorts.Contains(l.Port)).ToList();
         var table = ProcessQueries.Table(processes.Select(p => p.ProcessId).Concat(listeners.Select(l => l.ProcessId)), collected.CollectedAt, issues);
-        IReadOnlyDictionary<int, ProcessDetail> details = new Dictionary<int, ProcessDetail>();
-        if (request.IncludeDetails)
-        {
-            try
-            {
-                details = _inspector.Inspect(processes, table, InspectionBudget);
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                issues.Add(new SensorIssue("프로세스 검사", "modules", SensorStatus.Error, $"불러온 라이브러리·모델 파일을 확인하지 못했습니다: {ex.Message}"));
-                _log.Warn("gpu-memory", "프로세스 검사 실패", ex);
-            }
-        }
+        var details = request.IncludeDetails ? _inspection.Next(processes, table, issues) : new Dictionary<int, ProcessDetail>();
         return new GpuMemorySnapshot
         {
             Timestamp = collected.CollectedAt,

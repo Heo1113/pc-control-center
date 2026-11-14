@@ -1,4 +1,5 @@
 using System.Text;
+using LocalAiPerf.Core.Hardware;
 using PcControlCenter.GpuMemory;
 
 namespace PcControlCenter.Tests;
@@ -554,6 +555,67 @@ public class GpuProcessInspectionTests
         Assert.Equal(2, scanner.Calls.Count);
     }
 
+    [Fact(Timeout = 30_000)]
+    public async Task A_slow_inspection_never_holds_up_a_reading_and_its_result_is_kept_for_the_same_process_only()
+    {
+        using var release = new ManualResetEventSlim(false);
+        var calls = 0;
+        var inspection = new BackgroundInspection((processes, table) =>
+        {
+            Interlocked.Increment(ref calls);
+            release.Wait(TestContext.Current.CancellationToken); // a slow disk or a large model header
+            return processes.ToDictionary(p => p.ProcessId, p => new ProcessDetail { Runtimes = ["CUDA"], Key = table[p.ProcessId].Key });
+        });
+        var table = Table([Memory(100, 500)]);
+        var issues = new List<SensorIssue>();
+
+        var first = inspection.Next([Memory(100, 500)], table, issues); // returns at once with what is known (nothing yet)
+        Assert.Empty(first);
+        Assert.Empty(inspection.Next([Memory(100, 500)], table, issues)); // still running: not started twice
+        Assert.Equal(1, Volatile.Read(ref calls));
+
+        release.Set();
+        await inspection.Running!;
+        Assert.Equal(["CUDA"], inspection.Next([Memory(100, 500)], table, issues)[100].Runtimes);
+
+        // The PID now belongs to another process (another start time): the old detail is not shown for it.
+        var reused = Table([Memory(100, 500)], Start.AddMinutes(30));
+        Assert.Empty(inspection.Next([Memory(100, 500)], reused, issues));
+        Assert.Empty(issues);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_failing_or_overdue_inspection_is_reported_and_the_last_details_stay()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        using var gate = new ManualResetEventSlim(true);
+        var fail = false;
+        var inspection = new BackgroundInspection((processes, table) =>
+        {
+            gate.Wait(TestContext.Current.CancellationToken);
+            return fail ? throw new IOException("disk gone (test)") : processes.ToDictionary(p => p.ProcessId, p => new ProcessDetail { Key = table[p.ProcessId].Key });
+        }, time);
+        var table = Table([Memory(100, 500)]);
+        var issues = new List<SensorIssue>();
+        inspection.Next([Memory(100, 500)], table, issues);
+        await inspection.Running!;
+
+        fail = true;
+        Assert.Single(inspection.Next([Memory(100, 500)], table, issues)); // takes the finished result, starts one that fails
+        await Assert.ThrowsAsync<IOException>(() => inspection.Running!);
+        fail = false;
+        gate.Reset();
+        Assert.Single(inspection.Next([Memory(100, 500)], table, issues)); // the failure is reported, the last good details stay
+        Assert.Contains(issues, i => i.Message.Contains("disk gone (test)", StringComparison.Ordinal));
+
+        issues.Clear();
+        time.Advance(BackgroundInspection.StuckAfter + TimeSpan.FromSeconds(1)); // the inspection started above hangs
+        Assert.Single(inspection.Next([Memory(100, 500)], table, issues));
+        Assert.Contains(issues, i => i.Message.Contains("끝나지 않았습니다", StringComparison.Ordinal));
+        gate.Set();
+        await inspection.Running!;
+    }
+
     [Fact]
     public void Model_files_are_named_by_file_name_only_and_llms_come_first()
     {
@@ -681,13 +743,13 @@ public class GpuProcessKindTests
     }
 
     [Fact]
-    public void The_llm_split_is_an_estimate_bounded_by_the_measured_total()
+    public void The_llm_split_is_drawn_only_when_every_layer_can_be_on_the_gpu()
     {
         var model = new GgufSummary { Kind = "LLM", GpuWeightBytesAllLayers = 8 * GiB, KvBytesPerTokenF16 = 163_840 };
 
         var split = LlmMemoryEstimate.From(model, 10 * GiB, 4096)!;
-        Assert.Equal((10 * GiB, 8 * GiB, (long?)(640 * MiB), 2 * GiB - 640 * MiB), (split.Total, split.Weights, split.KvCache, split.Rest));
-        Assert.False(split.WeightsCapped);
+        Assert.True(split.FitsAllLayers);
+        Assert.Equal((10 * GiB, 8 * GiB, (long?)(640 * MiB), (long?)(2 * GiB - 640 * MiB)), (split.Total, split.WeightsAllLayers, split.KvCache, split.Rest));
         Assert.False(split.KvIsUpperBound);
 
         var noContext = LlmMemoryEstimate.From(model, 10 * GiB, null)!;
@@ -696,13 +758,13 @@ public class GpuProcessKindTests
 
         Assert.Null(LlmMemoryEstimate.From(model, 10 * GiB, 32768)!.KvCache); // 5 GiB of KV do not fit in 2 GiB: not split
 
-        var partial = LlmMemoryEstimate.From(model, 6 * GiB, 4096)!; // part of the model is not in local memory
-        Assert.True(partial.WeightsCapped);
-        Assert.Equal((6 * GiB, (long?)null, 0L), (partial.Weights, partial.KvCache, partial.Rest));
-
-        var close = LlmMemoryEstimate.From(model, 8 * GiB - 100 * MiB, null)!; // within the estimate's slack: not flagged, still bounded
-        Assert.False(close.WeightsCapped);
-        Assert.Equal(close.Total, close.Weights);
+        // 8 GiB of weights cannot all sit in a process holding 6 GiB: the 6 GiB may hold KV and buffers too, so none of it
+        // is assigned to the weights. No split; the two numbers stay apart.
+        var partial = LlmMemoryEstimate.From(model, 6 * GiB, 4096)!;
+        Assert.False(partial.FitsAllLayers);
+        Assert.Equal((6 * GiB, 8 * GiB, (long?)null, (long?)null), (partial.Total, partial.WeightsAllLayers, partial.KvCache, partial.Rest));
+        Assert.False(LlmMemoryEstimate.From(model, 8 * GiB - 1, null)!.FitsAllLayers); // no slack either: a byte over is over
+        Assert.True(LlmMemoryEstimate.From(model, 8 * GiB, null)!.FitsAllLayers);
 
         Assert.True(LlmMemoryEstimate.From(model with { SlidingWindow = 1024 }, 10 * GiB, 4096)!.KvIsUpperBound);
         Assert.Null(LlmMemoryEstimate.From(model, null, 4096));

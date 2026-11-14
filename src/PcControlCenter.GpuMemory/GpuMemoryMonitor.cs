@@ -47,9 +47,11 @@ public sealed record GpuMemoryHistoryPoint(
     IReadOnlyList<GpuAdapterHistoryValue> Adapters,
     IReadOnlyList<GpuProcessHistoryValue> Processes);
 
-public readonly record struct GpuAdapterHistoryValue(long Luid, long? DedicatedUsageBytes, long? SharedUsageBytes);
+/// <summary><paramref name="Busiest"/>: the busiest engine in percent; null where engines were not read (the page was not open).</summary>
+public readonly record struct GpuAdapterHistoryValue(long Luid, long? DedicatedUsageBytes, long? SharedUsageBytes, double? Busiest = null);
 
-public readonly record struct GpuProcessHistoryValue(ProcessKey Key, string Name, long Luid, long? DedicatedBytes, long? SharedBytes);
+/// <summary><paramref name="Busiest"/>: the process's busiest engine in percent; null where engines were not read.</summary>
+public readonly record struct GpuProcessHistoryValue(ProcessKey Key, string Name, long Luid, long? DedicatedBytes, long? SharedBytes, double? Busiest = null);
 
 /// <summary>Thresholds shared by the page, the history and the tests.</summary>
 public static class GpuMemoryRules
@@ -566,7 +568,8 @@ public sealed class GpuMemoryMonitor : IAsyncDisposable
 
     private static GpuMemoryHistoryPoint ToHistoryPoint(GpuMemorySnapshot s)
     {
-        var adapters = s.Adapters.Select(a => new GpuAdapterHistoryValue(a.Luid, a.DedicatedUsageBytes, a.SharedUsageBytes)).ToList();
+        var adapters = s.Adapters.Select(a => new GpuAdapterHistoryValue(a.Luid, a.DedicatedUsageBytes, a.SharedUsageBytes,
+            s.EnginesRead ? a.Engines?.Busiest : null)).ToList();
         var processes = s.Processes
             .Where(GpuMemoryRules.IsListed)
             .OrderByDescending(p => p.DedicatedBytes ?? 0)
@@ -575,7 +578,9 @@ public sealed class GpuMemoryMonitor : IAsyncDisposable
             {
                 var entry = s.Process(p.ProcessId);
                 var key = entry?.Key ?? new ProcessKey(p.ProcessId, 0, $"PID {p.ProcessId}");
-                return new GpuProcessHistoryValue(key, entry?.Name ?? $"PID {p.ProcessId}", p.Luid, p.DedicatedBytes, p.SharedBytes);
+                // A process the engine counters did not list was idle on that adapter: 0 %, but only when the engines were read.
+                var busiest = s.EnginesRead ? p.Engines?.Busiest ?? 0 : (double?)null;
+                return new GpuProcessHistoryValue(key, entry?.Name ?? $"PID {p.ProcessId}", p.Luid, p.DedicatedBytes, p.SharedBytes, busiest);
             })
             .ToList();
         return new GpuMemoryHistoryPoint(s.Timestamp, adapters, processes);

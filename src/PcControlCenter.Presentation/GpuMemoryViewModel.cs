@@ -185,6 +185,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private const string WeightsColor = "#D55181";
     private const string KvColor = "#D95926";
     private const string RestColor = "#6E6D68";
+    private const string MeasuredColor = "#F0EFEC";
     private static readonly double ChartGapDays = TimeSpan.FromSeconds(25).TotalDays;
     private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
 
@@ -439,7 +440,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         lines.AddRange(d.Models.Select(m => $"모델 파일: {m.Name} — {m.Summary} ({m.Size})"));
         if (d.BreakdownLegend.Count > 0)
         {
-            lines.Add("구성 (추정): " + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}")) + (d.BreakdownNote is { } note ? $" — {note}" : ""));
+            lines.Add((d.Breakdown.Count > 0 ? "구성 (추정): " : "비교: ") + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}"))
+                      + (d.BreakdownNote is { } note ? $" — {note}" : ""));
         }
         else if (d.BreakdownNote is { } withheldNote)
         {
@@ -955,25 +957,36 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         IReadOnlyList<BarSegment> breakdown = [];
         IReadOnlyList<LegendItem> breakdownLegend = [];
         string? breakdownNote = null;
-        if (estimate is not null)
+        if (estimate is { FitsAllLayers: false })
+        {
+            // Not every layer can be on the GPU, and which part of the measured total is weights is unknown: the two numbers
+            // are shown apart and no split is drawn.
+            breakdownLegend =
+            [
+                new(WeightsColor, "가중치 (모든 층 GPU 가정, 이론값)", Text.Bytes(estimate.WeightsAllLayers), true),
+                new(MeasuredColor, "이 프로세스 전용 (측정)", Text.Bytes(estimate.Total)),
+            ];
+            breakdownNote = "모든 층을 GPU에 올렸을 때의 가중치가 이 프로세스의 전용 메모리보다 커서 일부 층만 GPU에 있는 것으로 보입니다. "
+                            + "측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어 구성은 그리지 않습니다.";
+        }
+        else if (estimate is { Rest: long rest })
         {
             double Frac(long bytes) => estimate.Total > 0 ? (double)bytes / estimate.Total : 0;
-            var segments = new List<BarSegment> { new(Frac(estimate.Weights), WeightsColor, "가중치", true) };
-            var legend = new List<LegendItem> { new(WeightsColor, "가중치", Text.Bytes(estimate.Weights), true) };
+            var segments = new List<BarSegment> { new(Frac(estimate.WeightsAllLayers), WeightsColor, "가중치", true) };
+            var legend = new List<LegendItem> { new(WeightsColor, "가중치", Text.Bytes(estimate.WeightsAllLayers), true) };
             if (estimate.KvCache is long kv)
             {
                 segments.Add(new(Frac(kv), KvColor, "KV 캐시", true));
                 legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (f16, 상한)" : "KV 캐시 (f16)", Text.Bytes(kv), true));
             }
 
-            segments.Add(new(Frac(estimate.Rest), RestColor, "나머지", true));
-            legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(estimate.Rest), true));
+            segments.Add(new(Frac(rest), RestColor, "나머지", true));
+            legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(rest), true));
             breakdown = segments;
             breakdownLegend = legend;
             breakdownNote = string.Join(" ", new[]
             {
                 "모든 층이 GPU에 있다고 가정한 추정입니다.",
-                estimate.WeightsCapped ? "가중치 전체가 이 프로세스의 VRAM보다 커서 일부만 GPU에 있을 수 있습니다." : null,
                 estimate.KvCache is not null ? null
                     : model!.KvUnknownReason is { } reason ? $"{reason}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
                     : context is null ? "런타임이 컨텍스트를 알려 주지 않아 KV 캐시는 나누지 않았습니다."

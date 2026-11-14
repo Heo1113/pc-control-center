@@ -177,6 +177,41 @@ public class GpuMemoryMonitorTests
     }
 
     [Fact]
+    public void The_history_keeps_gpu_utilization_only_where_the_engines_were_read()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var engines = false;
+        var provider = new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(time.GetUtcNow(),
+            processes:
+            [
+                new GpuProcessMemory { ProcessId = 100, Luid = 1, DedicatedBytes = 4 * GpuMemoryFixtures.GiB, SharedBytes = 0, CommittedBytes = 4 * GpuMemoryFixtures.GiB,
+                    Engines = engines ? new EngineUsage(0, 42, 0, 0, 0) : null },
+                new GpuProcessMemory { ProcessId = 200, Luid = 1, DedicatedBytes = 512 * GpuMemoryFixtures.MiB, SharedBytes = 0, CommittedBytes = 512 * GpuMemoryFixtures.MiB },
+            ],
+            table: new Dictionary<int, ProcessEntry>
+            {
+                [100] = new(100, 10, "app.exe", time.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified),
+                [200] = new(200, 10, "idle.exe", time.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified),
+            }) with
+        {
+            EnginesRead = engines,
+            Adapters = [new GpuAdapterMemory { Luid = 1, DedicatedUsageBytes = 5 * GpuMemoryFixtures.GiB, Engines = engines ? new EngineUsage(3, 42, 0, 0, 0) : null }],
+        });
+        var monitor = new GpuMemoryMonitor(() => provider, time);
+        monitor.ReadNow(); // the page was not open: no engine counters read
+        engines = true;
+        time.Advance(TimeSpan.FromSeconds(2));
+        monitor.ReadNow();
+
+        var history = monitor.History(TimeSpan.FromMinutes(5));
+        Assert.Null(history[0].Processes.Single(p => p.Name == "app.exe").Busiest); // not read: a gap, never 0 %
+        Assert.Null(history[0].Adapters.Single().Busiest);
+        Assert.Equal(42, history[1].Processes.Single(p => p.Name == "app.exe").Busiest);
+        Assert.Equal(0, history[1].Processes.Single(p => p.Name == "idle.exe").Busiest); // read and not listed: idle
+        Assert.Equal(42, history[1].Adapters.Single().Busiest);
+    }
+
+    [Fact]
     public void The_history_keeps_a_bounded_window()
     {
         var time = new ManualTime(GpuMemoryFixtures.Start);
@@ -611,6 +646,20 @@ public class GpuMemoryViewModelTests
         Assert.Equal(["가중치", "KV·버퍼·런타임"], hybrid.Detail!.BreakdownLegend.Select(l => l.Label));
         Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
         Assert.DoesNotContain("KV", hybrid.Detail.Models.Single().Summary.Split(" · ").Last(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Weights_larger_than_the_process_are_shown_beside_the_measured_total_without_a_split()
+    {
+        var model = new GgufSummary { Name = "Big", Architecture = "llama", Kind = "LLM", Parameters = 8_000_000_000, Layers = 32, GpuWeightBytesAllLayers = 3 * GiB };
+        var (vm, _) = LlmProcess(model, strata: false); // the process holds 2 GiB
+
+        var detail = vm.Detail!;
+        Assert.Empty(detail.Breakdown);
+        Assert.Equal([("가중치 (모든 층 GPU 가정, 이론값)", "3.00 GiB", true), ("이 프로세스 전용 (측정)", "2.00 GiB", false)],
+            detail.BreakdownLegend.Select(l => (l.Label, l.Value, l.IsEstimate)));
+        Assert.Contains("일부 층만 GPU에 있는 것으로 보입니다", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("비교: 가중치 (모든 층 GPU 가정, 이론값) 3.00 GiB", vm.DetailText(), StringComparison.Ordinal);
     }
 
     [Fact]
