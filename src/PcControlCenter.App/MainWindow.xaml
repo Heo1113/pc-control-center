@@ -197,9 +197,14 @@
           </StackPanel>
           <TextBlock Grid.Column="1" Text="{Binding DataRootText}" Style="{StaticResource Label}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,0,14,0" ToolTip="{Binding DataRootText}" />
-          <Button Grid.Column="2" Content="Operator 긴급 중단" Command="{Binding Operator.EmergencyStopCommand}" Style="{StaticResource DangerButton}" Margin="0,0,14,0" Padding="10,2"
+          <Button Grid.Column="2" Command="{Binding Operator.EmergencyStopCommand}" Style="{StaticResource EmergencyStopButton}" Margin="0,0,14,0"
                   Visibility="{Binding HasOperator, Converter={StaticResource BoolToVisibility}}" ToolTip="Ctrl+Alt+F12 — 실행 중인 Operator 작업을 즉시 멈추고 열린 승인 요청을 거부합니다."
-                  AutomationProperties.AutomationId="GlobalEmergencyStop" />
+                  AutomationProperties.Name="Operator 긴급 중단" AutomationProperties.AutomationId="GlobalEmergencyStop">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="&#xE71A;" FontFamily="{StaticResource IconFont}" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+              <TextBlock Text="Operator 긴급 중단" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <TextBlock Grid.Column="3" Text="{Binding ClockText}" Style="{StaticResource Label}" VerticalAlignment="Center" />
         </Grid>
       </Border>

@@ -402,6 +402,7 @@ internal sealed class OperatorBinder : ModuleBinder<WindowsAiOperator.Presentati
 {
     private readonly OperatorModule _module;
     private readonly OperatorControlViewModel _controls;
+    private System.ComponentModel.PropertyChangedEventHandler? _runnerChanged;
 
     public OperatorBinder(ShellViewModel shell, OperatorModule module, OperatorControlViewModel controls, Dispatcher dispatcher, IAppLogger log)
         : base(shell, module.Id, dispatcher, log)
@@ -430,12 +431,29 @@ internal sealed class OperatorBinder : ModuleBinder<WindowsAiOperator.Presentati
             new WindowsAiOperator.App.Services.WpfDialogService(), Presenter, new WindowsAiOperator.App.Services.OverlayHighlighter(),
             new WindowsAiOperator.App.Services.AppHost(context.Log));
         _controls.StopRunningTask = vm.EmergencyStop;
+        // The status bar's emergency stop follows whether a task runs (outlined while idle, filled while running).
+        _runnerChanged = (_, e) =>
+        {
+            if (e.PropertyName is nameof(vm.Runner.IsRunning) or null or "")
+            {
+                _controls.SetTaskRunning(vm.Runner.IsRunning);
+            }
+        };
+        vm.Runner.PropertyChanged += _runnerChanged;
+        _controls.SetTaskRunning(vm.Runner.IsRunning);
         _module.SummaryProvider = () => Summarize(vm, context);
         return vm;
     }
 
     protected override void Dropped(WindowsAiOperator.Presentation.ViewModels.MainViewModel viewModel)
     {
+        if (_runnerChanged is not null)
+        {
+            viewModel.Runner.PropertyChanged -= _runnerChanged;
+            _runnerChanged = null;
+        }
+
+        _controls.SetTaskRunning(false);
         viewModel.Runner.StopAll("Operator 모듈 종료");
         _controls.StopRunningTask = null;
         _module.SummaryProvider = null;
