@@ -53,13 +53,16 @@ public sealed record AdapterView(
     bool HasCapacity,
     string LegendText = "",
     string? FreeText = null,
-    string? DeltaText = null)
+    string? DeltaText = null,
+    string? SharedUsedText = null)
 {
     /// <summary>"RTX 5080" for "NVIDIA GeForce RTX 5080".</summary>
     public string ShortName => GpuMemoryViewModel.ShortAdapterName(Name);
 
-    /// <summary>Free and shared memory under the used / capacity figure.</summary>
-    public string SecondaryText => string.Join(" · ", new[] { FreeText, $"공유 {SharedText}" }.Where(x => !string.IsNullOrEmpty(x)));
+    /// <summary>Free and shared memory under the used / capacity figure (the shared capacity is in the tooltip).</summary>
+    public string SecondaryText => string.Join(" · ", new[] { FreeText, $"공유 {SharedUsedText ?? SharedText}" }.Where(x => !string.IsNullOrEmpty(x)));
+
+    public string SecondaryToolTip => $"여유 = 카드 용량 − 사용량 (계산). 공유 {SharedText} = GPU가 쓰는 시스템 RAM (LLM의 RAM 오프로딩과 같은 뜻이 아님)";
 
     /// <summary>The full name, the vendor notes and NVML's view, for the tooltip.</summary>
     public string NameToolTip => string.Join(Environment.NewLine, new[] { Name, Meta, Nvml is null ? null : $"{Nvml} (공통 센서, 장치 전체 — 집계 방식이 달라 값이 다를 수 있음)" }
@@ -417,7 +420,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     public IReadOnlyList<DetailFact> Tips { get; } =
     [
         new("Ctrl+F", "찾기: 이름·PID·종류·런타임·모델. Esc로 지우고 Enter나 ↓로 표로 이동"),
-        new("범례 항목 누르기", "그 종류만 표에 보기. 다시 누르면 전체"),
+        new("범례 항목 누르기", "그 묶음(LLM·AI·연산·앱·그래픽·Windows)만 표에 보기. 다시 누르면 전체. 정확한 종류는 행 오른쪽 클릭"),
         new("머리글", "눌러서 정렬, 오른쪽 클릭으로 열 보이기·숨기기"),
         new("행 오른쪽 클릭", "이름·PID·행·상세 복사 (Ctrl+C는 행 복사)"),
         new("표 위의 마우스", "올려 두는 동안 행 순서 고정 (값은 계속 갱신)"),
@@ -996,7 +999,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
                 FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null,
                 DeltaText: _baseline is { } b && b.AdapterDedicated.TryGetValue(adapter.Luid, out var then) && Diff(used, then) is long change
-                    ? $"기준점 대비 {Signed(change)}" : null)));
+                    ? $"기준점 대비 {Signed(change)}" : null,
+                SharedUsedText: Text.Bytes(shared))));
         }
 
         return views;

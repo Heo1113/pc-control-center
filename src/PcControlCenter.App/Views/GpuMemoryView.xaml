@@ -202,9 +202,9 @@
 
     <!-- One adapter, every adapter alike: short name · thin bar by kind group with its legend · used / capacity, free, shared · GPU %. -->
     <DataTemplate x:Key="AdapterTemplate" DataType="{x:Type p:AdapterView}">
-      <Grid Margin="16,10,16,10">
+      <Grid Margin="16,7,16,7">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="150" />
+          <ColumnDefinition Width="180" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="60" />
@@ -217,7 +217,7 @@
           <c:SegmentBar Segments="{Binding DedicatedSegments}" Height="8" ToolTip="전용 메모리(VRAM). 색은 종류 묶음별 합계, 어두운 회색은 어댑터 − 프로세스 합계(계산), 빈 부분은 여유입니다."
                         Visibility="{Binding HasCapacity, Converter={StaticResource BoolToVisibility}}" />
           <ItemsControl ItemsSource="{Binding Legend}" ItemTemplate="{StaticResource AdapterLegend}" ItemsPanel="{StaticResource Wrap}"
-                        Focusable="False" Margin="-5,4,0,0" />
+                        Focusable="False" Margin="-5,3,0,0" />
           <TextBlock Text="{Binding LegendNote}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="0,2,0,0"
                      Visibility="{Binding LegendNote, Converter={StaticResource NotEmptyToVisibility}}" />
         </StackPanel>
@@ -225,7 +225,7 @@
           <TextBlock Text="{Binding DedicatedText}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Right"
                      Typography.NumeralAlignment="Tabular" ToolTip="전용 메모리 사용량 / 카드 용량 (Windows 어댑터 카운터, DXGI)" />
           <TextBlock Text="{Binding SecondaryText}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right" Margin="0,1,0,0"
-                     Typography.NumeralAlignment="Tabular" ToolTip="여유 = 카드 용량 − 사용량 (계산). 공유 = GPU가 쓰는 시스템 RAM (LLM의 RAM 오프로딩과 같은 뜻이 아님)" />
+                     Typography.NumeralAlignment="Tabular" ToolTip="{Binding SecondaryToolTip}" />
           <TextBlock Text="{Binding DeltaText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Right"
                      ToolTip="기준점 때와 지금의 어댑터 전용 사용량 차이 (측정값의 차)" Visibility="{Binding DeltaText, Converter={StaticResource NotEmptyToVisibility}}" />
         </StackPanel>
@@ -403,7 +403,7 @@
       <RowDefinition x:Name="TableRow" Height="3*" MinHeight="120" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="6" />
-      <RowDefinition x:Name="DetailRow" Height="2*" MinHeight="220" MaxHeight="900" />
+      <RowDefinition x:Name="DetailRow" Height="2*" MinHeight="210" MaxHeight="900" />
     </Grid.RowDefinitions>
 
     <!-- Toolbar: find (and the kind filter while one is on) on the left; the reading's status and the three actions on the right.
@@ -676,20 +676,24 @@
                   ResizeDirection="Rows" ToolTip="끌어서 상세 영역 크기 조절 (두 번 누르면 기본 크기)" />
 
     <!-- The selected process. -->
-    <Border Grid.Row="6" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12">
+    <Border Grid.Row="6" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,10,16,8">
       <Grid>
         <ContentControl Content="{Binding Detail}" ContentTemplate="{StaticResource DetailTemplate}" Focusable="False" />
         <TextBlock Text="{Binding DetailPlaceholder}" Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                    MaxWidth="640" Visibility="{Binding Detail, Converter={StaticResource EmptyToVisibility}}" />
       </Grid>
     </Border>
-    <!-- Help: a panel over the table and the detail (it never narrows the table). -->
+    <!-- Help: a panel over the table and the detail (it never narrows the table). The shadow is a layer of its own, so the
+         text keeps ClearType (an effect renders its element's subtree to a bitmap). -->
+    <Border Grid.Row="3" Grid.RowSpan="4" Width="320" HorizontalAlignment="Right" Panel.ZIndex="9" Background="{StaticResource CardBrush}" CornerRadius="6"
+            IsHitTestVisible="False" Visibility="{Binding HelpOpen, Converter={StaticResource BoolToVisibility}}">
+      <Border.Effect>
+        <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="Black" />
+      </Border.Effect>
+    </Border>
     <Border Grid.Row="3" Grid.RowSpan="4" Width="320" HorizontalAlignment="Right" Panel.ZIndex="10" Background="{StaticResource CardBrush}"
-          BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Visibility="{Binding HelpOpen, Converter={StaticResource BoolToVisibility}}"
-          AutomationProperties.AutomationId="GpuMemoryHelp">
-    <Border.Effect>
-      <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="Black" />
-    </Border.Effect>
+            BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Visibility="{Binding HelpOpen, Converter={StaticResource BoolToVisibility}}"
+            AutomationProperties.AutomationId="GpuMemoryHelp">
       <DockPanel>
         <DockPanel DockPanel.Dock="Top" Margin="14,8,6,2">
           <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding ToggleHelpCommand}" Padding="7,4"

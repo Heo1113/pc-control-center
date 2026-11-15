@@ -468,7 +468,8 @@ public class GpuMemoryViewModelTests
         Assert.EndsWith("%", nvidia.Utilization, StringComparison.Ordinal);
         Assert.StartsWith("GPU", nvidia.UtilizationLabel, StringComparison.Ordinal);
         Assert.Equal("MOCK RTX 5080", nvidia.ShortName);
-        Assert.Matches(@"^여유 .+ · 공유 .+ / .+$", nvidia.SecondaryText);
+        Assert.Matches(@"^여유 [\d.]+ (GiB|MiB) · 공유 [\d.]+ (GiB|MiB)$", nvidia.SecondaryText); // the shared capacity is in the tooltip
+        Assert.Contains(" / ", nvidia.SecondaryToolTip, StringComparison.Ordinal);
         Assert.Contains("NVML 4.00 GiB / 16.00 GiB", nvidia.NameToolTip, StringComparison.Ordinal); // the cross-check moves to the tooltip
         Assert.StartsWith("MOCK · ", vm.StatusText, StringComparison.Ordinal); // MOCK is said in the status text
 
