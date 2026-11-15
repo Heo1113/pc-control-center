@@ -320,6 +320,22 @@ internal sealed class SmokeTestRunner(
         checks["operator-host-process"] = host.State == HostState.Connected && host.ProcessId is int pid && pid != Environment.ProcessId;
         details["operator-host-process"] = $"shell {Environment.ProcessId}, host {host.ProcessId}, desktop {context.Desktop.Name}";
         shell.Navigate(SectionKeys.Operator, "operator/run");
+
+        // The status bar's emergency stop follows E's task runner: it must have shown "running" during the tasks below and
+        // be back to idle after them.
+        var sawRunning = false;
+        void Watch(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+        {
+            if (args.PropertyName == nameof(OperatorControlViewModel.IsTaskRunning) && shell.Operator?.IsTaskRunning == true)
+            {
+                sawRunning = true;
+            }
+        }
+
+        if (shell.Operator is { } watched)
+        {
+            watched.PropertyChanged += Watch;
+        }
         if (options.MockDesktop)
         {
             if (options.MockModel)
@@ -361,6 +377,20 @@ internal sealed class SmokeTestRunner(
                     }
                 }
             }
+        }
+
+        if (shell.Operator is { } followed)
+        {
+            followed.PropertyChanged -= Watch;
+            await WaitUntil(() => !followed.IsTaskRunning, TimeSpan.FromSeconds(5));
+            checks["operator-stop-button-follows-task"] = sawRunning && !followed.IsTaskRunning;
+
+            // The button's look while a task runs (filled), for the screenshots; then idle again (outlined).
+            followed.SetTaskRunning(true);
+            await Task.Delay(600);
+            await Capture("operator-stop-button-running");
+            followed.SetTaskRunning(false);
+            await Task.Delay(300);
         }
 
         // Emergency stop from the shell: latched until resume, the desktop refuses changes in the meantime.
