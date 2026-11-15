@@ -132,7 +132,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Get-ChildItem dist/smoke -Recurse -Include '*gpu-memory*.png','01-dashboard-dashboard.png','02-hardware-hardware-shared.png','07-local-ai-local-ai-overview.png','11-economics-economics-overview.png','29-settings-settings-common.png','*operator-real-uia-workflow*.png','*operator-emergency-stopped*.png' -ErrorAction SilentlyContinue |
+          Get-ChildItem dist/smoke -Recurse -Include '*gpu-memory*.png','01-dashboard-dashboard.png','02-hardware-hardware-shared.png','07-local-ai-local-ai-overview.png','11-economics-economics-overview.png','29-settings-settings-common.png','*operator-real-uia-workflow*.png','*operator-emergency-stopped*.png','*operator-stop-button*.png' -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -like '*gpu-memory*' -or $_.Name -like '*operator*' -or $_.Directory.Name -eq 'mock' } | ForEach-Object {
             Write-Host "=====BEGIN $($_.Directory.Name)/$($_.Name)====="
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
