@@ -21,11 +21,12 @@ public interface IGpuMemoryProvider : IDisposable
 }
 
 /// <summary>
-/// What a reading should include besides the counters. <see cref="WatchedPorts"/>: local TCP ports whose listening process
-/// should be identified (for example the port of the Strata server the local AI module is connected to). Other listeners
-/// are not looked up, so unrelated services are never opened.
+/// What a reading should include besides the memory counters. <see cref="WatchedPorts"/>: local TCP ports whose listening
+/// process should be identified (for example the port of the Strata server the local AI module is connected to); other
+/// listeners are not looked up. <see cref="IncludeDetails"/>: engine activity and the libraries / model files of the larger
+/// GPU processes, read only while the GPU memory page is visible (they cost more than the memory counters).
 /// </summary>
-public sealed record GpuMemoryReadRequest(IReadOnlySet<int> WatchedPorts)
+public sealed record GpuMemoryReadRequest(IReadOnlySet<int> WatchedPorts, bool IncludeDetails = false)
 {
     public static GpuMemoryReadRequest None { get; } = new(new HashSet<int>());
 }

@@ -25,6 +25,7 @@ internal sealed class PdhGpuCounters : IDisposable
     public const string TotalCommitted = @"\GPU Process Memory(*)\Total Committed";
     public const string AdapterDedicated = @"\GPU Adapter Memory(*)\Dedicated Usage";
     public const string AdapterShared = @"\GPU Adapter Memory(*)\Shared Usage";
+    public const string EngineUtilization = @"\GPU Engine(*)\Utilization Percentage";
     private const string Source = "Windows PDH";
 
     private readonly TimeProvider _time;
@@ -34,6 +35,9 @@ internal sealed class PdhGpuCounters : IDisposable
     private nint _committed;
     private nint _adapterDedicated;
     private nint _adapterShared;
+    private nint _engineQuery;
+    private nint _engine;
+    private bool _engineCollected;
 
     private PdhGpuCounters(nint query, TimeProvider time)
     {
@@ -45,6 +49,9 @@ internal sealed class PdhGpuCounters : IDisposable
     public bool CommittedAvailable => _committed != 0;
     public bool AdapterCountersAvailable => _adapterDedicated != 0 || _adapterShared != 0;
     public bool AnyAvailable => Variant != ProcessCounterVariant.Unavailable || CommittedAvailable || AdapterCountersAvailable;
+
+    /// <summary>The engine counter (a rate) lives in a query of its own, collected only while engine activity is wanted.</summary>
+    public bool EnginesAvailable => _engine != 0;
 
     /// <summary>Problems while adding counters (shown with every reading: the affected values stay N/A).</summary>
     public IReadOnlyList<SensorIssue> SetupIssues { get; private set; } = [];
@@ -85,6 +92,36 @@ internal sealed class PdhGpuCounters : IDisposable
             ReadArray(_adapterShared, "adapter.shared", issues));
     }
 
+    /// <summary>
+    /// Engine utilization per instance. A rate needs two collections: the first one after a pause gives no values
+    /// (<c>Baseline</c>), which is not a problem worth reporting.
+    /// </summary>
+    public (IReadOnlyList<EngineCounterItem>? Items, bool Baseline) CollectEngines(ICollection<SensorIssue> issues)
+    {
+        if (_engine == 0)
+        {
+            return (null, false);
+        }
+
+        var status = PdhCollectQueryData(_engineQuery);
+        var first = !_engineCollected;
+        _engineCollected = true;
+        if (status != 0)
+        {
+            if (!first)
+            {
+                issues.Add(new SensorIssue(Source, "engine.collect", SensorStatus.Error, $"GPU 엔진 카운터를 수집하지 못했습니다 (PDH 0x{status:X8})."));
+            }
+
+            return (null, first);
+        }
+
+        return first ? (null, true) : (ReadDoubles(_engine, issues), false);
+    }
+
+    /// <summary>Called when engine activity is no longer wanted: the next collection starts a new baseline.</summary>
+    public void PauseEngines() => _engineCollected = false;
+
     public void Dispose()
     {
         if (_query != 0)
@@ -92,6 +129,61 @@ internal sealed class PdhGpuCounters : IDisposable
             _ = PdhCloseQuery(_query);
             _query = 0;
         }
+
+        if (_engineQuery != 0)
+        {
+            _ = PdhCloseQuery(_engineQuery);
+            _engineQuery = 0;
+        }
+    }
+
+    private static unsafe List<EngineCounterItem>? ReadDoubles(nint counter, ICollection<SensorIssue> issues)
+    {
+        const uint format = PdhFmtDouble | PdhFmtNoCap100;
+        uint size = 0;
+        var status = PdhGetFormattedCounterArray(counter, format, ref size, out var count, 0);
+        if (status is PdhNoData or PdhCstatusNoInstance or PdhInvalidData || (status == 0 && count == 0))
+        {
+            return [];
+        }
+
+        for (var attempt = 0; attempt < 3 && status == PdhMoreData; attempt++)
+        {
+            var buffer = NativeMemory.Alloc(size);
+            try
+            {
+                status = PdhGetFormattedCounterArray(counter, format, ref size, out count, (nint)buffer);
+                if (status == PdhMoreData)
+                {
+                    continue;
+                }
+
+                if (status != 0)
+                {
+                    break;
+                }
+
+                var items = new List<EngineCounterItem>((int)count);
+                var rows = (PdhFmtCounterValueItem*)buffer;
+                for (var i = 0; i < count; i++)
+                {
+                    // Instances that appeared since the last collection have no rate yet: skipped, not reported.
+                    if (rows[i].Value.CStatus is PdhCstatusValidData or PdhCstatusNewData && Marshal.PtrToStringUni(rows[i].Name) is { } name)
+                    {
+                        items.Add(new EngineCounterItem(name, rows[i].Value.DoubleValue));
+                    }
+                }
+
+                return items;
+            }
+            finally
+            {
+                NativeMemory.Free(buffer);
+            }
+        }
+
+        issues.Add(new SensorIssue(Source, "engine", SensorStatus.Error, $"GPU 엔진 카운터 값을 읽지 못했습니다 (PDH 0x{status:X8})."));
+        return null;
     }
 
     private void AddAll()
@@ -151,6 +243,19 @@ internal sealed class PdhGpuCounters : IDisposable
         if (_adapterShared == 0)
         {
             issues.Add(Missing("adapter.shared", AdapterShared, adapterSharedStatus));
+        }
+
+        if (PdhOpenQuery(null, 0, out var engineQuery) == 0)
+        {
+            _engineQuery = engineQuery;
+            if (PdhAddEnglishCounter(engineQuery, EngineUtilization, 0, out var engine) == 0)
+            {
+                _engine = engine;
+            }
+            else
+            {
+                issues.Add(new SensorIssue(Source, "engine", SensorStatus.NotSupported, $"카운터 {EngineUtilization}를 추가하지 못했습니다. 엔진 사용률은 N/A입니다."));
+            }
         }
 
         SetupIssues = issues;
