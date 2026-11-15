@@ -1291,6 +1291,39 @@ public class GpuMemoryViewModelTests
         Assert.NotNull(monitor.Latest);
     }
 
+    private sealed class FakeIcons : IProcessIcons
+    {
+        public Dictionary<int, object> Known { get; } = [];
+        public object Generic { get; } = new();
+
+        public object? Icon(int pid, string name) => pid <= 4 ? null : Known.TryGetValue(pid, out var icon) ? icon : Generic;
+
+        public event Action? Changed;
+
+        public void Arrived() => Changed?.Invoke();
+    }
+
+    [Fact]
+    public void Rows_show_the_executable_icon_and_the_generic_one_until_it_is_known()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var icons = new FakeIcons();
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, icons: icons);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+
+        var chrome = Row(vm, "chrome.exe");
+        Assert.Same(icons.Generic, chrome.Icon); // never blank while the real one is being read
+        var real = new object();
+        icons.Known[chrome.Pid] = real;
+        icons.Arrived();
+        Assert.Same(real, chrome.Icon); // updated in place when it arrives
+        vm.ShowAll = true;
+        Assert.Null(vm.Processes.Single(r => r.Pid == 4).Icon); // the kernel has no executable
+    }
+
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
 
     [Fact]

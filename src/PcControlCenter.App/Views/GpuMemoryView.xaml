@@ -560,7 +560,8 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
                 <StackPanel Orientation="Horizontal" Margin="6,0,0,0" ToolTip="{Binding Identity}">
-                  <c:Swatch Color="{Binding KindColor}" Margin="0,0,8,0" />
+                  <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"
+                         Visibility="{Binding Icon, Converter={StaticResource NotEmptyToVisibility}}" />
                   <TextBlock Text="{Binding Name}" ToolTip="{x:Null}">
                     <TextBlock.Style>
                       <Style TargetType="TextBlock" BasedOn="{StaticResource Cell}">
@@ -584,24 +585,27 @@
               <TextBlock Text="PID" ToolTip="프로세스 ID. 찾기 칸에 PID를 넣으면 그 프로세스만" />
             </DataGridTextColumn.Header>
           </DataGridTextColumn>
-          <DataGridTemplateColumn SortMemberPath="KindLabel" Width="80" MinWidth="80">
+          <DataGridTemplateColumn SortMemberPath="KindLabel" Width="96" MinWidth="96">
             <DataGridTemplateColumn.Header>
               <TextBlock Text="종류" ToolTip="불러온 라이브러리·모델 파일·엔진·이름으로 분류한 것 (측정 아님). 근거는 칸의 툴팁" />
             </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
-                <TextBlock Text="{Binding KindLabel}" ToolTip="{Binding KindBasis}">
-                  <TextBlock.Style>
-                    <!-- Text colours only (the swatch beside the name carries the colour); a kind the user gave is in italics. -->
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryCell}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding KindOverridden}" Value="True">
-                          <Setter Property="FontStyle" Value="Italic" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </TextBlock.Style>
-                </TextBlock>
+                <!-- The kind group's colour as a swatch beside the kind's name (text in text colours); a kind the user gave is in italics. -->
+                <StackPanel Orientation="Horizontal" ToolTip="{Binding KindBasis}" Background="Transparent">
+                  <c:Swatch Color="{Binding KindColor}" Width="8" Height="8" Margin="0,0,6,0" />
+                  <TextBlock Text="{Binding KindLabel}" ToolTip="{Binding KindBasis}">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryCell}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding KindOverridden}" Value="True">
+                            <Setter Property="FontStyle" Value="Italic" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </StackPanel>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>

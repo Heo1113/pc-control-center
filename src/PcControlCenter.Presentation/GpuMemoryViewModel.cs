@@ -144,6 +144,18 @@ public sealed record ProcessDetailView(
 }
 
 /// <summary>
+/// Small icons of the processes' executables (the app layer reads them in the background). <see cref="Icon"/> returns an
+/// image object for the view, or a generic program icon while the real one is unknown or cannot be read; it never blocks.
+/// <see cref="Changed"/> fires (on the UI thread) when icons arrived.
+/// </summary>
+public interface IProcessIcons
+{
+    object? Icon(int pid, string name);
+
+    event Action? Changed;
+}
+
+/// <summary>
 /// The local AI module's view of Strata for this page: its latest poll, or why there is none, and the name of the environment
 /// variable its settings read the API key from (the page reads the key for each request to Strata's /metrics, never keeps it).
 /// </summary>
@@ -164,6 +176,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
 
     /// <summary>The kind was given by the user (by executable name), not classified from evidence.</summary>
     [ObservableProperty] public partial bool KindOverridden { get; set; }
+
+    /// <summary>The executable's small icon (an image for the view), or a generic program icon; null without an icon source.</summary>
+    [ObservableProperty] public partial object? Icon { get; set; }
 
     /// <summary>Bytes for sorting; -1 = N/A (sorts last when the largest come first).</summary>
     [ObservableProperty] public partial long Dedicated { get; set; }
@@ -302,6 +317,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private readonly GpuMemoryPageSettings _page;
     private readonly Action? _savePage;
     private readonly RuntimeReportPoller? _reports;
+    private readonly IProcessIcons? _icons;
     private int _reportsVersion = -1;
     private StrataContext? _strataContext;
     private (string Name, int Pid)? _lost;
@@ -322,8 +338,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// Asks local runtimes about the selected process (Strata's /metrics, Ollama's /api/ps, llama.cpp's /props and /models);
     /// null asks nothing.
     /// </param>
+    /// <param name="icons">The processes' executable icons for the table; null shows none.</param>
     public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
-        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null)
+        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null, IProcessIcons? icons = null)
     {
         _monitor = monitor;
         _hub = hub;
@@ -333,6 +350,17 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _page.Normalize();
         _savePage = savePage;
         _reports = runtimeHttp is null ? null : new RuntimeReportPoller(runtimeHttp, _time);
+        _icons = icons;
+        if (icons is not null)
+        {
+            icons.Changed += () =>
+            {
+                foreach (var row in _rows.Values)
+                {
+                    row.Icon = icons.Icon(row.Pid, row.Name);
+                }
+            };
+        }
         ShowAll = _page.ShowAll;
         ChartMetric = _page.ChartMetric;
         ChartMinutes = _page.ChartMinutes;
@@ -1219,6 +1247,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.KindColor = KindColors[kind.Kind];
         row.KindBasis = $"분류 근거: {kind.Basis}";
         row.KindOverridden = OverrideOf(p.ProcessId, row.Name) is not null;
+        row.Icon = _icons?.Icon(p.ProcessId, row.Name);
         row.Dedicated = p.DedicatedBytes ?? -1;
         row.DedicatedText = Text.Bytes(p.DedicatedBytes);
         row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
