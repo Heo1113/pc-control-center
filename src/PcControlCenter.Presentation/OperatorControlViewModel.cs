@@ -38,6 +38,12 @@ public sealed partial class OperatorControlViewModel : ObservableObject
     [ObservableProperty] public partial bool IsMock { get; set; }
     [ObservableProperty] public partial bool IsAvailable { get; set; }
 
+    /// <summary>An Operator task is running (E's task runner): the status bar's emergency stop is then drawn at full strength.</summary>
+    [ObservableProperty] public partial bool IsTaskRunning { get; set; }
+
+    /// <summary>Called by the UI layer from E's task runner (any thread).</summary>
+    public void SetTaskRunning(bool running) => _ui.Post(() => IsTaskRunning = running);
+
     public string IsolationText =>
         "화면 조작(UI Automation·키보드·마우스 입력·화면 캡처·프로그램 실행)은 별도 Operator 실행 프로세스에서만 일어납니다. "
         + "계획 검증·안전 정책·승인·기록은 프로젝트 E의 코드 그대로 이 창에서 처리하고, 실행 프로세스는 차단 목록·관리자 권한 창·이 프로그램 자신의 창을 스스로 한 번 더 거부합니다.";
