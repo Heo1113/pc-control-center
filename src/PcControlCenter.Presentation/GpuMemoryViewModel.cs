@@ -485,6 +485,51 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// <summary>Height of the detail panel chosen with the splitter; 0 = the default share.</summary>
     public double DetailHeight => _page.DetailHeight;
 
+    /// <summary>Where the detail panel goes: "Auto", "Below" or "Beside" (remembered).</summary>
+    public string LayoutMode => _page.Layout;
+
+    public double DetailWidth => _page.DetailWidth;
+
+    /// <summary>The narrowest the detail panel can be beside the table (its figures and the chart stacked).</summary>
+    public const double DetailMinWidth = 440;
+
+    /// <summary>
+    /// Whether the detail panel goes beside the table: always for "Beside", never for "Below"; for "Auto" only when the width
+    /// (device-independent pixels, so a 4K screen at 175% counts as about 2,190) holds the visible columns at their minimum
+    /// widths plus the splitter and the detail panel's minimum, so the table never needs a horizontal scroll bar for it.
+    /// </summary>
+    public static bool UseBeside(string mode, double available, double tableMinWidth)
+        => mode switch
+        {
+            "Beside" => true,
+            "Below" => false,
+            _ => double.IsFinite(available) && available >= tableMinWidth + 6 + DetailMinWidth,
+        };
+
+    /// <summary>Remembers where the detail panel goes.</summary>
+    public void SetLayoutMode(string mode)
+    {
+        if (!GpuMemoryPageSettings.Layouts.Contains(mode) || mode == _page.Layout)
+        {
+            return;
+        }
+
+        _page.Layout = mode;
+        SavePage();
+        OnPropertyChanged(nameof(LayoutMode));
+    }
+
+    /// <summary>Remembers the detail panel's width beside the table (0: the default share).</summary>
+    public void SetDetailWidth(double width)
+    {
+        var value = double.IsFinite(width) && width is > 0 and < 4000 ? Math.Round(width) : 0;
+        if (value != _page.DetailWidth)
+        {
+            _page.DetailWidth = value;
+            SavePage();
+        }
+    }
+
     [RelayCommand]
     private void TogglePause() => IsPaused = !IsPaused;
 

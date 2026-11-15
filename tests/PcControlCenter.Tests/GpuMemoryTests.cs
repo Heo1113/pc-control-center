@@ -1324,6 +1324,40 @@ public class GpuMemoryViewModelTests
         Assert.Null(vm.Processes.Single(r => r.Pid == 4).Icon); // the kernel has no executable
     }
 
+    [Theory]
+    [InlineData("Auto", 1400, 900, true)]    // 900 + 6 + 440 = 1,346 fits
+    [InlineData("Auto", 1300, 900, false)]   // it does not: the detail stays under the table
+    [InlineData("Auto", double.NaN, 900, false)]
+    [InlineData("Beside", 800, 900, true)]   // the user's choice wins either way
+    [InlineData("Below", 3000, 900, false)]
+    public void The_detail_goes_beside_the_table_only_when_chosen_or_when_the_width_holds_both(string mode, double width, double tableMin, bool beside)
+        => Assert.Equal(beside, GpuMemoryViewModel.UseBeside(mode, width, tableMin));
+
+    [Fact]
+    public void The_layout_choice_and_the_detail_width_are_remembered()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var page = new GpuMemoryPageSettings();
+        var saves = 0;
+        var vm = new GpuMemoryViewModel(new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time), GpuMemoryFixtures.Hub(time),
+            () => new StrataContext(null, "꺼짐"), time, page, () => saves++);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.Equal("Auto", vm.LayoutMode);
+
+        vm.SetLayoutMode("Beside");
+        Assert.Equal(("Beside", "Beside", 1), (vm.LayoutMode, page.Layout, saves));
+        Assert.Contains(nameof(GpuMemoryViewModel.LayoutMode), changed);
+        vm.SetLayoutMode("Sideways"); // not a layout
+        vm.SetLayoutMode("Beside");   // the same again
+        Assert.Equal(("Beside", 1), (vm.LayoutMode, saves));
+
+        vm.SetDetailWidth(512.4);
+        Assert.Equal(512, page.DetailWidth);
+        vm.SetDetailWidth(double.NaN);
+        Assert.Equal(0, page.DetailWidth);
+    }
+
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
 
     [Fact]
@@ -1573,6 +1607,7 @@ public class GpuMemoryShellTests
               "DetailHeight": -1, "ShowAll": true } }
             """);
         var damaged = store.Load().Settings.GpuMemoryPage;
+        Assert.Equal(("Auto", 0.0), (damaged.Layout, damaged.DetailWidth)); // older files: the automatic arrangement
         Assert.Null(damaged.SortColumn);
         Assert.True(damaged.SortDescending);
         Assert.Equal(["Pid"], damaged.HiddenColumns);
@@ -1583,9 +1618,12 @@ public class GpuMemoryShellTests
         settings.GpuMemoryPage.SortColumn = "Gpu";
         settings.GpuMemoryPage.DetailHeight = 300;
         settings.GpuMemoryPage.KindOverrides["myrenderer.exe"] = "Graphics3D";
+        settings.GpuMemoryPage.Layout = "Beside";
+        settings.GpuMemoryPage.DetailWidth = 520;
         store.Save(settings);
         var reloaded = store.Load().Settings.GpuMemoryPage;
         Assert.Equal(("Gpu", 300.0), (reloaded.SortColumn, reloaded.DetailHeight));
+        Assert.Equal(("Beside", 520.0), (reloaded.Layout, reloaded.DetailWidth));
         Assert.Equal("Graphics3D", reloaded.KindOverrides["MyRenderer.EXE"]); // names compare without case
     }
 
