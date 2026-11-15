@@ -626,8 +626,10 @@ public class GpuMemoryViewModelTests
         Assert.Equal([("가중치", "600 MiB"), ("KV·버퍼·런타임", "1.41 GiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
         Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
         Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
-        Assert.StartsWith("모든 층이 GPU에 있다고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
-        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("모든 층이 GPU에 있다고 가정한 추정입니다. KV는 나누지 않음 (컨텍스트 미보고).", detail.BreakdownNote); // one line on screen
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownDetails, StringComparison.Ordinal); // the full reason in the tooltip
+        Assert.Equal(GpuMemoryViewModel.InfoGlyphText, detail.BreakdownInfoGlyph);
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", plain.DetailText(), StringComparison.Ordinal); // and in the copied text
         Assert.Equal("2.00 GiB", detail.Dedicated); // the only measured part
         Assert.Equal("35%", detail.Gpu);
 
@@ -641,12 +643,14 @@ public class GpuMemoryViewModelTests
         // A mixture of experts: which experts are on the GPU is not in the header.
         var (moe, _) = LlmProcess(dense with { Experts = 128 }, strata: false);
         Assert.Empty(moe.Detail!.Breakdown);
-        Assert.StartsWith("전문가(MoE) 모델은", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.StartsWith("전문가(MoE) 모델이라", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("--n-cpu-moe", moe.Detail.BreakdownDetails, StringComparison.Ordinal);
 
         // Recurrent or linear layers: the weights still come from the header, the KV size does not.
         var (hybrid, _) = LlmProcess(dense with { KvBytesPerTokenF16 = null, KvUnknownReason = "순환·선형 층이 섞인 구조" }, strata: false);
         Assert.Equal(["가중치", "KV·버퍼·런타임"], hybrid.Detail!.BreakdownLegend.Select(l => l.Label));
-        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("KV는 나누지 않음 (순환·선형 층이 섞인 구조)", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownDetails, StringComparison.Ordinal);
         Assert.DoesNotContain("KV", hybrid.Detail.Models.Single().Summary.Split(" · ").Last(), StringComparison.Ordinal);
     }
 
@@ -660,7 +664,8 @@ public class GpuMemoryViewModelTests
         Assert.Empty(detail.Breakdown);
         Assert.Equal([("가중치 (모든 층 GPU 가정, 이론값)", "3.00 GiB", true), ("이 프로세스 전용 (측정)", "2.00 GiB", false)],
             detail.BreakdownLegend.Select(l => (l.Label, l.Value, l.IsEstimate)));
-        Assert.Contains("일부 층만 GPU에 있는 것으로 보입니다", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("일부 층만 GPU에 있는 것으로 보여 구성은 그리지 않습니다.", detail.BreakdownNote);
+        Assert.Contains("측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어", detail.BreakdownDetails, StringComparison.Ordinal);
         Assert.Contains("비교: 가중치 (모든 층 GPU 가정, 이론값) 3.00 GiB", vm.DetailText(), StringComparison.Ordinal);
     }
 
@@ -1288,8 +1293,9 @@ public class GpuMemoryViewModelTests
         Assert.Equal("1.49 GiB", facts["VRAM (Ollama 계산)"]);
         Assert.Equal("8,192 토큰", facts["컨텍스트"]);
         Assert.DoesNotContain(facts.Keys, k => k.Contains("RAM", StringComparison.Ordinal) && !k.Contains("VRAM", StringComparison.Ordinal));
-        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Note, StringComparison.Ordinal);
-        Assert.Contains("모델 파일 크기", group.Note, StringComparison.Ordinal);
+        Assert.StartsWith("Ollama 계산값 · 전체 − VRAM은 RAM 사용량이 아님 · ", group.Note, StringComparison.Ordinal); // the key warning stays on screen
+        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Details, StringComparison.Ordinal);
+        Assert.Contains("모델 파일 크기", group.Details, StringComparison.Ordinal);
         Assert.Contains("Ollama · gemma3:4b: 전체 (Ollama 계산) 3.26 GiB", vm.DetailText(), StringComparison.Ordinal);
         // The runner's model does not fit on the GPU whole: the two numbers are shown apart, no split.
         Assert.Empty(vm.Detail.Breakdown);
@@ -1322,7 +1328,8 @@ public class GpuMemoryViewModelTests
         Assert.Equal("1.50 GiB (최대 4.79 GiB)", last["전문가 캐시"]); // the adjusted size, not the start's 4.79 GiB
         Assert.Equal("5.96 GiB", last["여유 VRAM (그때 장치 전체)"]);
         Assert.Equal("5.86 GiB", last["요청한 예약"]);
-        Assert.Contains("Windows 측정", reports[1].Note, StringComparison.Ordinal);
+        Assert.Contains("지금 사용량은 위의 측정값", reports[1].Note, StringComparison.Ordinal);
+        Assert.Contains("Windows 측정", reports[1].Details, StringComparison.Ordinal);
         Assert.Equal(Row(vm, "strata.exe").DedicatedText, vm.Detail.Dedicated); // the measurement stays the measurement
         Assert.Empty(vm.Detail.Breakdown);
         Assert.Contains("Strata 엔진 · 마지막 보고 (VRAM 조정 시): 전문가 슬롯 1,200 (최대 3,700)", vm.DetailText(), StringComparison.Ordinal);
@@ -1402,7 +1409,8 @@ public class GpuMemoryViewModelTests
         Assert.Equal(["llama.cpp 서버 · 설정", "llama.cpp 라우터 · 이 인스턴스"], reports.Select(g => g.Title));
         Assert.Equal("131,072 토큰", Facts(reports[0])["컨텍스트 (n_ctx)"]);
         Assert.Equal("gemma-3-4b-it-Q4_K_M.gguf", Facts(reports[0])["모델 파일"]); // the file name, never the path
-        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Note, StringComparison.Ordinal);
+        Assert.Contains("KV 형식 미보고", reports[0].Note, StringComparison.Ordinal);
+        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Details, StringComparison.Ordinal);
         var instance = Facts(reports[1]);
         Assert.Equal("가중치 4.64 GiB · 컨텍스트 512 MiB · 계산 288 MiB", instance["CUDA0"]); // effective, not max
         Assert.DoesNotContain(reports[1].Facts, f => f.Value.Contains("93.13 GiB", StringComparison.Ordinal));

@@ -301,7 +301,10 @@
               <c:SegmentBar Segments="{Binding Breakdown}" Height="8" Visibility="{Binding Breakdown, Converter={StaticResource NotEmptyToVisibility}}" />
               <ItemsControl ItemsSource="{Binding BreakdownLegend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}" Focusable="False" Margin="0,4,0,0"
                             Visibility="{Binding BreakdownLegend, Converter={StaticResource NotEmptyToVisibility}}" />
-              <TextBlock Text="{Binding BreakdownNote}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+              <!-- One key line; the full explanation is the tooltip (and in the copied text). -->
+              <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" ToolTip="{Binding BreakdownDetails}">
+                <Run Text="{Binding BreakdownNote, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding BreakdownInfoGlyph, Mode=OneWay}" FontFamily="{StaticResource IconFont}" FontSize="11" />
+              </TextBlock>
             </StackPanel>
 
             <Grid Margin="0,8,0,0">
@@ -371,7 +374,9 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" ToolTip="{Binding Details}">
+                      <Run Text="{Binding Note, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding InfoGlyph, Mode=OneWay}" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                    </TextBlock>
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
