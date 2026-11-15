@@ -6,8 +6,9 @@ using PcControlCenter.Presentation;
 namespace PcControlCenter.App.Controls;
 
 /// <summary>
-/// A horizontal bar made of segments (fractions of the full width) over a dim track. Estimated segments are drawn with
-/// diagonal hatching so they never look like measurements. Drawn directly (no visual tree per segment).
+/// A thin horizontal bar made of segments (fractions of the full width) over a dim track, with fully rounded ends and a
+/// 2 px gap in the surface colour between parts (no outlines). Estimated segments are drawn with diagonal hatching so they
+/// never look like measurements. Drawn directly (no visual tree per segment).
 /// </summary>
 public sealed class SegmentBar : FrameworkElement
 {
@@ -17,6 +18,11 @@ public sealed class SegmentBar : FrameworkElement
     public static readonly DependencyProperty TrackBrushProperty = DependencyProperty.Register(
         nameof(TrackBrush), typeof(Brush), typeof(SegmentBar),
         new FrameworkPropertyMetadata(new SolidColorBrush(Color.FromRgb(0x2c, 0x2c, 0x2a)), FrameworkPropertyMetadataOptions.AffectsRender));
+
+    /// <summary>The surface the bar sits on: the gaps between parts are drawn in it.</summary>
+    public static readonly DependencyProperty GapBrushProperty = DependencyProperty.Register(
+        nameof(GapBrush), typeof(Brush), typeof(SegmentBar),
+        new FrameworkPropertyMetadata(new SolidColorBrush(Color.FromRgb(0x1a, 0x1a, 0x19)), FrameworkPropertyMetadataOptions.AffectsRender));
 
     private static readonly Dictionary<string, Brush> Brushes = [];
     private static readonly Dictionary<string, Brush> Hatches = [];
@@ -39,6 +45,12 @@ public sealed class SegmentBar : FrameworkElement
         set => SetValue(TrackBrushProperty, value);
     }
 
+    public Brush GapBrush
+    {
+        get => (Brush)GetValue(GapBrushProperty);
+        set => SetValue(GapBrushProperty, value);
+    }
+
     protected override Size MeasureOverride(Size availableSize) => new(0, double.IsNaN(Height) ? 8 : Height);
 
     protected override void OnRender(DrawingContext dc)
@@ -50,7 +62,7 @@ public sealed class SegmentBar : FrameworkElement
             return;
         }
 
-        var radius = Math.Min(3, height / 2);
+        var radius = height / 2;
         var track = new RectangleGeometry(new Rect(0, 0, width, height), radius, radius);
         dc.DrawGeometry(TrackBrush, null, track);
         if (Segments is null)
@@ -83,8 +95,8 @@ public sealed class SegmentBar : FrameworkElement
             x += w;
             if (x < width - 1)
             {
-                // A one-pixel gap separates neighbouring segments.
-                dc.DrawRectangle(TrackBrush, null, new Rect(x - 0.5, 0, 1, height));
+                // A 2 px gap in the surface colour separates a part from the next one (or from the free track).
+                dc.DrawRectangle(GapBrush, null, new Rect(x - 1, 0, 2, height));
             }
         }
 
@@ -126,60 +138,6 @@ public sealed class SegmentBar : FrameworkElement
         }
 
         return hatch;
-    }
-}
-
-/// <summary>
-/// A thin bar under a right-aligned number: its length is the value's share (0-1) of the card, growing leftwards from the
-/// number's right edge so it reads with the number. Nothing is drawn for 0; a tiny share still shows a 2 px mark.
-/// </summary>
-public sealed class ShareBar : FrameworkElement
-{
-    public static readonly DependencyProperty ValueProperty = DependencyProperty.Register(
-        nameof(Value), typeof(double), typeof(ShareBar), new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-    public static readonly DependencyProperty ColorProperty = DependencyProperty.Register(
-        nameof(Color), typeof(string), typeof(ShareBar), new FrameworkPropertyMetadata("#3987E5", FrameworkPropertyMetadataOptions.AffectsRender));
-
-    /// <summary>Space kept free on the right (the number's margin), so the bar ends under the number's last digit.</summary>
-    public static readonly DependencyProperty EndMarginProperty = DependencyProperty.Register(
-        nameof(EndMargin), typeof(double), typeof(ShareBar), new FrameworkPropertyMetadata(10.0, FrameworkPropertyMetadataOptions.AffectsRender));
-
-    public ShareBar() => SnapsToDevicePixels = true;
-
-    public double Value
-    {
-        get => (double)GetValue(ValueProperty);
-        set => SetValue(ValueProperty, value);
-    }
-
-    public string Color
-    {
-        get => (string)GetValue(ColorProperty);
-        set => SetValue(ColorProperty, value);
-    }
-
-    public double EndMargin
-    {
-        get => (double)GetValue(EndMarginProperty);
-        set => SetValue(EndMarginProperty, value);
-    }
-
-    protected override void OnRender(DrawingContext dc)
-    {
-        var v = Math.Clamp(Value, 0, 1);
-        var span = ActualWidth - EndMargin - 6;
-        if (v <= 0 || span <= 0 || ActualHeight < 6)
-        {
-            return;
-        }
-
-        const double Thickness = 3;
-        var width = Math.Max(2, span * v);
-        var right = ActualWidth - EndMargin;
-        dc.PushOpacity(0.85);
-        dc.DrawRoundedRectangle(SegmentBar.BrushOf(Color), null, new Rect(right - width, ActualHeight - Thickness - 3, width, Thickness), 1.5, 1.5);
-        dc.Pop();
     }
 }
 

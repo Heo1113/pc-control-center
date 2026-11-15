@@ -13,13 +13,30 @@ namespace PcControlCenter.Presentation;
 /// <summary>A part of a bar: its share of the whole (0-1), color, label, and whether it is an estimate (drawn hatched).</summary>
 public sealed record BarSegment(double Fraction, string ColorHex, string Label, bool IsEstimate = false);
 
-/// <summary>A legend entry under a bar. <see cref="Kind"/>: the process kind it stands for (clicking it filters the table).</summary>
+/// <summary>
+/// A legend entry under a bar. <see cref="Kind"/> or <see cref="Group"/>: the process kind or group it stands for (clicking
+/// a group's entry in the device strip filters the table).
+/// </summary>
 public sealed record LegendItem(string ColorHex, string Label, string Value, bool IsEstimate = false, string? ToolTip = null,
-    ProcessKind? Kind = null, bool IsActive = false);
+    ProcessKind? Kind = null, bool IsActive = false, KindGroup? Group = null);
 
 /// <summary>
-/// One adapter in the header: name, local and system-RAM memory bars, engine activity, NVML for comparison. Adapters after
-/// the first are drawn on one line (<see cref="IsCompact"/>, the legend as <see cref="LegendText"/> in a tooltip).
+/// How the device strip groups process kinds: the AI workloads keep a colour each, the rest fold into two grays (emphasis:
+/// the question this page answers is how much of the card the AI workloads hold). The table keeps the exact kind.
+/// </summary>
+public enum KindGroup
+{
+    Llm,
+    Ai,
+    Compute,
+    Apps,
+    Windows,
+}
+
+/// <summary>
+/// One adapter in the device strip, every adapter on the same one-line layout: short name (the full name and NVML's view
+/// in the tooltip), the dedicated memory bar by kind group with its legend, used / capacity with free and shared memory,
+/// and the busiest engine.
 /// </summary>
 public sealed record AdapterView(
     string Name,
@@ -28,17 +45,26 @@ public sealed record AdapterView(
     string DedicatedText,
     IReadOnlyList<LegendItem> Legend,
     string? LegendNote,
-    IReadOnlyList<BarSegment> SharedSegments,
     string SharedText,
     string Utilization,
     string UtilizationLabel,
     string Engines,
     string? Nvml,
     bool HasCapacity,
-    bool IsCompact = false,
     string LegendText = "",
     string? FreeText = null,
-    string? DeltaText = null);
+    string? DeltaText = null)
+{
+    /// <summary>"RTX 5080" for "NVIDIA GeForce RTX 5080".</summary>
+    public string ShortName => GpuMemoryViewModel.ShortAdapterName(Name);
+
+    /// <summary>Free and shared memory under the used / capacity figure.</summary>
+    public string SecondaryText => string.Join(" · ", new[] { FreeText, $"공유 {SharedText}" }.Where(x => !string.IsNullOrEmpty(x)));
+
+    /// <summary>The full name, the vendor notes and NVML's view, for the tooltip.</summary>
+    public string NameToolTip => string.Join(Environment.NewLine, new[] { Name, Meta, Nvml is null ? null : $"{Nvml} (공통 센서, 장치 전체 — 집계 방식이 달라 값이 다를 수 있음)" }
+        .Where(x => !string.IsNullOrEmpty(x)));
+}
 
 /// <summary>One choice of a small chooser (the chart's metric and window): what it says, and the value it stands for.</summary>
 public sealed record ChoiceOption(string Label, object Value);
@@ -93,6 +119,8 @@ public sealed record ProcessDetailView(
     IReadOnlyList<BarSegment> Breakdown,
     IReadOnlyList<LegendItem> BreakdownLegend,
     string? BreakdownNote,
+    string BreakdownTitle,
+    string GpuCaption,
     string Runtimes,
     IReadOnlyList<ModelRow> Models,
     string? StrataModel,
@@ -175,19 +203,39 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// <summary>A Strata poll older than this is not used to link processes (the port may belong to someone else by then).</summary>
     public static readonly TimeSpan StrataMaxAge = TimeSpan.FromSeconds(15);
 
-    public static readonly IReadOnlyDictionary<ProcessKind, string> KindColors = new Dictionary<ProcessKind, string>
+    /// <summary>
+    /// The three accent colours pass every all-pairs check of the data-viz palette validator on the dark card surface
+    /// (#1a1a19: CVD ΔE ≥ 9.4, normal vision ≥ 20.9, ≥ 3:1). The other kinds share two grays, lighter for applications than
+    /// for Windows itself; the unattributed part is darker still and free memory is the track.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<KindGroup, string> GroupColors = new Dictionary<KindGroup, string>
     {
-        [ProcessKind.Llm] = "#D55181",
-        [ProcessKind.Ai] = "#9085E9",
-        [ProcessKind.Compute] = "#D95926",
-        [ProcessKind.Graphics3D] = "#199E70",
-        [ProcessKind.Video] = "#C98500",
-        [ProcessKind.Browser] = "#3987E5",
-        [ProcessKind.Compositor] = "#8A8984",
-        [ProcessKind.System] = "#6E6D68",
-        [ProcessKind.Kernel] = "#6E6D68",
-        [ProcessKind.App] = "#4FA3C7",
+        [KindGroup.Llm] = "#3987E5",
+        [KindGroup.Ai] = "#199E70",
+        [KindGroup.Compute] = "#D95926",
+        [KindGroup.Apps] = "#9A9892",
+        [KindGroup.Windows] = "#64635D",
     };
+
+    public static readonly IReadOnlyDictionary<KindGroup, string> GroupLabels = new Dictionary<KindGroup, string>
+    {
+        [KindGroup.Llm] = "LLM",
+        [KindGroup.Ai] = "AI",
+        [KindGroup.Compute] = "연산",
+        [KindGroup.Apps] = "앱·그래픽",
+        [KindGroup.Windows] = "Windows",
+    };
+
+    public static KindGroup GroupOf(ProcessKind kind) => kind switch
+    {
+        ProcessKind.Llm => KindGroup.Llm,
+        ProcessKind.Ai => KindGroup.Ai,
+        ProcessKind.Compute => KindGroup.Compute,
+        ProcessKind.Compositor or ProcessKind.System or ProcessKind.Kernel => KindGroup.Windows,
+        _ => KindGroup.Apps,
+    };
+
+    public static readonly IReadOnlyDictionary<ProcessKind, string> KindColors = Enum.GetValues<ProcessKind>().ToDictionary(k => k, k => GroupColors[GroupOf(k)]);
 
     public static readonly IReadOnlyDictionary<ProcessKind, string> KindLabels = new Dictionary<ProcessKind, string>
     {
@@ -205,12 +253,13 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     private const string DefaultPlaceholder = "표에서 프로세스를 고르면 자세한 내용이 여기에 나옵니다.";
     private static readonly string[] AdapterNoise = ["NVIDIA GeForce ", "NVIDIA ", "AMD ", "Intel(R) ", "Microsoft ", "(R)", "(TM)"];
-    private const string UnattributedColor = "#4A4A46";
+    private const string UnattributedColor = "#43423D";
     private const long OverlapTolerance = 16L << 20;
-    private const string SharedColor = "#C98500";
-    private const string WeightsColor = "#D55181";
+    private const string WeightsColor = "#3987E5";
     private const string KvColor = "#D95926";
-    private const string RestColor = "#6E6D68";
+    private const string RestColor = "#64635D";
+    private const string SelectedSeriesColor = "#3987E5";
+    private const string TotalSeriesColor = "#8A8984";
     private const string MeasuredColor = "#F0EFEC";
     private static readonly double ChartGapDays = TimeSpan.FromSeconds(25).TotalDays;
     private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
@@ -311,7 +360,13 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     /// <summary>Only processes of this kind (set by clicking a legend entry); null = all.</summary>
     [ObservableProperty] public partial ProcessKind? KindFilter { get; set; }
+
+    /// <summary>Only processes of this kind group (set by clicking a device strip legend entry); null = all.</summary>
+    [ObservableProperty] public partial KindGroup? GroupFilter { get; set; }
     [ObservableProperty] public partial string KindFilterText { get; set; } = "";
+
+    /// <summary>Strata's status is shown in the toolbar only while Strata answers (reachable); otherwise it is in the status tooltip.</summary>
+    [ObservableProperty] public partial bool ShowStrataStatus { get; set; }
 
     /// <summary>A baseline is held: rows and adapters show the change since it (B1).</summary>
     [ObservableProperty] public partial bool HasBaseline { get; set; }
@@ -397,7 +452,14 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private void FilterKind(ProcessKind? kind) => KindFilter = KindFilter == kind ? null : kind;
 
     [RelayCommand]
-    private void ClearKindFilter() => KindFilter = null;
+    private void FilterGroup(KindGroup? group) => GroupFilter = GroupFilter == group ? null : group;
+
+    [RelayCommand]
+    private void ClearKindFilter()
+    {
+        KindFilter = null;
+        GroupFilter = null;
+    }
 
     /// <summary>Takes a baseline now, or drops the one held.</summary>
     [RelayCommand]
@@ -418,7 +480,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         if (!_shown.Contains(row))
         {
             Filter = "";
-            KindFilter = null;
+            ClearKindFilter();
         }
 
         SelectedProcess = row;
@@ -669,7 +731,29 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     partial void OnKindFilterChanged(ProcessKind? value)
     {
-        KindFilterText = value is { } kind ? $"종류: {KindLabels[kind]}" : "";
+        if (value is not null && GroupFilter is not null)
+        {
+            GroupFilter = null; // one filter at a time; the group's handler rebuilds
+            return;
+        }
+
+        OnFiltersChanged();
+    }
+
+    partial void OnGroupFilterChanged(KindGroup? value)
+    {
+        if (value is not null && KindFilter is not null)
+        {
+            KindFilter = null;
+            return;
+        }
+
+        OnFiltersChanged();
+    }
+
+    private void OnFiltersChanged()
+    {
+        KindFilterText = KindFilter is { } kind ? $"종류: {KindLabels[kind]}" : GroupFilter is { } group ? $"종류: {GroupLabels[group]}" : "";
         if (_current is not null)
         {
             SyncAdapters(BuildAdapters(_current)); // the active legend entry
@@ -770,7 +854,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             _ when latest is null => (Level.Muted, "측정 대기"),
             _ when stale => (Level.Error, $"새 측정 없음 · 마지막 {Text.Clock(latest.Timestamp)}"),
             _ => (latest.IsMock || latest.Variant != ProcessCounterVariant.LocalNonLocal ? Level.Warning : Level.Good,
-                $"{Text.Clock(latest.Timestamp)} · {health.Interval.TotalSeconds:0.#}초마다"),
+                (latest.IsMock ? "MOCK · " : "") + $"{Text.Clock(latest.Timestamp)} · {health.Interval.TotalSeconds:0.#}초마다"),
         };
         var lines = new List<string> { $"출처: {latest?.Source ?? health.ProviderName}" };
         if (latest is not null)
@@ -798,6 +882,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         if (strata.Snapshot is not { } rt)
         {
             (StrataLevel, StrataText, StrataToolTip) = (Level.Muted, "Strata 꺼짐", strata.Unavailable);
+            ShowStrataStatus = false;
             return;
         }
 
@@ -806,6 +891,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             ? link.Processes.FirstOrDefault(p => p.Memory.Any(m => m.DedicatedBytes > 0))?.Process ?? link.Listener
             : null;
         StrataLevel = !rt.IsReachable ? Level.Muted : port is null ? Level.Warning : Level.Good;
+        ShowStrataStatus = rt.IsReachable;
         StrataText = !rt.IsReachable ? $"Strata {RuntimeStateText.ToKorean(rt.State)}"
             : holder is not null ? $"Strata · {holder.Name}"
             : "Strata 연결됨";
@@ -852,19 +938,22 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var info = adapter.Info;
             var capacity = info?.DedicatedVideoMemoryBytes ?? 0;
             var rows = s.Processes.Where(p => p.Luid == adapter.Luid).ToList();
-            var byKind = rows.Where(p => p.DedicatedBytes > 0)
-                .GroupBy(p => KindOf(s, p).Kind)
-                .Select(g => (Kind: g.Key, Bytes: g.Sum(p => p.DedicatedBytes!.Value)))
+            var byGroup = rows.Where(p => p.DedicatedBytes > 0)
+                .GroupBy(p => GroupOf(KindOf(s, p).Kind))
+                .Select(g => (Group: g.Key, Bytes: g.Sum(p => p.DedicatedBytes!.Value),
+                    Kinds: g.GroupBy(p => KindOf(s, p).Kind).Select(k => (Kind: k.Key, Bytes: k.Sum(p => p.DedicatedBytes!.Value))).OrderByDescending(k => k.Bytes).ToList()))
                 .OrderByDescending(x => x.Bytes)
                 .ToList();
             long? processSum = rows.All(p => p.DedicatedBytes is not null) ? rows.Sum(p => p.DedicatedBytes ?? 0) : null;
             var used = adapter.DedicatedUsageBytes;
             long? unattributed = used is long u && processSum is long sum ? u - sum : null;
-            var scale = capacity > 0 ? capacity : Math.Max(1, used ?? byKind.Sum(k => k.Bytes));
-            var parts = byKind.Select(k => (Color: KindColors[k.Kind], Label: KindLabels[k.Kind], k.Bytes, Kind: (ProcessKind?)k.Kind)).ToList();
+            var scale = capacity > 0 ? capacity : Math.Max(1, used ?? byGroup.Sum(k => k.Bytes));
+            var parts = byGroup.Select(g => (Color: GroupColors[g.Group], Label: GroupLabels[g.Group], g.Bytes, Group: (KindGroup?)g.Group,
+                ToolTip: (string?)$"{string.Join(" · ", g.Kinds.Select(k => $"{KindLabels[k.Kind]} {Text.Bytes(k.Bytes)}"))} — 누르면 표에 이 묶음만")).ToList();
             if (unattributed > 0)
             {
-                parts.Add((UnattributedColor, "나뉘지 않음", unattributed.Value, null));
+                parts.Add((UnattributedColor, "나뉘지 않음", unattributed.Value, null,
+                    "어댑터 사용량 − 프로세스 합계 (계산): 커널·드라이버 할당, 읽지 못한 프로세스, 수집 시점 차이가 섞여 있습니다"));
             }
 
             // When the process rows add up to more than the adapter reports (shared surfaces counted twice), the bar keeps the
@@ -872,8 +961,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var partsTotal = parts.Sum(p => p.Bytes);
             var factor = used is long usedBytes && partsTotal > usedBytes && partsTotal > 0 ? (double)usedBytes / partsTotal : 1.0;
             var segments = parts.Select(p => new BarSegment(Math.Clamp(p.Bytes * factor / scale, 0, 1), p.Color, p.Label)).ToList();
-            var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes), Kind: p.Kind,
-                IsActive: p.Kind is not null && p.Kind == KindFilter)).ToList();
+            var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes), ToolTip: p.ToolTip, Group: p.Group,
+                IsActive: p.Group is not null && p.Group == GroupFilter)).ToList();
             // A few MiB either way is the counters' timing; more is shared resources counted for several processes.
             string? legendNote = unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
                 ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)"
@@ -898,14 +987,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 capacity > 0 ? Pair(used, capacity) : Text.Bytes(used),
                 legend,
                 legendNote,
-                sharedCapacity > 0 && shared is long sh ? [new BarSegment(Math.Clamp((double)sh / sharedCapacity, 0, 1), SharedColor, "공유")] : [],
                 sharedCapacity > 0 ? Pair(shared, sharedCapacity) : Text.Bytes(shared),
                 engines is null ? "" : $"{engines.Busiest:0}%",
                 engines is null ? "" : BusiestEngine(engines),
                 engines is null ? "" : EnginesText(engines),
                 nvml,
                 capacity > 0,
-                IsCompact: views.Count > 0,
                 LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
                 FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null,
                 DeltaText: _baseline is { } b && b.AdapterDedicated.TryGetValue(adapter.Luid, out var then) && Diff(used, then) is long change
@@ -955,7 +1042,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             }
 
             Update(row, s, p);
-            var show = (KindFilter is not { } kind || row.Kind == kind) && Matches(row, filter);
+            var show = (KindFilter is not { } kind || row.Kind == kind) && (GroupFilter is not { } group || GroupOf(row.Kind) == group) && Matches(row, filter);
             if (show && _shown.Add(row))
             {
                 Processes.Add(row);
@@ -982,12 +1069,13 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         var visible = Processes.Count;
         var hidden = s.Processes.Count - listed.Count;
-        var filtering = filter.Length > 0 || KindFilter is not null;
+        var filtering = filter.Length > 0 || KindFilter is not null || GroupFilter is not null;
+        var kindName = KindFilter is { } k1 ? KindLabels[k1] : GroupFilter is { } g1 ? GroupLabels[g1] : null;
         CountText = filtering ? $"{visible}/{listed.Count}개 표시"
-            : $"프로세스 {visible}" + (hidden > 0 && !ShowAll ? $" · {hidden}개 숨김" : ""); // next to the "작은 프로세스 포함" box
+            : $"프로세스 {visible}개" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : ""); // next to the "작은 프로세스 포함" box
         EmptyText = visible > 0 ? ""
-            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (KindFilter is { } k1 ? $" ({KindLabels[k1]} 종류 안에서)" : "")
-            : KindFilter is { } k2 ? $"{KindLabels[k2]} 종류의 프로세스가 없습니다"
+            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (kindName is not null ? $" ({kindName} 종류 안에서)" : "")
+            : kindName is not null ? $"{kindName} 종류의 프로세스가 없습니다"
             : hidden > 0 ? $"GPU 메모리를 1 MiB 넘게 쓰는 프로세스가 없습니다 · '작은 프로세스 포함'으로 {hidden}개를 볼 수 있습니다"
             : "GPU 메모리를 쓰는 프로세스가 없습니다";
         ShowGpuColumn = luids.Count > 1;
@@ -1224,6 +1312,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             breakdown,
             breakdownLegend,
             breakdownNote,
+            breakdown.Count > 0 ? "구성 (추정)" : breakdownLegend.Count > 0 ? "모델 가중치와 측정값" : "구성",
+            engines is null || engines.Busiest < 1 ? "" : EngineName(engines),
             detail is null ? "아직 확인하지 않음" : detail.AccessDenied ? "확인할 수 없음 (보호되었거나 다른 사용자의 프로세스)"
                 : detail.Runtimes.Count == 0 ? "알려진 GPU·AI 런타임 없음" : string.Join(" · ", detail.Runtimes) + (detail.Partial ? " (일부만 확인)" : ""),
             models,
@@ -1266,19 +1356,18 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         if (adapterPoints.Count > 0)
         {
             series.Add(new ChartSeries("GPU 전체", [.. adapterPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. adapterPoints.Select(x => x.Value!.Value)], "#8A8984"));
+                [.. adapterPoints.Select(x => x.Value!.Value)], TotalSeriesColor));
         }
 
         if (processPoints.Count > 0)
         {
             series.Add(new ChartSeries(row.Name, [.. processPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
-                [.. processPoints.Select(x => x.Value!.Value)], row.KindColor));
+                [.. processPoints.Select(x => x.Value!.Value)], SelectedSeriesColor)); // the selected process stands out; the total is gray
         }
 
-        var metric = ChartMetricOptions.First(o => (string)o.Value == ChartMetric).Label;
         return new ChartModel
         {
-            Title = $"{metric} · {ChartMinutes}분",
+            Title = "", // the metric and window selectors above the chart say what it shows
             Unit = gpu ? "%" : "GiB",
             Series = series,
             XIsTime = true,
@@ -1734,16 +1823,11 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private static string EnginesText(EngineUsage e) => $"3D {e.ThreeD:0} · 연산 {e.Compute:0} · 복사 {e.Copy:0} · 영상 {e.Video:0}";
 
     /// <summary>"GPU" plus the busiest engine group, as Task Manager's GPU column counts it (the busiest engine).</summary>
-    private static string BusiestEngine(EngineUsage e)
-    {
-        if (e.Busiest < 1)
-        {
-            return "GPU";
-        }
+    private static string BusiestEngine(EngineUsage e) => e.Busiest < 1 ? "GPU" : $"GPU · {EngineName(e)}";
 
-        var name = e.Busiest == e.Compute ? "연산" : e.Busiest == e.ThreeD ? "3D" : e.Busiest == e.Video ? "영상" : e.Busiest == e.Copy ? "복사" : "기타";
-        return $"GPU · {name}";
-    }
+    /// <summary>The engine group the busiest figure comes from.</summary>
+    private static string EngineName(EngineUsage e)
+        => e.Busiest == e.Compute ? "연산" : e.Busiest == e.ThreeD ? "3D" : e.Busiest == e.Video ? "영상" : e.Busiest == e.Copy ? "복사" : "기타";
 
     private static string Pair(long? used, long? total) => used is null && total is null ? Text.NA : $"{Text.Bytes(used)} / {Text.Bytes(total)}";
 

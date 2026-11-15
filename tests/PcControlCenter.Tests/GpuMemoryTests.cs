@@ -467,13 +467,13 @@ public class GpuMemoryViewModelTests
         Assert.Equal("NVML 4.00 GiB / 16.00 GiB", nvidia.Nvml); // one NVIDIA adapter, one NVML device: paired
         Assert.EndsWith("%", nvidia.Utilization, StringComparison.Ordinal);
         Assert.StartsWith("GPU", nvidia.UtilizationLabel, StringComparison.Ordinal);
-        Assert.Single(nvidia.SharedSegments);
-
-        Assert.False(nvidia.IsCompact);
+        Assert.Equal("MOCK RTX 5080", nvidia.ShortName);
+        Assert.Matches(@"^여유 .+ · 공유 .+ / .+$", nvidia.SecondaryText);
+        Assert.Contains("NVML 4.00 GiB / 16.00 GiB", nvidia.NameToolTip, StringComparison.Ordinal); // the cross-check moves to the tooltip
+        Assert.StartsWith("MOCK · ", vm.StatusText, StringComparison.Ordinal); // MOCK is said in the status text
 
         var integrated = vm.Adapters[1].View;
-        Assert.True(integrated.IsCompact); // further adapters on one line, the legend in a tooltip
-        Assert.Equal("화면 합성 22 MiB · 나뉘지 않음 8 MiB", integrated.LegendText);
+        Assert.Equal("Windows 22 MiB · 나뉘지 않음 8 MiB", integrated.LegendText); // the compositor folds into the Windows group
         Assert.Contains("통합 GPU일 수 있음", integrated.Meta, StringComparison.Ordinal);
         Assert.Null(integrated.Nvml);
     }
@@ -495,7 +495,7 @@ public class GpuMemoryViewModelTests
 
         Assert.Null(vm.Adapters[0].View.LegendNote); // 3 MiB over the adapter: counter timing, not shared resources counted twice
         var display = vm.Adapters[1].View;
-        Assert.True(display.IsCompact);
+        Assert.False(display.HasCapacity); // no bar for an adapter without dedicated memory
         Assert.Contains("전용 메모리 없음", display.Meta, StringComparison.Ordinal);
         Assert.DoesNotContain("통합 GPU", display.Meta, StringComparison.Ordinal);
         Assert.Equal(Text.NA, display.DedicatedText);
@@ -856,22 +856,35 @@ public class GpuMemoryViewModelTests
     }
 
     [Fact]
-    public void A_legend_entry_filters_the_table_by_kind_and_the_same_entry_shows_all_again()
+    public void A_legend_entry_filters_the_table_by_kind_group_and_the_row_menu_by_exact_kind()
     {
         var (vm, _, _) = OpenWithStrata();
         var all = vm.Processes.Count;
-        var browser = vm.Adapters[0].View.Legend.Single(l => l.Label == "브라우저");
-        Assert.Equal(ProcessKind.Browser, browser.Kind);
-        Assert.Null(vm.Adapters[0].View.Legend.Single(l => l.Label == "나뉘지 않음").Kind); // computed, not a kind: not a filter
+        var apps = vm.Adapters[0].View.Legend.Single(l => l.Label == "앱·그래픽");
+        Assert.Equal(KindGroup.Apps, apps.Group);
+        Assert.Contains("브라우저", apps.ToolTip, StringComparison.Ordinal); // the kinds inside the group, with their memory
+        Assert.Null(vm.Adapters[0].View.Legend.Single(l => l.Label == "나뉘지 않음").Group); // computed, not a kind: not a filter
 
-        vm.FilterKindCommand.Execute(browser.Kind);
+        vm.FilterGroupCommand.Execute(apps.Group);
+        Assert.Contains("chrome.exe", vm.Processes.Select(r => r.Name));
+        Assert.All(vm.Processes, r => Assert.Equal(KindGroup.Apps, GpuMemoryViewModel.GroupOf(r.Kind)));
+        Assert.Equal("종류: 앱·그래픽", vm.KindFilterText);
+        Assert.Equal($"{vm.Processes.Count}/{all}개 표시", vm.CountText);
+        Assert.True(vm.Adapters[0].View.Legend.Single(l => l.Label == "앱·그래픽").IsActive);
+        vm.FilterGroupCommand.Execute(apps.Group);
+        Assert.Null(vm.GroupFilter);
+        Assert.Equal(all, vm.Processes.Count);
+
+        // The row menu filters by the exact kind; the two filters replace each other.
+        vm.FilterGroupCommand.Execute(KindGroup.Llm);
+        vm.FilterKindCommand.Execute(ProcessKind.Browser);
+        Assert.Null(vm.GroupFilter);
         Assert.Equal(["chrome.exe"], vm.Processes.Select(r => r.Name));
         Assert.Equal("종류: 브라우저", vm.KindFilterText);
         Assert.Equal($"1/{all}개 표시", vm.CountText);
-        Assert.True(vm.Adapters[0].View.Legend.Single(l => l.Label == "브라우저").IsActive);
         Assert.Equal("chrome.exe", vm.SelectedProcess!.Name); // the selection follows the filter
 
-        vm.FilterKindCommand.Execute(browser.Kind);
+        vm.FilterKindCommand.Execute(ProcessKind.Browser);
         Assert.Null(vm.KindFilter);
         Assert.Equal("", vm.KindFilterText);
         Assert.Equal(all, vm.Processes.Count);
@@ -1106,19 +1119,20 @@ public class GpuMemoryViewModelTests
         }
 
         vm.Refresh();
-        Assert.Equal("전용 · 15분", vm.Detail!.Chart!.Title);
+        Assert.Equal("", vm.Detail!.Chart!.Title); // the metric and window choosers above the chart say what it shows
         Assert.Equal(4, vm.Detail.Chart.Series.Single(x => x.Label == "strata.exe").Y.Length);
 
         vm.ChartMetric = "Gpu";
         var gpu = vm.Detail!.Chart!;
-        Assert.Equal(("GPU % · 15분", "%", (double?)100), (gpu.Title, gpu.Unit, gpu.YMax));
+        Assert.Equal(("%", (double?)100), (gpu.Unit, gpu.YMax));
         Assert.Equal(3, gpu.Series.Single(x => x.Label == "strata.exe").Y.Length); // the reading without engines is a gap, not 0 %
         Assert.All(gpu.Series.Single(x => x.Label == "strata.exe").Y, y => Assert.InRange(y, 30, 60));
 
         vm.ChartMetric = "Shared";
         Assert.Equal("GiB", vm.Detail!.Chart!.Unit);
         vm.ChartMinutes = 5;
-        Assert.Equal("공유 · 5분", vm.Detail!.Chart!.Title);
+        var from = (time.GetUtcNow() - TimeSpan.FromMinutes(5)).LocalDateTime.AddSeconds(-1);
+        Assert.All(vm.Detail!.Chart!.Series.SelectMany(x => x.X), x => Assert.True(DateTime.FromOADate(x) >= from)); // the 5-minute window
         Assert.Equal(("Shared", 5), (page.ChartMetric, page.ChartMinutes)); // remembered
 
         vm.ChartMetric = "Bogus";
@@ -1153,26 +1167,27 @@ public class GpuMemoryViewModelTests
         var chrome = Row(vm, "chrome.exe");
         vm.SelectedProcess = chrome;
         Assert.Equal(ProcessKind.Browser, chrome.Kind);
-        Assert.DoesNotContain(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video);
+        Assert.DoesNotContain(vm.Adapters[0].View.Legend, l => l.Group == KindGroup.Compute);
 
-        vm.SetKindOverride(chrome, ProcessKind.Video);
+        vm.SetKindOverride(chrome, ProcessKind.Compute);
 
         Assert.Same(chrome, Row(vm, "chrome.exe")); // updated in place
-        Assert.Equal(ProcessKind.Video, chrome.Kind);
-        Assert.Equal("영상", chrome.KindLabel);
+        Assert.Equal(ProcessKind.Compute, chrome.Kind);
+        Assert.Equal("연산", chrome.KindLabel);
+        Assert.Equal(GpuMemoryViewModel.GroupColors[KindGroup.Compute], chrome.KindColor);
         Assert.True(chrome.KindOverridden);
         Assert.StartsWith("분류 근거: 사용자가 지정함 (자동 분류: 브라우저 — ", chrome.KindBasis, StringComparison.Ordinal);
-        Assert.Contains(vm.Adapters[0].View.Legend, l => l.Kind == ProcessKind.Video); // the device legend follows
-        Assert.Equal("영상", vm.Detail!.Kind);
-        Assert.Equal(ProcessKind.Video, vm.KindOverrideOf(chrome));
-        Assert.Equal(new Dictionary<string, string> { ["chrome.exe"] = "Video" }, page.KindOverrides);
+        Assert.Contains(vm.Adapters[0].View.Legend, l => l.Group == KindGroup.Compute); // the device legend follows
+        Assert.Equal("연산", vm.Detail!.Kind);
+        Assert.Equal(ProcessKind.Compute, vm.KindOverrideOf(chrome));
+        Assert.Equal(new Dictionary<string, string> { ["chrome.exe"] = "Compute" }, page.KindOverrides);
         Assert.Equal(1, saves);
-        vm.SetKindOverride(chrome, ProcessKind.Video); // the same kind again: nothing to save
+        vm.SetKindOverride(chrome, ProcessKind.Compute); // the same kind again: nothing to save
         Assert.Equal(1, saves);
 
         monitor.ReadNow(); // the next reading keeps it
         vm.Refresh();
-        Assert.Equal(ProcessKind.Video, Row(vm, "chrome.exe").Kind);
+        Assert.Equal(ProcessKind.Compute, Row(vm, "chrome.exe").Kind);
 
         vm.SetKindOverride(chrome, null);
         Assert.Equal(ProcessKind.Browser, chrome.Kind);
@@ -1208,6 +1223,37 @@ public class GpuMemoryViewModelTests
         Assert.NotEmpty(detail.Models); // the model file is still shown
         Assert.True(ProcessKinds.IsStrataEngineName("STRATA.EXE"));
         Assert.False(ProcessKinds.IsStrataEngineName("strata-gguf.exe"));
+    }
+
+    [Fact]
+    public void Colours_follow_the_kind_group_and_only_the_ai_groups_have_a_hue()
+    {
+        // Every kind has a group, and its colour is its group's: the AI workloads in the three validated accents, the rest gray.
+        Assert.All(Enum.GetValues<ProcessKind>(), k => Assert.Equal(GpuMemoryViewModel.GroupColors[GpuMemoryViewModel.GroupOf(k)], GpuMemoryViewModel.KindColors[k]));
+        Assert.Equal(["#3987E5", "#D95926", "#199E70"],
+            new[] { KindGroup.Llm, KindGroup.Compute, KindGroup.Ai }.Select(g => GpuMemoryViewModel.GroupColors[g]));
+        Assert.Equal(KindGroup.Windows, GpuMemoryViewModel.GroupOf(ProcessKind.Kernel));
+        Assert.Equal(KindGroup.Windows, GpuMemoryViewModel.GroupOf(ProcessKind.Compositor));
+        Assert.Equal(KindGroup.Apps, GpuMemoryViewModel.GroupOf(ProcessKind.Graphics3D));
+        Assert.Equal(KindGroup.Apps, GpuMemoryViewModel.GroupOf(ProcessKind.Browser));
+    }
+
+    [Fact]
+    public void The_detail_says_what_its_composition_section_holds_and_which_engine_is_busiest()
+    {
+        var (vm, monitor, _) = OpenWithStrata();
+        vm.SelectedProcess = Row(vm, "strata.exe");
+        Assert.Equal("구성", vm.Detail!.BreakdownTitle); // nothing drawn for Strata: no "(추정)" on the heading
+        Assert.Equal("연산", vm.Detail.GpuCaption);
+        vm.SelectedProcess = Row(vm, "ollama.exe");
+        Assert.Equal("모델 가중치와 측정값", vm.Detail!.BreakdownTitle); // the two numbers apart, no split
+        Assert.True(vm.ShowStrataStatus); // Strata answers: its status is in the toolbar
+
+        var (closed, _, _) = Create(); // the local AI module off
+        closed.IsVisible = true;
+        closed.Refresh();
+        Assert.False(closed.ShowStrataStatus);
+        Assert.NotNull(monitor.Latest);
     }
 
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
@@ -1520,6 +1566,8 @@ public class GpuMemoryShellTests
         Assert.StartsWith(latest.Process(largest.ProcessId)!.Name, dashboard.GpuMemoryState, StringComparison.Ordinal);
         Assert.Equal(Text.Bytes(largest.DedicatedBytes), dashboard.GpuMemoryLargest);
         Assert.InRange(dashboard.GpuMemoryTop.Count, 1, 3);
+        Assert.EndsWith(" · MOCK RTX 5080", dashboard.GpuMemoryState, StringComparison.Ordinal); // two GPUs: the largest says which
+        Assert.All(dashboard.GpuMemoryTop, r => Assert.Equal("", r.AdapterSuffix)); // the next ones are on the same GPU
         Assert.Equal(Level.Warning, dashboard.GpuMemoryLevel); // MOCK is never "good"
         Assert.Contains("MOCK", dashboard.GpuMemoryNote, StringComparison.Ordinal);
         Assert.DoesNotContain("합계", dashboard.GpuMemoryNote, StringComparison.Ordinal);
