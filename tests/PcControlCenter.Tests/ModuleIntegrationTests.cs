@@ -27,6 +27,22 @@ public class ModuleIntegrationTests
         return list;
     }
 
+    private static async Task<bool> Eventually(Func<bool> condition, TimeSpan timeout)
+    {
+        var until = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < until)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        return condition();
+    }
+
     [Fact(Timeout = 120_000)]
     public async Task A_B_and_C_record_from_one_sensor_reader_with_the_readings_timestamps()
     {
@@ -52,7 +68,16 @@ public class ModuleIntegrationTests
 
         hub.Start();
         await supervisor.StartAllAsync(TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(3.5), TestContext.Current.CancellationToken);
+
+        // Wait for what the assertions below need instead of a fixed time: on a busy runner the first values can come
+        // seconds later (a fixed 3.5 s once left A's live values empty on the Windows CI). If they never come, the
+        // assertions below say what is missing.
+        _ = await Eventually(
+            () => a.Service?.Live.Snapshot().Count > 0
+                && b.Engine?.Recorder?.SamplesStored > 0
+                && c.Engine?.Recorder?.SamplesStored > 0
+                && hub.Health.Readings >= 3,
+            TimeSpan.FromSeconds(20));
         var states = supervisor.Modules.ToDictionary(m => m.Id, m => m.Status);
         var aLive = a.Service!.Live.Snapshot();
         var bStored = b.Engine!.Recorder!.SamplesStored;
