@@ -1099,6 +1099,20 @@ public class GpuMemoryViewModelTests
         Assert.Contains("app.exe\t100\t+1.00 GiB\t\t5.00 GiB", report, StringComparison.Ordinal);
         Assert.Contains("game.exe (PID 200)", report, StringComparison.Ordinal);
 
+        // The same comparison as CSV: both times, the GPU, the process's name, PID and start time, both values, the difference
+        // and the unit, one row per adapter, per process now and per process gone.
+        static string Iso(DateTimeOffset t) => t.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", System.Globalization.CultureInfo.InvariantCulture);
+        var csv = vm.BaselineCsv()!.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal("구분,이름,PID,프로세스 시작 시각,GPU,기준점 측정 시각,현재 측정 시각,기준점 전용,현재 전용,차이,단위,비고", csv[0]);
+        Assert.Equal(1 + 1 + 4 + 1, csv.Length); // header, the adapter, four processes now, one gone
+        var times = $"{Iso(baselineTime)},{Iso(time.GetUtcNow())}";
+        Assert.Contains($"어댑터,Test GPU,,,Test GPU,{times},{5 * GiB},{5 * GiB},0,bytes,어댑터 전용 사용량 (측정)", csv);
+        Assert.Contains($"프로세스,app.exe,100,{Iso(start)},Test GPU,{times},{4 * GiB},{5 * GiB},{GiB},bytes,같은 프로세스", csv);
+        Assert.Contains($"프로세스,llama-server.exe,310,{Iso(baselineTime.AddSeconds(1))},Test GPU,{times},{GiB},{GiB + 512 * MiB},{512 * MiB},bytes,재시작 (이전 PID 300)", csv);
+        Assert.Contains($"프로세스,new.exe,400,{Iso(baselineTime.AddSeconds(1))},Test GPU,{times},,{512 * MiB},{512 * MiB},bytes,기준점 뒤 시작", csv);
+        Assert.Contains($"사라짐,game.exe,200,{Iso(start)},Test GPU,{times},{2 * GiB},,{-2 * GiB},bytes,종료했거나 GPU 메모리를 놓음", csv);
+        Assert.Matches(@"^gpu-memory-baseline-\d{8}-\d{6}\.csv$", vm.BaselineCsvFileName());
+
         vm.ToggleBaselineCommand.Execute(null);
         Assert.False(vm.HasBaseline);
         Assert.Equal("", Row(vm, "app.exe").DeltaText);
@@ -1106,6 +1120,21 @@ public class GpuMemoryViewModelTests
         Assert.Equal("", vm.BaselineText);
         Assert.Null(vm.Adapters.Single().View.DeltaText);
         Assert.Null(vm.BaselineReport());
+        Assert.Null(vm.BaselineCsv());
+    }
+
+    [Theory]
+    [InlineData("plain.exe", "plain.exe")]
+    [InlineData("a,b.exe", "\"a,b.exe\"")]
+    [InlineData("say \"hi\".exe", "\"say \"\"hi\"\".exe\"")]
+    public void Csv_fields_are_quoted_only_when_needed(string name, string field)
+    {
+        var (vm, monitor, _) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            table: new Dictionary<int, ProcessEntry> { [100] = new(100, 10, name, t.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified) })));
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.HasBaseline = true;
+        Assert.StartsWith($"프로세스,{field},100,", vm.BaselineCsv()!.Split("\r\n")[2], StringComparison.Ordinal);
     }
 
     [Fact]

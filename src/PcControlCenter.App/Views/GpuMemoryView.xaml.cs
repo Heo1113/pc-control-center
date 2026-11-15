@@ -364,6 +364,39 @@ public partial class GpuMemoryView : UserControl
 
     private void OnCopyBaseline(object sender, RoutedEventArgs e) => Copy(_vm?.BaselineReport(), "비교");
 
+    /// <summary>Saves the baseline comparison where the user chooses (UTF-8 with a byte order mark, so spreadsheets read Korean).</summary>
+    private void OnSaveBaselineCsv(object sender, RoutedEventArgs e)
+    {
+        if (_vm?.BaselineCsv() is not { } csv)
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "기준점 비교 저장",
+            FileName = _vm.BaselineCsvFileName(),
+            DefaultExt = ".csv",
+            Filter = "CSV 파일 (*.csv)|*.csv",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            System.IO.File.WriteAllText(dialog.FileName, csv, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            ShowNotice("비교를 CSV로 저장함");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            ShowNotice($"저장하지 못했습니다: {ex.Message}");
+        }
+    }
+
     private void Copy(string? text, string what)
     {
         if (string.IsNullOrEmpty(text))

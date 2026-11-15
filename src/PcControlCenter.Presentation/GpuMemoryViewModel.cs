@@ -306,7 +306,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private StrataContext? _strataContext;
     private (string Name, int Pid)? _lost;
     private Baseline? _baseline;
-    private Dictionary<(ProcessKey, long), (long? Delta, string? Note)> _deltas = [];
+    private Dictionary<(ProcessKey, long), (long? Delta, string? Note, Baseline.Entry? Then)> _deltas = [];
+    private List<Baseline.Entry> _gone = [];
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
     private RuntimeSnapshot? _strataSnapshot;
@@ -743,6 +744,62 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    /// <summary>
+    /// The comparison with the baseline as CSV (G4): one row per adapter, per process in this reading and per process gone
+    /// since, with the baseline's and this reading's times, the GPU, the process (name, PID, start time), both values, the
+    /// difference and the unit (bytes, as measured). Times are local with their offset (ISO 8601).
+    /// </summary>
+    public string? BaselineCsv()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        static string Iso(DateTimeOffset? t) => t is { } v ? v.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture) : "";
+        static string Num(long? v) => v is long n ? n.ToString(CultureInfo.InvariantCulture) : "";
+        string Gpu(long luid) => s.Adapter(luid)?.Info?.Name ?? GpuLuid.Format(luid);
+        var rows = new List<string[]>
+        {
+            new[] { "구분", "이름", "PID", "프로세스 시작 시각", "GPU", "기준점 측정 시각", "현재 측정 시각", "기준점 전용", "현재 전용", "차이", "단위", "비고" },
+        };
+        foreach (var a in s.Adapters)
+        {
+            if (b.AdapterDedicated.TryGetValue(a.Luid, out var then))
+            {
+                rows.Add(["어댑터", Gpu(a.Luid), "", "", Gpu(a.Luid), Iso(b.At), Iso(s.Timestamp), Num(then), Num(a.DedicatedUsageBytes),
+                    Num(Diff(a.DedicatedUsageBytes, then)), "bytes", "어댑터 전용 사용량 (측정)"]);
+            }
+        }
+
+        foreach (var p in s.Processes.OrderByDescending(p => p.DedicatedBytes ?? 0).ThenBy(p => p.ProcessId))
+        {
+            if (!_deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+            {
+                continue;
+            }
+
+            var entry = s.Process(p.ProcessId);
+            rows.Add(["프로세스", entry?.Name ?? $"PID {p.ProcessId}", p.ProcessId.ToString(CultureInfo.InvariantCulture), Iso(entry?.StartTime), Gpu(p.Luid),
+                Iso(b.At), Iso(s.Timestamp), Num(change.Then?.Dedicated), Num(p.DedicatedBytes), Num(change.Delta), "bytes", change.Note ?? "같은 프로세스"]);
+        }
+
+        foreach (var g in _gone)
+        {
+            rows.Add(["사라짐", g.Name, g.Pid.ToString(CultureInfo.InvariantCulture), g.Key.StartTicks > 0 ? Iso(new DateTimeOffset(g.Key.StartTicks, TimeSpan.Zero)) : "",
+                Gpu(g.Luid), Iso(b.At), Iso(s.Timestamp), Num(g.Dedicated), "", g.Dedicated is long d ? Num(-d) : "", "bytes", "종료했거나 GPU 메모리를 놓음"]);
+        }
+
+        return string.Join("\r\n", rows.Select(r => string.Join(',', r.Select(CsvField)))) + "\r\n";
+    }
+
+    /// <summary>A CSV field, quoted when it holds a comma, a quote or a line break (RFC 4180).</summary>
+    private static string CsvField(string value)
+        => value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>A file name for the CSV: when the comparison was saved.</summary>
+    public string BaselineCsvFileName() => $"gpu-memory-baseline-{_time.GetUtcNow().ToLocalTime():yyyyMMdd-HHmmss}.csv";
 
     partial void OnKindFilterChanged(ProcessKind? value)
     {
@@ -1413,6 +1470,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private void CompareWithBaseline(GpuMemorySnapshot s)
     {
         _deltas = [];
+        _gone = [];
         if (_baseline is not { } b)
         {
             BaselineText = "";
@@ -1430,7 +1488,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var entry = s.Process(p.ProcessId);
             if (b.Processes.FirstOrDefault(x => x.Key == key && x.Luid == p.Luid) is { } same)
             {
-                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null);
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null, same);
                 continue;
             }
 
@@ -1439,18 +1497,19 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                     .OrderByDescending(x => x.Dedicated ?? 0).FirstOrDefault() is { } previous)
             {
                 restartedFrom.Add(previous);
-                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})");
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})", previous);
                 continue;
             }
 
             var startedAfter = entry?.StartTime is { } started && started > b.At;
-            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작");
+            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작", null);
         }
 
         var gone = b.Processes
             .Where(x => !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x) && (x.Dedicated >= GpuMemoryRules.MiB || x.Shared >= 16 * GpuMemoryRules.MiB))
             .OrderByDescending(x => x.Dedicated ?? 0)
             .ToList();
+        _gone = gone;
         BaselineGone = gone.Count == 0 ? ""
             : $"사라짐 {gone.Count}개: " + string.Join(", ", gone.Take(4).Select(x => $"{x.Name} (PID {x.Pid}) {Signed(-(x.Dedicated ?? 0))}"))
               + (gone.Count > 4 ? " 외" : "") + " (종료했거나 GPU 메모리를 놓음)";

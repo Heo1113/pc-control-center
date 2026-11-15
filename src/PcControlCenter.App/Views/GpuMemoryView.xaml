@@ -514,6 +514,13 @@
                 AutomationProperties.Name="기준점 해제">
           <TextBlock Text="해제" FontSize="12" />
         </Button>
+        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnSaveBaselineCsv" Margin="0,0,4,0"
+                ToolTip="기준점 비교를 CSV 파일로 저장 (측정 시각, GPU, 프로세스 이름·PID·시작 시각, 값·차이·단위)" AutomationProperties.Name="비교 CSV로 저장">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" FontSize="12" />
+            <TextBlock Text="CSV로 저장" FontSize="12" Margin="5,0,0,0" />
+          </StackPanel>
+        </Button>
         <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnCopyBaseline" Margin="0,0,4,0"
                 ToolTip="기준점 대비 변화를 텍스트로 복사 (탭 구분)" AutomationProperties.Name="비교 복사">
           <StackPanel Orientation="Horizontal">
