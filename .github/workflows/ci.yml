@@ -132,7 +132,8 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Get-ChildItem dist/smoke -Recurse -Filter '*gpu-memory*.png' -ErrorAction SilentlyContinue | ForEach-Object {
+          Get-ChildItem dist/smoke -Recurse -Include '*gpu-memory*.png','01-dashboard-dashboard.png','02-hardware-hardware-shared.png','07-local-ai-local-ai-overview.png','11-economics-economics-overview.png','29-settings-settings-common.png' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like '*gpu-memory*' -or $_.Directory.Name -eq 'mock' } | ForEach-Object {
             Write-Host "=====BEGIN $($_.Directory.Name)/$($_.Name)====="
             $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
             for ($i = 0; $i -lt $b64.Length; $i += 3000) { Write-Host $b64.Substring($i, [Math]::Min(3000, $b64.Length - $i)) }
