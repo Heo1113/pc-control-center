@@ -626,8 +626,10 @@ public class GpuMemoryViewModelTests
         Assert.Equal([("가중치", "600 MiB"), ("KV·버퍼·런타임", "1.41 GiB")], detail.BreakdownLegend.Select(l => (l.Label, l.Value)));
         Assert.All(detail.Breakdown, b => Assert.True(b.IsEstimate));
         Assert.All(detail.BreakdownLegend, l => Assert.True(l.IsEstimate));
-        Assert.StartsWith("모든 층이 GPU에 있다고 가정한 추정입니다.", detail.BreakdownNote, StringComparison.Ordinal);
-        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("모든 층이 GPU에 있다고 가정한 추정입니다. KV는 나누지 않음 (컨텍스트 미보고).", detail.BreakdownNote); // one line on screen
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", detail.BreakdownDetails, StringComparison.Ordinal); // the full reason in the tooltip
+        Assert.Equal(GpuMemoryViewModel.InfoGlyphText, detail.BreakdownInfoGlyph);
+        Assert.Contains("런타임이 컨텍스트를 알려 주지 않아", plain.DetailText(), StringComparison.Ordinal); // and in the copied text
         Assert.Equal("2.00 GiB", detail.Dedicated); // the only measured part
         Assert.Equal("35%", detail.Gpu);
 
@@ -641,12 +643,14 @@ public class GpuMemoryViewModelTests
         // A mixture of experts: which experts are on the GPU is not in the header.
         var (moe, _) = LlmProcess(dense with { Experts = 128 }, strata: false);
         Assert.Empty(moe.Detail!.Breakdown);
-        Assert.StartsWith("전문가(MoE) 모델은", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.StartsWith("전문가(MoE) 모델이라", moe.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("--n-cpu-moe", moe.Detail.BreakdownDetails, StringComparison.Ordinal);
 
         // Recurrent or linear layers: the weights still come from the header, the KV size does not.
         var (hybrid, _) = LlmProcess(dense with { KvBytesPerTokenF16 = null, KvUnknownReason = "순환·선형 층이 섞인 구조" }, strata: false);
         Assert.Equal(["가중치", "KV·버퍼·런타임"], hybrid.Detail!.BreakdownLegend.Select(l => l.Label));
-        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("KV는 나누지 않음 (순환·선형 층이 섞인 구조)", hybrid.Detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Contains("순환·선형 층이 섞인 구조라 KV를 헤더로 계산할 수 없어", hybrid.Detail.BreakdownDetails, StringComparison.Ordinal);
         Assert.DoesNotContain("KV", hybrid.Detail.Models.Single().Summary.Split(" · ").Last(), StringComparison.Ordinal);
     }
 
@@ -660,7 +664,8 @@ public class GpuMemoryViewModelTests
         Assert.Empty(detail.Breakdown);
         Assert.Equal([("가중치 (모든 층 GPU 가정, 이론값)", "3.00 GiB", true), ("이 프로세스 전용 (측정)", "2.00 GiB", false)],
             detail.BreakdownLegend.Select(l => (l.Label, l.Value, l.IsEstimate)));
-        Assert.Contains("일부 층만 GPU에 있는 것으로 보입니다", detail.BreakdownNote, StringComparison.Ordinal);
+        Assert.Equal("일부 층만 GPU에 있는 것으로 보여 구성은 그리지 않습니다.", detail.BreakdownNote);
+        Assert.Contains("측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어", detail.BreakdownDetails, StringComparison.Ordinal);
         Assert.Contains("비교: 가중치 (모든 층 GPU 가정, 이론값) 3.00 GiB", vm.DetailText(), StringComparison.Ordinal);
     }
 
@@ -1094,6 +1099,20 @@ public class GpuMemoryViewModelTests
         Assert.Contains("app.exe\t100\t+1.00 GiB\t\t5.00 GiB", report, StringComparison.Ordinal);
         Assert.Contains("game.exe (PID 200)", report, StringComparison.Ordinal);
 
+        // The same comparison as CSV: both times, the GPU, the process's name, PID and start time, both values, the difference
+        // and the unit, one row per adapter, per process now and per process gone.
+        static string Iso(DateTimeOffset t) => t.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", System.Globalization.CultureInfo.InvariantCulture);
+        var csv = vm.BaselineCsv()!.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal("구분,이름,PID,프로세스 시작 시각,GPU,기준점 측정 시각,현재 측정 시각,기준점 전용,현재 전용,차이,단위,비고", csv[0]);
+        Assert.Equal(1 + 1 + 4 + 1, csv.Length); // header, the adapter, four processes now, one gone
+        var times = $"{Iso(baselineTime)},{Iso(time.GetUtcNow())}";
+        Assert.Contains($"어댑터,Test GPU,,,Test GPU,{times},{5 * GiB},{5 * GiB},0,bytes,어댑터 전용 사용량 (측정)", csv);
+        Assert.Contains($"프로세스,app.exe,100,{Iso(start)},Test GPU,{times},{4 * GiB},{5 * GiB},{GiB},bytes,같은 프로세스", csv);
+        Assert.Contains($"프로세스,llama-server.exe,310,{Iso(baselineTime.AddSeconds(1))},Test GPU,{times},{GiB},{GiB + 512 * MiB},{512 * MiB},bytes,재시작 (이전 PID 300)", csv);
+        Assert.Contains($"프로세스,new.exe,400,{Iso(baselineTime.AddSeconds(1))},Test GPU,{times},,{512 * MiB},{512 * MiB},bytes,기준점 뒤 시작", csv);
+        Assert.Contains($"사라짐,game.exe,200,{Iso(start)},Test GPU,{times},{2 * GiB},,{-2 * GiB},bytes,종료했거나 GPU 메모리를 놓음", csv);
+        Assert.Matches(@"^gpu-memory-baseline-\d{8}-\d{6}\.csv$", vm.BaselineCsvFileName());
+
         vm.ToggleBaselineCommand.Execute(null);
         Assert.False(vm.HasBaseline);
         Assert.Equal("", Row(vm, "app.exe").DeltaText);
@@ -1101,6 +1120,21 @@ public class GpuMemoryViewModelTests
         Assert.Equal("", vm.BaselineText);
         Assert.Null(vm.Adapters.Single().View.DeltaText);
         Assert.Null(vm.BaselineReport());
+        Assert.Null(vm.BaselineCsv());
+    }
+
+    [Theory]
+    [InlineData("plain.exe", "plain.exe")]
+    [InlineData("a,b.exe", "\"a,b.exe\"")]
+    [InlineData("say \"hi\".exe", "\"say \"\"hi\"\".exe\"")]
+    public void Csv_fields_are_quoted_only_when_needed(string name, string field)
+    {
+        var (vm, monitor, _) = Create(provider: t => new ScriptedGpuMemoryProvider(_ => GpuMemoryFixtures.Snapshot(t.GetUtcNow(),
+            table: new Dictionary<int, ProcessEntry> { [100] = new(100, 10, name, t.GetUtcNow().AddMinutes(-5), ProcessIdentityState.Verified) })));
+        monitor.ReadNow();
+        vm.Refresh();
+        vm.HasBaseline = true;
+        Assert.StartsWith($"프로세스,{field},100,", vm.BaselineCsv()!.Split("\r\n")[2], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1257,6 +1291,73 @@ public class GpuMemoryViewModelTests
         Assert.NotNull(monitor.Latest);
     }
 
+    private sealed class FakeIcons : IProcessIcons
+    {
+        public Dictionary<int, object> Known { get; } = [];
+        public object Generic { get; } = new();
+
+        public object? Icon(int pid, string name) => pid <= 4 ? null : Known.TryGetValue(pid, out var icon) ? icon : Generic;
+
+        public event Action? Changed;
+
+        public void Arrived() => Changed?.Invoke();
+    }
+
+    [Fact]
+    public void Rows_show_the_executable_icon_and_the_generic_one_until_it_is_known()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var monitor = new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time);
+        var icons = new FakeIcons();
+        var vm = new GpuMemoryViewModel(monitor, GpuMemoryFixtures.Hub(time), () => new StrataContext(null, "꺼짐"), time, icons: icons);
+        vm.IsVisible = true;
+        monitor.ReadNow();
+        vm.Refresh();
+
+        var chrome = Row(vm, "chrome.exe");
+        Assert.Same(icons.Generic, chrome.Icon); // never blank while the real one is being read
+        var real = new object();
+        icons.Known[chrome.Pid] = real;
+        icons.Arrived();
+        Assert.Same(real, chrome.Icon); // updated in place when it arrives
+        vm.ShowAll = true;
+        Assert.Null(vm.Processes.Single(r => r.Pid == 4).Icon); // the kernel has no executable
+    }
+
+    [Theory]
+    [InlineData("Auto", 1400, 900, true)]    // 900 + 6 + 440 = 1,346 fits
+    [InlineData("Auto", 1300, 900, false)]   // it does not: the detail stays under the table
+    [InlineData("Auto", double.NaN, 900, false)]
+    [InlineData("Beside", 800, 900, true)]   // the user's choice wins either way
+    [InlineData("Below", 3000, 900, false)]
+    public void The_detail_goes_beside_the_table_only_when_chosen_or_when_the_width_holds_both(string mode, double width, double tableMin, bool beside)
+        => Assert.Equal(beside, GpuMemoryViewModel.UseBeside(mode, width, tableMin));
+
+    [Fact]
+    public void The_layout_choice_and_the_detail_width_are_remembered()
+    {
+        var time = new ManualTime(GpuMemoryFixtures.Start);
+        var page = new GpuMemoryPageSettings();
+        var saves = 0;
+        var vm = new GpuMemoryViewModel(new GpuMemoryMonitor(() => new MockGpuMemoryProvider(time), time), GpuMemoryFixtures.Hub(time),
+            () => new StrataContext(null, "꺼짐"), time, page, () => saves++);
+        var changed = new List<string?>();
+        vm.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        Assert.Equal("Auto", vm.LayoutMode);
+
+        vm.SetLayoutMode("Beside");
+        Assert.Equal(("Beside", "Beside", 1), (vm.LayoutMode, page.Layout, saves));
+        Assert.Contains(nameof(GpuMemoryViewModel.LayoutMode), changed);
+        vm.SetLayoutMode("Sideways"); // not a layout
+        vm.SetLayoutMode("Beside");   // the same again
+        Assert.Equal(("Beside", 1), (vm.LayoutMode, saves));
+
+        vm.SetDetailWidth(512.4);
+        Assert.Equal(512, page.DetailWidth);
+        vm.SetDetailWidth(double.NaN);
+        Assert.Equal(0, page.DetailWidth);
+    }
+
     private static Dictionary<string, string> Facts(ReportGroup group) => group.Facts.ToDictionary(f => f.Label, f => f.Value);
 
     [Fact]
@@ -1288,8 +1389,9 @@ public class GpuMemoryViewModelTests
         Assert.Equal("1.49 GiB", facts["VRAM (Ollama 계산)"]);
         Assert.Equal("8,192 토큰", facts["컨텍스트"]);
         Assert.DoesNotContain(facts.Keys, k => k.Contains("RAM", StringComparison.Ordinal) && !k.Contains("VRAM", StringComparison.Ordinal));
-        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Note, StringComparison.Ordinal);
-        Assert.Contains("모델 파일 크기", group.Note, StringComparison.Ordinal);
+        Assert.StartsWith("Ollama 계산값 · 전체 − VRAM은 RAM 사용량이 아님 · ", group.Note, StringComparison.Ordinal); // the key warning stays on screen
+        Assert.Contains("RAM 사용량으로 보면 안 됩니다", group.Details, StringComparison.Ordinal);
+        Assert.Contains("모델 파일 크기", group.Details, StringComparison.Ordinal);
         Assert.Contains("Ollama · gemma3:4b: 전체 (Ollama 계산) 3.26 GiB", vm.DetailText(), StringComparison.Ordinal);
         // The runner's model does not fit on the GPU whole: the two numbers are shown apart, no split.
         Assert.Empty(vm.Detail.Breakdown);
@@ -1322,7 +1424,8 @@ public class GpuMemoryViewModelTests
         Assert.Equal("1.50 GiB (최대 4.79 GiB)", last["전문가 캐시"]); // the adjusted size, not the start's 4.79 GiB
         Assert.Equal("5.96 GiB", last["여유 VRAM (그때 장치 전체)"]);
         Assert.Equal("5.86 GiB", last["요청한 예약"]);
-        Assert.Contains("Windows 측정", reports[1].Note, StringComparison.Ordinal);
+        Assert.Contains("지금 사용량은 위의 측정값", reports[1].Note, StringComparison.Ordinal);
+        Assert.Contains("Windows 측정", reports[1].Details, StringComparison.Ordinal);
         Assert.Equal(Row(vm, "strata.exe").DedicatedText, vm.Detail.Dedicated); // the measurement stays the measurement
         Assert.Empty(vm.Detail.Breakdown);
         Assert.Contains("Strata 엔진 · 마지막 보고 (VRAM 조정 시): 전문가 슬롯 1,200 (최대 3,700)", vm.DetailText(), StringComparison.Ordinal);
@@ -1402,7 +1505,8 @@ public class GpuMemoryViewModelTests
         Assert.Equal(["llama.cpp 서버 · 설정", "llama.cpp 라우터 · 이 인스턴스"], reports.Select(g => g.Title));
         Assert.Equal("131,072 토큰", Facts(reports[0])["컨텍스트 (n_ctx)"]);
         Assert.Equal("gemma-3-4b-it-Q4_K_M.gguf", Facts(reports[0])["모델 파일"]); // the file name, never the path
-        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Note, StringComparison.Ordinal);
+        Assert.Contains("KV 형식 미보고", reports[0].Note, StringComparison.Ordinal);
+        Assert.Contains("KV 형식은 알려 주지 않아", reports[0].Details, StringComparison.Ordinal);
         var instance = Facts(reports[1]);
         Assert.Equal("가중치 4.64 GiB · 컨텍스트 512 MiB · 계산 288 MiB", instance["CUDA0"]); // effective, not max
         Assert.DoesNotContain(reports[1].Facts, f => f.Value.Contains("93.13 GiB", StringComparison.Ordinal));
@@ -1503,6 +1607,7 @@ public class GpuMemoryShellTests
               "DetailHeight": -1, "ShowAll": true } }
             """);
         var damaged = store.Load().Settings.GpuMemoryPage;
+        Assert.Equal(("Auto", 0.0), (damaged.Layout, damaged.DetailWidth)); // older files: the automatic arrangement
         Assert.Null(damaged.SortColumn);
         Assert.True(damaged.SortDescending);
         Assert.Equal(["Pid"], damaged.HiddenColumns);
@@ -1513,9 +1618,12 @@ public class GpuMemoryShellTests
         settings.GpuMemoryPage.SortColumn = "Gpu";
         settings.GpuMemoryPage.DetailHeight = 300;
         settings.GpuMemoryPage.KindOverrides["myrenderer.exe"] = "Graphics3D";
+        settings.GpuMemoryPage.Layout = "Beside";
+        settings.GpuMemoryPage.DetailWidth = 520;
         store.Save(settings);
         var reloaded = store.Load().Settings.GpuMemoryPage;
         Assert.Equal(("Gpu", 300.0), (reloaded.SortColumn, reloaded.DetailHeight));
+        Assert.Equal(("Beside", 520.0), (reloaded.Layout, reloaded.DetailWidth));
         Assert.Equal("Graphics3D", reloaded.KindOverrides["MyRenderer.EXE"]); // names compare without case
     }
 

@@ -86,7 +86,7 @@ public partial class App : Application
         }
 
         var dispatcher = new WpfShellDispatcher(Dispatcher);
-        _shell = new ShellViewModel(_runtime, dispatcher, dialogs);
+        _shell = new ShellViewModel(_runtime, dispatcher, dialogs, processIcons: new ProcessIconService(Dispatcher));
         var window = new MainWindow { DataContext = _shell };
         MainWindow = window;
         window.ApplyScale(_runtime.Settings.Ui.FontScale);
