@@ -218,10 +218,13 @@ public sealed partial class DashboardViewModel : ObservableObject
             return;
         }
 
+        // The adapter is named once, with the largest process, and again only for a process on another GPU.
         var listed = latest.Processes.Where(p => p.DedicatedBytes >= 1L << 20).OrderByDescending(p => p.DedicatedBytes).ThenBy(p => p.ProcessId).ToList();
         var severalGpus = listed.Select(p => p.Luid).Distinct().Count() > 1;
-        var top = listed.Take(4).Select(p => new GpuMemoryTopRow(latest.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", Text.Bytes(p.DedicatedBytes),
-            severalGpus && latest.Adapter(p.Luid)?.Info?.Name is { Length: > 0 } adapter ? GpuMemoryViewModel.ShortAdapterName(adapter) : null)).ToList();
+        var main = listed.FirstOrDefault()?.Luid;
+        var top = listed.Take(4).Select((p, i) => new GpuMemoryTopRow(latest.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", Text.Bytes(p.DedicatedBytes),
+            severalGpus && (i == 0 || p.Luid != main) && latest.Adapter(p.Luid)?.Info?.Name is { Length: > 0 } adapter
+                ? GpuMemoryViewModel.ShortAdapterName(adapter) : null)).ToList();
         GpuMemoryState = top.Count > 0 ? top[0].Name + top[0].AdapterSuffix : "전용 메모리를 1 MiB 이상 쓰는 프로세스 없음";
         GpuMemoryLargest = top.Count > 0 ? top[0].Value : Text.NA;
         SyncTop(top.Skip(1).ToList());

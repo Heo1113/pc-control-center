@@ -1,7 +1,4 @@
-using System.Globalization;
 using System.Windows;
-using System.Windows.Data;
-using System.Windows.Media;
 
 namespace PcControlCenter.App.Controls;
 
@@ -17,13 +14,4 @@ public sealed class BindingProxy : Freezable
     }
 
     protected override Freezable CreateInstanceCore() => new BindingProxy();
-}
-
-/// <summary>"#RRGGBB" from a view model to a (cached, frozen) brush.</summary>
-public sealed class HexBrushConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-        => value is string hex && hex.Length > 0 ? SegmentBar.BrushOf(hex) : Brushes.Gray;
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => Binding.DoNothing;
 }

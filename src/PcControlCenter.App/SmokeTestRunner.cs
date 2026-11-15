@@ -132,10 +132,10 @@ internal sealed class SmokeTestRunner(
 
                 await Capture("hardware-gpu-memory-open");
 
-                // A kind picked from the legend and the help panel, as a user would open them.
-                if (shell.GpuMemory.Adapters.FirstOrDefault()?.View.Legend.FirstOrDefault(l => l.Kind is not null)?.Kind is { } kind)
+                // A kind group picked from the legend and the help panel, as a user would open them.
+                if (shell.GpuMemory.Adapters.FirstOrDefault()?.View.Legend.FirstOrDefault(l => l.Group is not null)?.Group is { } group)
                 {
-                    shell.GpuMemory.FilterKindCommand.Execute(kind);
+                    shell.GpuMemory.FilterGroupCommand.Execute(group);
                 }
 
                 shell.GpuMemory.HelpOpen = true;
