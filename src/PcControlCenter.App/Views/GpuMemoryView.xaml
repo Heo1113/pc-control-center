@@ -173,7 +173,7 @@
 
     <!-- Legend entry of the device strip: a kind group filters the table when clicked; the active one is on a quiet fill. -->
     <DataTemplate x:Key="AdapterLegend" DataType="{x:Type p:LegendItem}">
-      <Button Command="{Binding Data.FilterGroupCommand, Source={StaticResource Proxy}}" CommandParameter="{Binding Group}" Margin="0,0,2,0" Padding="5,1,7,1"
+      <Button Command="{Binding Data.FilterGroupCommand, Source={StaticResource Proxy}}" CommandParameter="{Binding Group}" Margin="0" Padding="4,1,6,1"
               AutomationProperties.Name="{Binding Label}" ToolTip="{Binding ToolTip}">
         <Button.Style>
           <Style TargetType="Button" BasedOn="{StaticResource FlatButton}">
@@ -189,9 +189,9 @@
           </Style>
         </Button.Style>
         <StackPanel Orientation="Horizontal">
-          <c:Swatch Color="{Binding ColorHex}" IsEstimate="{Binding IsEstimate}" Width="8" Height="8" Margin="0,0,6,0" />
+          <c:Swatch Color="{Binding ColorHex}" IsEstimate="{Binding IsEstimate}" Width="8" Height="8" Margin="0,0,5,0" />
           <TextBlock Text="{Binding Label}" FontSize="12" Foreground="{StaticResource TextMutedBrush}" />
-          <TextBlock Text="{Binding Value}" FontSize="12" Margin="5,0,0,0" Foreground="{StaticResource TextSecondaryBrush}" Typography.NumeralAlignment="Tabular" />
+          <TextBlock Text="{Binding Value}" FontSize="12" Margin="4,0,0,0" Foreground="{StaticResource TextSecondaryBrush}" Typography.NumeralAlignment="Tabular" />
         </StackPanel>
       </Button>
     </DataTemplate>
@@ -204,7 +204,7 @@
     <DataTemplate x:Key="AdapterTemplate" DataType="{x:Type p:AdapterView}">
       <Grid Margin="16,7,16,7">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="180" />
+          <ColumnDefinition Width="168" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="60" />
@@ -221,7 +221,7 @@
           <TextBlock Text="{Binding LegendNote}" Style="{StaticResource Caption}" Foreground="{StaticResource WarningBrush}" Margin="0,2,0,0"
                      Visibility="{Binding LegendNote, Converter={StaticResource NotEmptyToVisibility}}" />
         </StackPanel>
-        <StackPanel Grid.Column="2" Margin="20,0,0,0" VerticalAlignment="Top">
+        <StackPanel Grid.Column="2" Margin="16,0,0,0" VerticalAlignment="Top">
           <TextBlock Text="{Binding DedicatedText}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Right"
                      Typography.NumeralAlignment="Tabular" ToolTip="전용 메모리 사용량 / 카드 용량 (Windows 어댑터 카운터, DXGI)" />
           <TextBlock Text="{Binding SecondaryText}" FontSize="11" Foreground="{StaticResource TextMutedBrush}" HorizontalAlignment="Right" Margin="0,1,0,0"
