@@ -24,5 +24,8 @@
     <ProjectReference Include="..\..\src\PcControlCenter.Migration\PcControlCenter.Migration.csproj" />
     <!-- Built first; started as a separate process by the supervisor tests (mock desktop only). -->
     <ProjectReference Include="..\PcControlCenter.MockOperatorHost\PcControlCenter.MockOperatorHost.csproj" ReferenceOutputAssembly="false" />
+    <!-- Built first; started by the Windows Basalt tests (a fake server tree, and the Ctrl+C helper). -->
+    <ProjectReference Include="..\PcControlCenter.FakeBasalt\PcControlCenter.FakeBasalt.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\PcControlCenter.ConsoleSignal\PcControlCenter.ConsoleSignal.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

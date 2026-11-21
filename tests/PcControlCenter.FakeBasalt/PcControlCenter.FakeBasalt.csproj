@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Test-only stand-in for Basalt (basalt-fake.exe): "wrapper" starts "server", which listens on a loopback port with a
+       minimal HTTP /health and starts "engine" - the same shape as basalt.exe, its Python server and its engine. Flags make
+       it ignore Ctrl+C and restart its engine, so the Windows tests can check the graceful stop, the cleanup and the
+       respawn watch on real processes. Never shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.FakeBasalt</RootNamespace>
+    <AssemblyName>basalt-fake</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PcControlCenter.Basalt\PcControlCenter.Basalt.csproj" />
+  </ItemGroup>
+</Project>
