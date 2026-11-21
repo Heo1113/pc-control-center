@@ -536,3 +536,105 @@ public class BasaltHealthTests
         Assert.NotNull(health.Error);
     }
 }
+
+/// <summary>The Basalt page's view model over the fake system (one dispatcher, as the UI thread is in the app).</summary>
+public class BasaltViewModelTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private sealed class SerialDispatcher : PcControlCenter.Presentation.IShellDispatcher
+    {
+        private readonly object _gate = new();
+
+        public void Post(Action action)
+        {
+            lock (_gate)
+            {
+                action();
+            }
+        }
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "timed out");
+            await Task.Delay(20, Ct);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task Off_running_and_stopped_show_what_to_do_the_dashboard_and_the_stop_result()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"pcc-basalt-vm-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new ShellSettingsStore(path);
+            var settings = new ShellSettings();
+            var system = new FakeBasaltSystem();
+            await using var controller = new BasaltController(system, settings.Basalt, timings: BasaltTest.Fast, selfId: FakeBasaltSystem.Self);
+            var dialogs = new PcControlCenter.Presentation.RecordingShellDialogs();
+            var vm = new PcControlCenter.Presentation.BasaltViewModel(controller, store, settings, dialogs, new SerialDispatcher(), "webview2");
+            await controller.RefreshAsync(Ct);
+            await Until(() => vm.State == BasaltState.Off);
+
+            Assert.Equal("Basalt가 꺼져 있습니다", vm.GuidanceTitle);
+            Assert.False(vm.ShowDashboard);
+            Assert.True(vm.StartCommand.CanExecute(null));
+            Assert.False(vm.StopCommand.CanExecute(null));
+            Assert.True(vm.IsQuality);
+
+            vm.IsFast = true;
+            Assert.Equal(BasaltSettings.FastMode, settings.Basalt.Mode);
+            Assert.Equal(BasaltSettings.FastMode, store.Load().Settings.Basalt.Mode); // remembered
+
+            await vm.StartCommand.ExecuteAsync(null);
+            await controller.RefreshAsync(Ct);
+            await Until(() => vm.State == BasaltState.Running);
+            Assert.True(vm.ShowDashboard);
+            Assert.Equal("http://127.0.0.1:8080/", vm.DashboardUrl);
+            Assert.Contains("모드 빠른 모드", vm.ModeLine, StringComparison.Ordinal);
+            Assert.Contains(vm.Processes, p => p.StartsWith("PID 520 python.exe · 포트 소유", StringComparison.Ordinal));
+            Assert.True(vm.IsDashboardAddress(new Uri("http://127.0.0.1:8080/api/x")));
+            Assert.False(vm.IsDashboardAddress(new Uri("http://127.0.0.1:9000/")));
+            Assert.False(vm.IsDashboardAddress(new Uri("https://example.com/")));
+            vm.OpenOutside(new Uri("https://example.com/docs"));
+            vm.OpenOutside(new Uri("file:///C:/Windows/win.ini"));
+            Assert.Equal(["url: https://example.com/docs"], dialogs.Messages);
+
+            await vm.StopCommand.ExecuteAsync(null);
+            await Until(() => vm.State == BasaltState.Off && vm.LastStopSummary is not null);
+            Assert.Contains("정상 종료됨 · 남은 프로세스 없음 · 포트 비어 있음", vm.LastStopSummary, StringComparison.Ordinal);
+            Assert.Equal(PcControlCenter.Presentation.Level.Good, vm.LastStopLevel);
+            Assert.Contains(vm.LastStopLines, l => l.Contains("Ctrl+C", StringComparison.Ordinal));
+            Assert.Contains("포트 8080: 비어 있음", vm.LastStopLines);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task Another_program_on_the_port_is_shown_and_both_buttons_say_why()
+    {
+        var settings = new ShellSettings();
+        var system = new FakeBasaltSystem();
+        system.Add(new BasaltProcess(700, FakeBasaltSystem.Explorer, "nginx.exe", DateTimeOffset.UtcNow.AddMinutes(-1)));
+        system.Listen(700);
+        await using var controller = new BasaltController(system, settings.Basalt, timings: BasaltTest.Fast, selfId: FakeBasaltSystem.Self);
+        var vm = new PcControlCenter.Presentation.BasaltViewModel(controller, new ShellSettingsStore(Path.Combine(Path.GetTempPath(), $"x-{Guid.NewGuid():N}.json")),
+            settings, new PcControlCenter.Presentation.RecordingShellDialogs(), new SerialDispatcher(), "webview2");
+        await controller.RefreshAsync(Ct);
+        await Until(() => vm.State == BasaltState.PortBusy);
+
+        Assert.Equal("포트 8080 사용 중 (다른 프로그램)", vm.StateText);
+        Assert.Equal(PcControlCenter.Presentation.Level.Error, vm.StateLevel);
+        Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.False(vm.StopCommand.CanExecute(null));
+        Assert.Contains("nginx.exe", vm.Detail, StringComparison.Ordinal);
+        Assert.False(vm.ShowDashboard);
+    }
+}

@@ -2,7 +2,8 @@
 .SYNOPSIS
   Builds the portable Windows x64 package of PC Control Center: PcControlCenter.exe (the one integrated window),
   PcControlCenter.OperatorHost.exe (the Operator's separate desktop automation process, started by the window only) and
-  OperatorTestTarget.exe (E's safe test app), self-contained single-file EXEs (no .NET install needed). Same approach as the original programs' publish.ps1.
+  OperatorTestTarget.exe (E's safe test app) and PcControlCenter.ConsoleSignal.exe (sends Ctrl+C to Basalt's console when
+  the Basalt page stops it), self-contained single-file EXEs (no .NET install needed). Same approach as the original programs' publish.ps1.
   The original programs' own EXEs and command-line tools are not part of the package.
 .EXAMPLE
   ./scripts/publish.ps1 -OutputDir dist
@@ -33,6 +34,11 @@ foreach ($project in $projects) {
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $project ($LASTEXITCODE)" }
 }
 
+# The Ctrl+C helper uses kernel32 only: trimmed, so the 40-line tool does not carry the whole runtime.
+$signal = 'src/PcControlCenter.ConsoleSignal/PcControlCenter.ConsoleSignal.csproj'
+dotnet publish (Join-Path $root $signal) @common '-p:PublishTrimmed=true'
+if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $signal ($LASTEXITCODE)" }
+
 Get-ChildItem $appOut -Filter *.pdb | Remove-Item -Force
 Copy-Item (Join-Path $root 'README.md') $appOut
 Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $appOut -ErrorAction SilentlyContinue
@@ -46,7 +52,7 @@ Set-Content -Path (Join-Path $appOut 'portable.txt') -Value $marker -Encoding ut
 foreach ($exe in Get-ChildItem $appOut -Filter *.exe) {
     "$((Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower())  $($exe.Name)" | Set-Content "$($exe.FullName).sha256" -Encoding ascii
 }
-foreach ($required in @('PcControlCenter.exe', 'PcControlCenter.OperatorHost.exe', 'OperatorTestTarget.exe')) {
+foreach ($required in @('PcControlCenter.exe', 'PcControlCenter.OperatorHost.exe', 'OperatorTestTarget.exe', 'PcControlCenter.ConsoleSignal.exe')) {
     if (-not (Test-Path (Join-Path $appOut $required))) { throw "$required was not produced" }
 }
 

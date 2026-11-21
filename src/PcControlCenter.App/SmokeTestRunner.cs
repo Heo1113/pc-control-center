@@ -172,6 +172,8 @@ internal sealed class SmokeTestRunner(
                 await Capture("dashboard-gpu-memory");
             }
 
+            await RunBasaltAsync(checks, details);
+
             // A: a manual inference session through A's own recorder.
             if (runtime.LocalAi.Service is { } service && service.Recorder is not null)
             {
@@ -494,6 +496,76 @@ internal sealed class SmokeTestRunner(
                     break;
             }
         });
+    }
+
+    /// <summary>
+    /// 로컬 AI › Basalt. MOCK: start the simulated server, show its loopback page in WebView2 (captured through WebView2,
+    /// which WPF cannot capture), stop it with Ctrl+C and check the report. Real sensors: only the state is read - the
+    /// smoke test never starts or stops a real Basalt.
+    /// </summary>
+    private async Task RunBasaltAsync(Dictionary<string, bool> checks, Dictionary<string, string> details)
+    {
+        shell.Navigate(SectionKeys.LocalAi, "local-ai/basalt");
+        var basalt = shell.Basalt;
+        if (!runtime.Basalt.IsMock)
+        {
+            await Task.Delay(1500);
+            details["basalt"] = $"{runtime.Basalt.Status.State}: {runtime.Basalt.Status.Detail} (not started by the smoke test)";
+            return;
+        }
+
+        checks["basalt-mock-off"] = await WaitUntil(() => basalt.State == PcControlCenter.Basalt.BasaltState.Off, TimeSpan.FromSeconds(10));
+        await Capture("local-ai-basalt-off");
+        basalt.StartCommand.Execute(null);
+        checks["basalt-mock-running"] = await WaitUntil(() => basalt.State == PcControlCenter.Basalt.BasaltState.Running, TimeSpan.FromSeconds(20));
+        var view = FindChild<Views.BasaltView>(window);
+        var shown = await WaitUntil(() => view?.DashboardSource is not null || basalt.WebViewProblem is not null, TimeSpan.FromSeconds(20));
+        details["basalt-dashboard"] = view?.DashboardSource ?? basalt.WebViewProblem ?? "WebView2 did not start";
+        checks["basalt-dashboard-or-reason"] = shown;
+        await Task.Delay(1500);
+        await Capture("local-ai-basalt-running");
+        if (view is not null)
+        {
+            var file = Path.Combine(reportDirectory, $"{_screens.Count + 1:00}-local-ai-basalt-dashboard-webview2.png");
+            try
+            {
+                if (await view.CaptureDashboardAsync(file))
+                {
+                    _screens.Add(Path.GetFileName(file));
+                }
+            }
+            catch (Exception ex)
+            {
+                RecordException(ex);
+            }
+        }
+
+        basalt.StopCommand.Execute(null);
+        checks["basalt-mock-stopped"] = await WaitUntil(() => basalt.State == PcControlCenter.Basalt.BasaltState.Off && basalt.LastStopSummary is not null,
+            TimeSpan.FromSeconds(30));
+        checks["basalt-mock-stop-clean"] = runtime.Basalt.Status.LastStop is { Clean: true, Graceful: true };
+        details["basalt-stop"] = runtime.Basalt.Status.LastStop?.Summary ?? "no report";
+        await Task.Delay(800);
+        await Capture("local-ai-basalt-stopped");
+    }
+
+    private static T? FindChild<T>(DependencyObject node) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+        {
+            var child = VisualTreeHelper.GetChild(node, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindChild<T>(child) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     private async Task<bool> WaitUntil(Func<bool> condition, TimeSpan timeout)

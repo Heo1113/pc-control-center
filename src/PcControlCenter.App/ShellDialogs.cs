@@ -57,6 +57,40 @@ internal sealed class ShellDialogs(Func<Window?> owner) : IShellDialogs
         return dialog.ShowDialog(owner()) == true ? dialog.FolderName : null;
     }
 
+    public string? PickFile(string title, string filter, string? initialDirectory = null)
+    {
+        if (Unattended is not null)
+        {
+            return null;
+        }
+
+        var dialog = new OpenFileDialog { Title = title, Filter = filter, CheckFileExists = true };
+        if (initialDirectory is not null && Directory.Exists(initialDirectory))
+        {
+            dialog.InitialDirectory = initialDirectory;
+        }
+
+        return dialog.ShowDialog(owner()) == true ? dialog.FileName : null;
+    }
+
+    public void OpenUrl(string url)
+    {
+        Log.Add($"url: {url}");
+        if (Unattended is not null || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Error("브라우저 열기 실패", ex.Message);
+        }
+    }
+
     public void OpenFolder(string path)
     {
         Log.Add($"open: {path}");

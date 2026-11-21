@@ -5,6 +5,8 @@
     <PackageVersion Include="FlaUI.Core" Version="5.0.0" />
     <PackageVersion Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <!-- The Basalt page shows Basalt's own dashboard (127.0.0.1) in WebView2. BSD-3-Clause, see THIRD-PARTY-NOTICES.md. -->
+    <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
     <PackageVersion Include="ScottPlot" Version="5.1.59" />
     <PackageVersion Include="ScottPlot.WPF" Version="5.1.59" />
     <PackageVersion Include="System.Diagnostics.EventLog" Version="10.0.14" />

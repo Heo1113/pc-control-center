@@ -382,5 +382,5 @@ public static class BasaltProcessTree
     internal static string Describe(IEnumerable<BasaltProcess> processes)
         => string.Join(", ", processes.Select(p => p.Label));
 
-    internal static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture);
+    public static string Seconds(TimeSpan time) => time.TotalSeconds.ToString("0.#", CultureInfo.InvariantCulture);
 }

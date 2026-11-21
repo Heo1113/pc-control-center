@@ -31,6 +31,7 @@ public sealed partial class ShellViewModel : ObservableObject
         new(SectionKeys.Hardware, "hardware/gpu-power", "GPU 전력·장치", ModuleIds.GpuEconomics),
         new(SectionKeys.Hardware, "hardware/around-events", "오류 시점 센서 기록", ModuleIds.Diagnostics),
         new(SectionKeys.LocalAi, "local-ai/overview", "추론 개요", ModuleIds.LocalAi),
+        new(SectionKeys.LocalAi, "local-ai/basalt", "Basalt", null),
         new(SectionKeys.LocalAi, "local-ai/runtime", "Strata 런타임", ModuleIds.LocalAi),
         new(SectionKeys.LocalAi, "local-ai/history", "세션 기록", ModuleIds.LocalAi),
         new(SectionKeys.LocalAi, "local-ai/compare", "조건별 비교", ModuleIds.LocalAi),
@@ -117,6 +118,8 @@ public sealed partial class ShellViewModel : ObservableObject
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);
         Settings = new ShellSettingsViewModel(runtime.SettingsStore, runtime.Settings, runtime.Paths, dialogs);
+        Basalt = new BasaltViewModel(runtime.Basalt, runtime.SettingsStore, runtime.Settings, dialogs, ui, Path.Combine(runtime.Paths.Root, "webview2"),
+            key => Navigate(key));
         foreach (var id in ModuleIds.All)
         {
             var row = new ModuleStatusRow(id);
@@ -137,13 +140,16 @@ public sealed partial class ShellViewModel : ObservableObject
                 "settings/common" => Settings,
                 "history/timeline" => History,
                 "settings/data" => Data,
+                "local-ai/basalt" => Basalt,
                 _ when plan.ModuleId is { } id => new ModuleUnavailableViewModel(id, plan.Title, StatusOf(id), _restarts.GetValueOrDefault(id)),
                 _ => new PendingPageViewModel(plan.Title),
             };
             section.Tabs.Add(new ShellTab(plan.Key, plan.Title, plan.ModuleId, content)
             {
                 // The GPU memory reader reads faster (and right away) while its page is on screen.
-                Activated = ReferenceEquals(content, GpuMemory) ? () => GpuMemory.IsVisible = true : null,
+                Activated = ReferenceEquals(content, GpuMemory) ? () => GpuMemory.IsVisible = true
+                    : ReferenceEquals(content, Basalt) ? () => Basalt.IsVisible = true
+                    : null,
             });
         }
 
@@ -183,6 +189,9 @@ public sealed partial class ShellViewModel : ObservableObject
     public HistoryViewModel History { get; }
     public DataMigrationViewModel Data { get; }
     public ShellSettingsViewModel Settings { get; }
+
+    /// <summary>로컬 AI › Basalt (the shell's own page: works with the local AI module off).</summary>
+    public BasaltViewModel Basalt { get; }
 
     /// <summary>Emergency stop, resume and host restart of the Operator, or null when the Operator is not part of this run.</summary>
     public OperatorControlViewModel? Operator { get; }
@@ -254,6 +263,7 @@ public sealed partial class ShellViewModel : ObservableObject
             SharedSensors.Refresh();
         }
 
+        Basalt.IsVisible = CurrentSection?.SelectedTab?.Content == Basalt;
         GpuMemory.IsVisible = CurrentSection?.SelectedTab?.Content == GpuMemory;
         if (GpuMemory.IsVisible)
         {

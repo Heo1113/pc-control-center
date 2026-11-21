@@ -54,6 +54,39 @@
       </Border>
       <Border Style="{StaticResource Card}">
         <StackPanel>
+          <TextBlock Text="Basalt (로컬 AI › Basalt)" Style="{StaticResource SectionTitle}" />
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+            <TextBlock Text="설치 폴더" Style="{StaticResource Label}" VerticalAlignment="Center" />
+            <TextBox Grid.Column="1" Text="{Binding BasaltInstallDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
+                     AutomationProperties.Name="Basalt 설치 폴더" />
+            <Button Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltFolderCommand}" />
+            <TextBlock Grid.Row="1" Text="시작 스크립트" Style="{StaticResource Label}" VerticalAlignment="Center" />
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BasaltStartScript, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
+                     AutomationProperties.Name="Basalt 시작 스크립트" />
+            <Button Grid.Row="1" Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltScriptCommand}" />
+            <TextBlock Grid.Row="2" Text="품질용 설정 파일" Style="{StaticResource Label}" VerticalAlignment="Center" />
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding BasaltQualityConfig, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
+                     AutomationProperties.Name="Basalt 품질용 설정 파일" />
+            <Button Grid.Row="2" Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltQualityConfigCommand}" />
+            <TextBlock Grid.Row="3" Text="빠른 모드 설정 파일" Style="{StaticResource Label}" VerticalAlignment="Center" />
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding BasaltFastConfig, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
+                     AutomationProperties.Name="Basalt 빠른 모드 설정 파일" />
+            <Button Grid.Row="3" Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltFastConfigCommand}" />
+            <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,6,0,0">
+              <TextBlock Text="포트" Style="{StaticResource Label}" VerticalAlignment="Center" Width="170" />
+              <TextBox Text="{Binding BasaltPort, UpdateSourceTrigger=PropertyChanged}" Width="80" AutomationProperties.Name="Basalt 포트" />
+              <TextBlock Text="정상 종료 대기 (초)" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="24,0,8,0" />
+              <TextBox Text="{Binding BasaltStopWaitSeconds, UpdateSourceTrigger=PropertyChanged}" Width="60" AutomationProperties.Name="Basalt 정상 종료 대기" />
+            </StackPanel>
+          </Grid>
+          <TextBlock Style="{StaticResource Caption}" Margin="0,6,0,0" TextWrapping="Wrap"
+                     Text="상대 경로는 설치 폴더 기준입니다. 이 프로그램은 Basalt 폴더의 파일을 읽기만 하고 고치지 않습니다. 끌 때는 Ctrl+C로 정상 종료를 기다린 뒤(5~300초), 남으면 Basalt의 프로세스만 정리합니다. 포트는 Basalt를 끈 상태에서 바꾸세요 (켜져 있는 동안 바꾸면 이전 포트의 Basalt를 이 화면이 찾지 못합니다)." />
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
           <TextBlock Text="데이터 위치" Style="{StaticResource SectionTitle}" />
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition /></Grid.ColumnDefinitions>

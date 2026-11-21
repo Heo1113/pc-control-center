@@ -43,6 +43,7 @@ public partial class App : Application
                 MockSensors = Options.MockSensors,
                 DemoData = Options.DemoData,
                 Unattended = Options.SmokeTest,
+                BasaltSignalHelper = HelperPath("PcControlCenter.ConsoleSignal", "net10.0"),
                 Operator = new OperatorModuleOptions
                 {
                     HostPath = OperatorHostPath(),
@@ -231,6 +232,22 @@ public partial class App : Application
         var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
         var development = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "PcControlCenter.OperatorHost", "bin", configuration, "net10.0-windows",
             "PcControlCenter.OperatorHost.exe"));
+        return File.Exists(development) ? development : packaged;
+    }
+
+    /// <summary>
+    /// A helper EXE next to PcControlCenter.exe (portable package), or in a development build the helper's own output folder.
+    /// </summary>
+    private static string HelperPath(string project, string framework)
+    {
+        var packaged = Path.Combine(AppContext.BaseDirectory, project + ".exe");
+        if (File.Exists(packaged))
+        {
+            return packaged;
+        }
+
+        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
+        var development = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", project, "bin", configuration, framework, project + ".exe"));
         return File.Exists(development) ? development : packaged;
     }
 

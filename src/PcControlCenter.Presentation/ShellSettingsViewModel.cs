@@ -35,6 +35,12 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
     [ObservableProperty] public partial double FontScale { get; set; }
     [ObservableProperty] public partial int OperatorRestarts { get; set; }
     [ObservableProperty] public partial string StatusText { get; set; } = "";
+    [ObservableProperty] public partial string BasaltInstallDirectory { get; set; } = "";
+    [ObservableProperty] public partial string BasaltStartScript { get; set; } = "";
+    [ObservableProperty] public partial string BasaltQualityConfig { get; set; } = "";
+    [ObservableProperty] public partial string BasaltFastConfig { get; set; } = "";
+    [ObservableProperty] public partial int BasaltPort { get; set; }
+    [ObservableProperty] public partial int BasaltStopWaitSeconds { get; set; }
 
     public string DataRoot => _paths.Root;
     public string DataMode => _paths.IsPortable ? "포터블 (실행 파일 옆 data 폴더)" : "사용자 폴더";
@@ -60,6 +66,12 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         MaxIntervalMs = _settings.Hardware.MaxIntervalMs;
         FontScale = _settings.Ui.FontScale;
         OperatorRestarts = _settings.Operator.MaxAutomaticRestarts;
+        BasaltInstallDirectory = _settings.Basalt.InstallDirectory;
+        BasaltStartScript = _settings.Basalt.StartScript;
+        BasaltQualityConfig = _settings.Basalt.QualityConfig;
+        BasaltFastConfig = _settings.Basalt.FastConfig;
+        BasaltPort = _settings.Basalt.Port;
+        BasaltStopWaitSeconds = _settings.Basalt.StopWaitSeconds;
         RefreshFolders();
     }
 
@@ -91,6 +103,12 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         _settings.Hardware.MaxIntervalMs = MaxIntervalMs;
         _settings.Ui.FontScale = FontScale;
         _settings.Operator.MaxAutomaticRestarts = OperatorRestarts;
+        _settings.Basalt.InstallDirectory = BasaltInstallDirectory;
+        _settings.Basalt.StartScript = BasaltStartScript;
+        _settings.Basalt.QualityConfig = BasaltQualityConfig;
+        _settings.Basalt.FastConfig = BasaltFastConfig;
+        _settings.Basalt.Port = BasaltPort;
+        _settings.Basalt.StopWaitSeconds = BasaltStopWaitSeconds;
         var notes = _settings.Normalize();
         try
         {
@@ -109,6 +127,38 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
 
     [RelayCommand]
     private void OpenDataFolder() => _dialogs.OpenFolder(_paths.Root);
+
+    [RelayCommand]
+    private void PickBasaltFolder()
+    {
+        if (_dialogs.PickFolder("Basalt 설치 폴더", BasaltInstallDirectory) is { } folder)
+        {
+            BasaltInstallDirectory = folder;
+        }
+    }
+
+    [RelayCommand]
+    private void PickBasaltScript() => BasaltStartScript = PickInBasalt("Basalt 시작 스크립트", "PowerShell 스크립트|*.ps1", BasaltStartScript);
+
+    [RelayCommand]
+    private void PickBasaltQualityConfig() => BasaltQualityConfig = PickInBasalt("품질용 설정 파일", "설정 파일|*.json|모든 파일|*.*", BasaltQualityConfig);
+
+    [RelayCommand]
+    private void PickBasaltFastConfig() => BasaltFastConfig = PickInBasalt("빠른 모드 설정 파일", "설정 파일|*.json|모든 파일|*.*", BasaltFastConfig);
+
+    /// <summary>A picked file inside the install folder is kept relative to it (so moving the folder moves the files too).</summary>
+    private string PickInBasalt(string title, string filter, string current)
+    {
+        if (_dialogs.PickFile(title, filter, BasaltInstallDirectory) is not { } file)
+        {
+            return current;
+        }
+
+        var folder = BasaltInstallDirectory.TrimEnd('\\', '/');
+        return file.Length > folder.Length + 1 && file.StartsWith(folder, StringComparison.OrdinalIgnoreCase) && file[folder.Length] is '\\' or '/'
+            ? file[(folder.Length + 1)..]
+            : file;
+    }
 
     [RelayCommand]
     private void OpenModuleFolder(DataFolderRow? row)

@@ -16,6 +16,8 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="ScottPlot.WPF" />
+    <!-- 로컬 AI › Basalt shows Basalt's own dashboard (127.0.0.1) in WebView2. -->
+    <PackageReference Include="Microsoft.Web.WebView2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\PcControlCenter.Presentation\PcControlCenter.Presentation.csproj" />

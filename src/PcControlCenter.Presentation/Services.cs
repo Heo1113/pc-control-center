@@ -18,7 +18,14 @@ public interface IShellDialogs
     void Info(string title, string message);
     void Error(string title, string message);
     string? PickFolder(string title, string? initialDirectory = null);
+
+    /// <summary>A file to open; <paramref name="filter"/> in the Windows dialog format ("설명|*.json").</summary>
+    string? PickFile(string title, string filter, string? initialDirectory = null);
+
     void OpenFolder(string path);
+
+    /// <summary>Opens an http(s) address in the default browser (anything else is ignored).</summary>
+    void OpenUrl(string url);
 }
 
 /// <summary>Dialogs for tests and unattended runs: confirms nothing, records every message.</summary>
@@ -37,9 +44,15 @@ public sealed class RecordingShellDialogs(bool confirm = false) : IShellDialogs
 
     public void Error(string title, string message) => Messages.Add($"error: {title}: {message}");
 
+    public string? FileToPick { get; set; }
+
     public string? PickFolder(string title, string? initialDirectory = null) => FolderToPick;
 
+    public string? PickFile(string title, string filter, string? initialDirectory = null) => FileToPick;
+
     public void OpenFolder(string path) => Messages.Add($"open: {path}");
+
+    public void OpenUrl(string url) => Messages.Add($"url: {url}");
 }
 
 public enum Level

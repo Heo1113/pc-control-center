@@ -15,6 +15,7 @@
     <DataTemplate DataType="{x:Type p:DashboardViewModel}"><views:DashboardView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:SharedSensorsViewModel}"><views:SharedSensorsView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:GpuMemoryViewModel}"><views:GpuMemoryView /></DataTemplate>
+    <DataTemplate DataType="{x:Type p:BasaltViewModel}"><views:BasaltView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:ShellSettingsViewModel}"><views:ShellSettingsView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:HistoryViewModel}"><views:HistoryView /></DataTemplate>
     <DataTemplate DataType="{x:Type p:DataMigrationViewModel}"><views:DataMigrationView /></DataTemplate>
