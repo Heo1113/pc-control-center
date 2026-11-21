@@ -66,7 +66,7 @@ public sealed partial class ShellViewModel : ObservableObject
     [
         (SectionKeys.Dashboard, "대시보드", "", "GPU·CPU·RAM, Strata, 전력·전력비, 최근 오류, Operator 상태를 한 화면에서 봅니다."),
         (SectionKeys.Hardware, "하드웨어", "", "공통 센서 한 곳에서 읽은 GPU·CPU·RAM 값과 그래프, 기록."),
-        (SectionKeys.LocalAi, "로컬 AI", "", "Strata 텔레메트리, 추론 성능, 세션 기록, 조건별 비교 (A)."),
+        (SectionKeys.LocalAi, "로컬 AI", "", "Basalt 서버 켜기·끄기와 대시보드, Strata 텔레메트리, 추론 성능, 세션 기록, 조건별 비교 (A)."),
         (SectionKeys.Economics, "GPU 경제성", "", "세션·에너지·비용, 실현/예상 수익, 손익·시나리오 (B)."),
         (SectionKeys.Diagnostics, "시스템 진단", "", "이벤트 탐색, WHEA·GPU 오류·BSOD, 타임라인, 기준선 비교 (C)."),
         (SectionKeys.Operator, "AI Operator", "", "자연어 작업, 계획 확인, 단계별 승인, 일시정지·긴급 중단, 창 검사기 (E)."),

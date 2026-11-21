@@ -17,15 +17,16 @@
             <Ellipse Style="{StaticResource StatusDot}" Width="9" Height="9" Fill="{Binding StateLevel, Converter={StaticResource LevelBrush}}" VerticalAlignment="Center" />
             <TextBlock Text="{Binding StateText}" FontSize="15" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center"
                        AutomationProperties.AutomationId="BasaltState" />
-            <TextBlock Text="{Binding ModeLine}" Style="{StaticResource Caption}" Margin="12,0,0,0" VerticalAlignment="Center" />
           </StackPanel>
-          <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="17,3,0,0" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ModeLine}" Style="{StaticResource Caption}" Margin="17,3,0,0" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="17,1,0,0" TextWrapping="Wrap"
+                     Visibility="{Binding Detail, Converter={StaticResource NotEmptyToVisibility}}" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0"
                     ToolTip="다음에 켤 때 쓸 설정 파일. 두 모드는 같은 포트를 써서 동시에 켤 수 없습니다.">
-          <RadioButton Content="품질용" IsChecked="{Binding IsQuality}" GroupName="BasaltMode" Margin="0,0,12,0" VerticalAlignment="Center"
+          <RadioButton Content="품질용" IsChecked="{Binding IsQuality}" GroupName="BasaltMode" MinWidth="0" Margin="0,0,16,0" VerticalAlignment="Center"
                        AutomationProperties.AutomationId="BasaltQuality" />
-          <RadioButton Content="빠른 모드" IsChecked="{Binding IsFast}" GroupName="BasaltMode" VerticalAlignment="Center"
+          <RadioButton Content="빠른 모드" IsChecked="{Binding IsFast}" GroupName="BasaltMode" MinWidth="0" VerticalAlignment="Center"
                        AutomationProperties.AutomationId="BasaltFast" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -45,8 +46,8 @@
       <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" AutomationProperties.AutomationId="BasaltNotice" />
     </Border>
 
-    <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Visibility="{Binding LastStopSummary, Converter={StaticResource NotEmptyToVisibility}}">
-      <Expander>
+    <Border DockPanel.Dock="Top" Margin="6,0,6,6" Visibility="{Binding LastStopSummary, Converter={StaticResource NotEmptyToVisibility}}">
+      <Expander HorizontalAlignment="Stretch">
         <Expander.Header>
           <StackPanel Orientation="Horizontal">
             <Ellipse Style="{StaticResource StatusDot}" Width="7" Height="7" Fill="{Binding LastStopLevel, Converter={StaticResource LevelBrush}}" VerticalAlignment="Center" />

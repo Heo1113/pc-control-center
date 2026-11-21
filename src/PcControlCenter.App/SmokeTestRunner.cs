@@ -547,6 +547,13 @@ internal sealed class SmokeTestRunner(
         details["basalt-stop"] = runtime.Basalt.Status.LastStop?.Summary ?? "no report";
         await Task.Delay(800);
         await Capture("local-ai-basalt-stopped");
+
+        // Settings › 공통: the Basalt paths, port and wait.
+        shell.Navigate(SectionKeys.Settings, "settings/common");
+        await Task.Delay(1000);
+        BringIntoView("Basalt 정상 종료 대기");
+        await Task.Delay(600);
+        await Capture("settings-common-basalt");
     }
 
     private static T? FindChild<T>(DependencyObject node) where T : DependencyObject

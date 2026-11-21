@@ -195,17 +195,22 @@ public sealed partial class BasaltViewModel : ObservableObject
             StateText = "MOCK · " + StateText;
         }
 
-        Detail = status.Detail;
+        Detail = status.State is BasaltState.Off or BasaltState.Unknown && status.Detail is "꺼짐" or "상태를 확인하는 중" ? "" : status.Detail;
         var mode = status.StartedHere ? BasaltController.ModeText(status.Mode)
             : status.State is BasaltState.Running or BasaltState.Starting ? "알 수 없음 (이 프로그램이 켜지 않음)"
             : null;
         ModeLine = $"127.0.0.1:{status.Port}" + (mode is null ? "" : $" · 모드 {mode}") + (status.IsMock ? " · MOCK 서버 (실제 Basalt 아님)" : "");
         Notice = status.Notice;
         DashboardUrl = LocalUrl;
+        if (status.State != BasaltState.Running)
+        {
+            WebViewProblem = null; // the next start tries WebView2 again
+        }
+
         ShowDashboard = status.State == BasaltState.Running;
         (GuidanceTitle, GuidanceText) = status.State switch
         {
-            BasaltState.Running => ("", ""),
+            BasaltState.Running => ("Basalt 실행 중", "대시보드는 [브라우저에서 열기]로도 볼 수 있습니다."),
             BasaltState.Starting => ("Basalt를 켜는 중입니다", "모델을 올리는 동안 몇 분 걸릴 수 있습니다. 응답하면 여기에 Basalt 대시보드가 나타납니다. 진행 상황은 Basalt 창에서 볼 수 있습니다."),
             BasaltState.Stopping => ("Basalt를 끄는 중입니다", "Ctrl+C로 정상 종료를 기다린 뒤, 남은 프로세스가 있으면 정리하고 결과를 확인합니다."),
             BasaltState.PortBusy => ($"포트 {status.Port}를 다른 프로그램이 쓰고 있습니다",
