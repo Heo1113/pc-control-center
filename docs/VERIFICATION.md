@@ -174,6 +174,25 @@ GitHub Actions 실행 [43722935306](https://github.com/Heo1113/pc-control-center
 - 캡처: 표 옆 배치(스모크가 "표 옆"을 골라 찍음), 아이콘과 종류 옆 색 견본, 짧은 설명 뒤의 ⓘ. CI 창이 작아 "자동"에서는 표 아래로 유지되는 것도 확인했습니다.
 - RTX 5080·4K 화면에서의 "자동" 전환 시점, 실제 프로세스 아이콘, CSV를 Excel에서 여는 것은 사용자 PC에서 확인이 필요합니다.
 
+### Basalt 서버 제어 브랜치 (`claude/basalt`)
+
+기준: `claude/shell-polish`에 PR #4 끝(`574fbbc`)을 병합 커밋 `c8c3b7c`로 합친 상태(재작성·강제 푸시 없음). 커밋 `57f191f`(제어 코어·Ctrl+C 도우미),
+`24fda13`(Windows 실제 프로세스 시험), `da31975`(Basalt 화면·WebView2), `9442140`(GPU 메모리 연결). 설계와 규칙: [BASALT.md](BASALT.md).
+
+GitHub Actions 실행 [44892751191](https://github.com/Heo1113/pc-control-center/actions/runs/44892751191)(`da31975`, push): Linux·Windows의 모든 단계가 통과했습니다.
+
+- 통합 테스트: Windows 238개 모두 통과 — Windows 전용 Basalt 실제 프로세스 시험 4개(가짜 Basalt 트리를 새 콘솔 창에서 켜고 도우미의 Ctrl+C로 정상 종료·남은 것 없음,
+  Ctrl+C를 무시하는 트리를 대기 뒤 포트 소유자부터 정리·남은 것 없음, 테스트 프로세스가 가진 포트는 켜지도 끄지도 않음, 시작 시각이 다르거나 모르면 끝내지 않음) 포함.
+  A·B·C·E 원본 94·145·132·154개, E UIA 11개 통과.
+- 포터블 패키지에 `PcControlCenter.ConsoleSignal.exe`(트리밍)가 들어가고, GUI 스모크 3종 실패 0: MOCK 실행에서 Basalt 꺼짐 → 켜기 → 실행 중 →
+  WebView2가 MOCK 페이지(`http://127.0.0.1:<임의 포트>/`)를 엶 → Ctrl+C로 끔 → "정상 종료됨 · 남은 프로세스 없음 · 포트 비어 있음". 실제 센서 실행은 상태만 읽음("Off: 꺼짐", 켜지 않음).
+- Linux(GPU 메모리 연결 `9442140` 포함): 통합 테스트 242개 중 228개 통과, 14개 건너뜀(Windows 전용).
+
+- **실제 Basalt로는 아무것도 확인하지 않았습니다.** 이 세션은 클라우드 컨테이너라 사용자 PC에 접근할 수 없었고, 0단계 확인(실제 Basalt 켜기, 6개 주소·대시보드 API, 정상 종료 뒤 프로세스·8080)은
+  사용자께서 `basalt-probe.ps1`을 실행해 결과를 주시기로 했습니다. 로컬 AI 모듈 연결(3번)은 그 결과를 본 뒤 확정합니다.
+- CI의 실제 프로세스 시험은 Basalt와 같은 모양(래퍼 → 포트 수신 서버 → 엔진)의 `basalt-fake.exe`로 합니다. 실제 Basalt의 Python 서버가 Ctrl+C를 어떻게 처리하는지,
+  엔진을 다시 띄우는 조건은 가짜 서버가 대신할 수 없습니다.
+
 ## 실기에서 아직 확인하지 않은 것
 
 아래는 CI 러너(가상 머신, GPU 없음)로 확인할 수 없어 **사용자 PC에서 확인이 필요**합니다.
@@ -190,6 +209,13 @@ GitHub Actions 실행 [43722935306](https://github.com/Heo1113/pc-control-center
 | 종류 지정(행 오른쪽 클릭 › 종류 지정, 되돌리기, 다시 시작한 뒤 유지)과 대시보드 GPU 메모리 카드의 "GPU 메모리 화면 열기" | 직접 조작 (CI는 뷰모델 테스트와 캡처만) |
 | Strata 엔진이 GGUF 파일을 매핑하는지, 런타임 감지가 맞는지, 구성 추정(가중치·KV)이 실제와 얼마나 다른지 | 표의 "런타임"·"안에 든 것", 상세 패널의 모델 행과 구성 막대; Process Explorer·VMMap, Strata·llama.cpp 로그와 비교 ([GPU_MEMORY.md](GPU_MEMORY.md) 6장) |
 | 실제 Strata 연결(텔레메트리 키, 포트 자동 찾기)과 추론 세션 기록 | 로컬 AI › Strata 런타임 "연결됨", 세션 기록 |
+| **Basalt** 실제 프로세스 구조: `basalt.exe` → Python 서버(포트 8080 소유) → 엔진인지, 엔진 실행 파일 이름, 시작 스크립트가 같은 콘솔에서 실행하는지 | 0단계 확인 스크립트(`basalt-probe.ps1`) 결과의 `processTree`·`startScript`, 로컬 AI › Basalt의 "Basalt 프로세스와 근거" |
+| **Basalt** 도우미의 Ctrl+C로 실제 Basalt가 남김없이 끝나는지(Windows Terminal이 기본 터미널일 때 포함), 걸린 시간 | 확인 스크립트의 `stop`·`afterStop`, Basalt 화면 [끄기]의 "마지막 끄기" (CI는 가짜 서버로만 확인) |
+| **Basalt** 정상 종료가 안 될 때 Python 서버부터 끝내는 정리로 엔진이 다시 생기지 않는지 | 생기면 "마지막 끄기"에 "다시 생긴 하위 프로세스"로 나오고 정리됨; 남으면 "남은 프로세스" |
+| **Basalt** [켜기]가 손으로 `start-basalt.ps1 -Config …`를 실행할 때와 같은지(품질용·빠른 모드, 작업 폴더, 최소화된 창), 모델 로드까지의 시간과 "켜는 중" 표시 | Basalt 화면 [켜기], Basalt 창의 메시지 |
+| **Basalt** 대시보드가 WebView2에서 동작하는지(스크립트, 인증, 갱신), 링크가 앱 밖에서 열리는지, 프로필 폴더(`데이터 폴더\webview2`)에 남는 값 | Basalt 화면 본문 (CI는 MOCK 페이지만 확인) |
+| **Basalt** 로컬 AI 모듈이 그대로 연결되는지(`/v1/telemetry`의 `schema_version` 1, 키 환경 변수) — 3번, 확인 스크립트 결과로 확정 | 확인 스크립트의 `endpoints`, 로컬 AI › Strata 런타임 "연결됨" |
+| **Basalt** GPU 메모리 화면의 연결(Python 서버·엔진·래퍼에 "Basalt"), 엔진의 측정값이 작업 관리자와 같은 규모인지, 헤더 기반 구성 추정을 하지 않는 판단이 맞는지 | 하드웨어 › GPU 메모리 도구 줄의 "Basalt · 프로세스" 툴팁, 표의 Basalt 표시 |
 | 4K·175% 배율, 창 크기 변경, 다중 모니터(배율이 다른 모니터 간 이동) | 창을 모니터 사이로 옮기며 글자 잘림·흐림 확인, 설정의 화면 배율 |
 | 사용자 PC의 실제 이벤트 로그 규모(오래된 기록 가져오기 속도) | 시스템 진단 › 현황 |
 | 실제 응용 프로그램(메모장·계산기·설정 앱)에 대한 Operator 작업과 승인 창 | AI Operator › 작업 실행, 긴급 중단 Ctrl+Alt+F12 |
@@ -208,6 +234,6 @@ GitHub Actions 실행 [43722935306](https://github.com/Heo1113/pc-control-center
   E의 규칙(자기보다 높은 무결성의 창은 조작하지 않음)에 따라 호스트가 직접 실행한 프로그램의 창만 조작합니다. UAC가 켜진 기본 설정에서는 원래 E와 같습니다.
 - 글자 배율: 공통 설정 값이 기준입니다. B·E 설정 화면의 배율 변경은 창 전체에 즉시 적용되지만 다음 시작 때는 공통 설정 값을 씁니다.
 - 각 모듈의 명령줄 도구(`lapc`·`gpc`·`wdl`·`wao`)는 패키지에 넣지 않았습니다. 이 도구들은 기본으로 **기존 프로그램의 폴더**를 쓰므로, 통합 앱 데이터에 쓰려면 `--data-dir <통합 데이터>\modules\<모듈>`을 지정해야 합니다.
-- 패키지에 단일 파일 EXE가 3개(통합 창, Operator 호스트, E의 테스트 앱)라 크기가 큽니다(각각 .NET 런타임 포함).
+- 패키지에 단일 파일 EXE가 4개(통합 창, Operator 호스트, E의 테스트 앱, Basalt Ctrl+C 도우미)라 크기가 큽니다(각각 .NET 런타임 포함, 도우미는 트리밍).
 - C의 테스트 하나(`Event_6008_localized_time_is_parsed_only_when_plausible`)가 Ubuntu 26.04(새 ICU)에서 실패합니다. Windows와 Ubuntu 24.04에서는 통과합니다.
   한국어 Windows의 6008 이벤트 시각 해석이 ICU 버전에 따라 달라질 수 있다는 뜻이므로, 새 ICU를 쓰는 Windows 버전에서 같은 일이 생기는지 원본 C에서 확인할 필요가 있습니다(통합 작업에서 C의 해석 로직은 바꾸지 않았습니다).

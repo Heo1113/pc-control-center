@@ -9,6 +9,7 @@ PC Control Center는 네 프로그램(A·B·C·E)의 **검증된 코드를 그�
 PcControlCenter.exe (WPF, 일반 사용자 권한)
 ├─ Shell: 메뉴 8개, 공통 상태 표시줄, 통합 대시보드, 공통 설정, 통합 기록, 데이터·이전
 ├─ GpuMemoryMonitor ─ Windows GPU 성능 카운터(PDH)·DXGI로 프로세스별·어댑터별 GPU 메모리 (별도 스레드, NVML 미사용, 하드웨어 › GPU 메모리)
+├─ BasaltController ─ Basalt 상태 확인(2초), 요청할 때만 켜기(start-basalt.ps1, 새 콘솔 창)·끄기(ConsoleSignal.exe로 Ctrl+C → 대기 → 그 프로세스만 정리), 로컬 AI › Basalt
 ├─ SharedHardwareHub ─ A의 HardwareMonitor(NVML·Windows CPU/RAM) 하나만 실제로 읽음
 │    ├─▶ 로컬 AI 모듈 (A MonitoringService: Strata 조회는 A 자신의 루프, lapc.db)
 │    ├─▶ GPU 경제성 모듈 (B ProfitEngine: 전력 적산·세션·비용, gpc.db)
@@ -28,6 +29,8 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 | `modules/<원본 저장소>/` | A·B·C·E 소스(고정 커밋). 바뀐 파일은 [REUSE.md](REUSE.md) |
 | `src/PcControlCenter.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태 |
 | `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), 화면을 볼 때만 PDH `GPU Engine`·`BackgroundInspection`→`ProcessInspector`(불러온 DLL·매핑 파일)·`GgufHeader`·로컬 AI 서버 수신 포트, `ProcessKinds`·`LlmMemoryEstimate`, `RuntimeReportPoller`(Strata `/metrics`·Ollama `/api/ps`·llama.cpp `/props`·`/models`, 루프백 GET), MOCK 공급자 |
+| `src/PcControlCenter.Basalt` | `BasaltController`(상태·켜기·끄기·확인), `BasaltProcessTree`(포트 소유자·하위·`basalt*` 래퍼·이 앱이 띄운 창, 종료 순서), `WindowsBasaltSystem`(Toolhelp·시작 시각·TCP 목록은 GpuMemory의 같은 질의, ShellExecute, `TerminateProcess` 전 시작 시각 재확인), MOCK 시스템과 루프백 페이지 |
+| `src/PcControlCenter.ConsoleSignal` | `PcControlCenter.ConsoleSignal.exe <pid>`: 그 프로세스의 콘솔에 붙어 Ctrl+C (kernel32만, 패키지에는 트리밍해서 넣음) |
 | `src/PcControlCenter.Core` | 데이터 폴더(`ShellPaths`), 기존 프로그램 폴더 보호, 단일 실행 잠금, 공통 설정, 모듈 감독 |
 | `src/PcControlCenter.Modules` | A·B·C·E 모듈 어댑터, 센서 간격 조정, 대시보드 요약, `ShellRuntime`(조립) |
 | `src/PcControlCenter.Operator` | Operator 격리: 프로토콜, 서버(`DesktopServer`), 독립 검사(`HostGuard`), 클라이언트(`RemoteDesktop`), 프로세스 감독 |
@@ -57,6 +60,13 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 - 선택한 프로세스에 대해서만, 화면을 보는 동안 10초에 한 번까지 로컬 런타임에 묻습니다(`127.0.0.1`·`[::1]`의 읽기 전용 GET). Strata 키는 로컬 AI 설정의 키 환경 변수에서 요청마다 읽고 저장하지 않습니다.
 - 값의 종류를 나눠 보여 줍니다: 측정(Windows), 계산(합·차), 런타임 보고(설정값·마지막 보고값, 지금의 사용량 아님), 추정(모델 파일 헤더로 계산한 LLM 구성 — 빗금과 "추정" 표시, 측정 총량 안에 들어갈 때만). 근거와 한계: [GPU_MEMORY.md](GPU_MEMORY.md).
 - 대시보드의 "GPU 메모리" 카드는 같은 리더의 마지막 측정에서 전용 메모리 상위 프로세스를 보여 주고, 새 측정이 없으면 이전 값을 현재처럼 보여 주지 않습니다.
+
+## Basalt (로컬 AI › Basalt)
+
+- 모듈이 아니라 셸의 서비스입니다(`ShellRuntime.Basalt`). 로컬 AI 모듈이 꺼지거나 실패해도 동작하고, 앱을 닫아도 Basalt는 계속 실행됩니다.
+- 상태 확인은 읽기만 합니다(TCP 목록, 필요할 때 프로세스 목록, `GET /health`). 켜기·끄기는 사용자가 누를 때만 합니다.
+- 포트를 가진 프로세스가 Basalt로 확인되지 않으면 켜지도 끄지도 않고, 이 앱과 그 상위 프로세스·콘솔 호스트·시작 시각을 모르는 프로세스는 끝내지 않습니다. 자세한 규칙: [BASALT.md](BASALT.md).
+- 대시보드는 WebView2로 `127.0.0.1:<포트>`만 앱 안에서 엽니다. GPU 메모리 화면은 Basalt의 포트로 그 프로세스를 연결합니다.
 
 ## 장애 격리
 

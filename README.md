@@ -33,7 +33,7 @@
 |---|---|
 | 대시보드 | GPU·CPU·RAM(공통 센서), Strata 모델·추론 상태(A), 현재 GPU 보드 전력과 추정 전력비·오늘 세션 비용(B), 최근 오류·WHEA·BSOD(C), Operator 상태(E), 모듈 상태 |
 | 하드웨어 | 공통 센서(리더 상태·소비 모듈·센서 지원 표·장치), **GPU 메모리(종류별 장치 막대, 프로세스 표·상세 패널, Strata 엔진 프로세스 연결, 런타임 보고, 기준점 비교)**, 실시간 센서·그래프(A), GPU 전력·장치(B), 오류 시점 센서 기록(C) |
-| 로컬 AI | 추론 개요, Strata 런타임, 세션 기록, 조건별 비교 (A) |
+| 로컬 AI | 추론 개요, **Basalt(서버 켜기·끄기, 품질용/빠른 모드, Basalt 대시보드)**, Strata 런타임, 세션 기록, 조건별 비교 (A) |
 | GPU 경제성 | 현황·전력비, 세션·에너지, 수익성(실현/예상 구분), 시나리오·손익, 기간별 기록, 세션 비교 (B) |
 | 시스템 진단 | 현황, 이벤트 탐색, 타임라인, 진단(WHEA·GPU·BSOD), 기준선 비교 (C) |
 | AI Operator | 자연어 작업, 계획 확인, 단계별 승인, 일시정지·재개·긴급 중단, 창 검사기, 작업 기록, 모델 연결 (E) |
@@ -81,6 +81,8 @@ dotnet test --project tests/PcControlCenter.Tests -c Release
 |---|---|
 | `modules/<원본 저장소 이름>/` | A·B·C·E의 소스(고정 커밋에서 가져옴). 변경 내역은 `python3 scripts/module-manifest.py verify`와 [docs/REUSE.md](docs/REUSE.md) |
 | `src/PcControlCenter.Hardware` | 공통 센서 리더 |
+| `src/PcControlCenter.Basalt` | Basalt 서버 제어: 포트 소유자·하위·basalt 래퍼로 서버 프로세스 판정, 시작 스크립트로 켜기, Ctrl+C 정상 종료 → 대기 → 그 프로세스만 정리 → 남은 것 확인 ([docs/BASALT.md](docs/BASALT.md)) |
+| `src/PcControlCenter.ConsoleSignal` | `PcControlCenter.ConsoleSignal.exe`: Basalt 콘솔에 Ctrl+C를 보내는 도우미 |
 | `src/PcControlCenter.GpuMemory` | 프로세스별·어댑터별 GPU 메모리 리더(Windows PDH·DXGI, 별도 스레드, NVML 미사용), Strata 프로세스 연결, 화면을 볼 때만 엔진 사용률·불러온 DLL·매핑된 모델 파일·GGUF 헤더(별도 작업), 로컬 런타임 보고(루프백 GET) |
 | `src/PcControlCenter.Core` | 데이터 폴더, 공통 설정, 모듈 감독(장애 격리) |
 | `src/PcControlCenter.Modules` | A·B·C·E를 모듈로 실행하는 어댑터, 대시보드 요약, 조립(`ShellRuntime`) |
@@ -91,4 +93,4 @@ dotnet test --project tests/PcControlCenter.Tests -c Release
 | `src/PcControlCenter.App` | `PcControlCenter.exe` (WPF) |
 | `tests/PcControlCenter.Tests` | 통합 테스트 |
 
-문서: [구조](docs/ARCHITECTURE.md) · [GPU 메모리 분석](docs/GPU_MEMORY.md) · [재사용과 변경 기록](docs/REUSE.md) · [데이터 가져오기](docs/MIGRATION.md) · [검증 상태](docs/VERIFICATION.md)
+문서: [구조](docs/ARCHITECTURE.md) · [Basalt 서버 제어](docs/BASALT.md) · [GPU 메모리 분석](docs/GPU_MEMORY.md) · [재사용과 변경 기록](docs/REUSE.md) · [데이터 가져오기](docs/MIGRATION.md) · [검증 상태](docs/VERIFICATION.md)
