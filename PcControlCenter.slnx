@@ -5,6 +5,8 @@
     <Project Path="src/PcControlCenter.Operator/PcControlCenter.Operator.csproj" />
     <Project Path="src/PcControlCenter.OperatorHost/PcControlCenter.OperatorHost.csproj" />
     <Project Path="src/PcControlCenter.App/PcControlCenter.App.csproj" />
+    <Project Path="src/PcControlCenter.Basalt/PcControlCenter.Basalt.csproj" />
+    <Project Path="src/PcControlCenter.ConsoleSignal/PcControlCenter.ConsoleSignal.csproj" />
     <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
     <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
     <Project Path="src/PcControlCenter.GpuMemory/PcControlCenter.GpuMemory.csproj" />

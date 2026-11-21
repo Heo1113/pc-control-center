@@ -20,6 +20,9 @@ public sealed class ShellSettings
     /// <summary>How the hardware › GPU 메모리 page was left (sort, columns, panel size). Missing in older files = defaults.</summary>
     public GpuMemoryPageSettings GpuMemoryPage { get; set; } = new();
 
+    /// <summary>The local Basalt server the 로컬 AI › Basalt page starts and stops. Missing in older files = defaults.</summary>
+    public BasaltSettings Basalt { get; set; } = new();
+
     /// <summary>Fixes out-of-range values. Returns a note for each change (shown to the user, never silent).</summary>
     public IReadOnlyList<string> Normalize()
     {
@@ -30,6 +33,8 @@ public sealed class ShellSettings
         Operator ??= new OperatorHostSettings();
         GpuMemoryPage ??= new GpuMemoryPageSettings();
         GpuMemoryPage.Normalize();
+        Basalt ??= new BasaltSettings();
+        notes.AddRange(Basalt.Normalize());
         if (Hardware.MaxIntervalMs is < SharedHardwareSettings.MinIntervalMs or > SharedHardwareSettings.MaxIntervalMsLimit)
         {
             notes.Add($"공통 센서 최대 간격 {Hardware.MaxIntervalMs} ms는 허용 범위({SharedHardwareSettings.MinIntervalMs}~{SharedHardwareSettings.MaxIntervalMsLimit} ms)를 벗어나 1000 ms로 바꿨습니다.");
@@ -206,6 +211,144 @@ public sealed class GpuMemoryPageSettings
         }
 
         KindOverrides = overrides;
+    }
+}
+
+/// <summary>
+/// The local Basalt server (a Strata fork for Blackwell GPUs). The app runs Basalt's own start script with the chosen
+/// configuration file and stops what it started; the files in the install folder are only read, never changed.
+/// Relative paths are relative to <see cref="InstallDirectory"/>.
+/// </summary>
+public sealed class BasaltSettings
+{
+    public const string DefaultInstallDirectory = @"C:\AI\basalt";
+    public const string DefaultStartScript = "start-basalt.ps1";
+    public const string DefaultQualityConfig = "basalt_config.json";
+    public const string DefaultFastConfig = "basalt_config.fast.json";
+    public const int DefaultPort = 8080;
+    public const int DefaultStopWaitSeconds = 30;
+    public const int MinStopWaitSeconds = 5;
+    public const int MaxStopWaitSeconds = 300;
+    public const int DefaultStartWaitSeconds = 900;
+    public const int MinStartWaitSeconds = 30;
+    public const int MaxStartWaitSeconds = 3600;
+    public const string QualityMode = "Quality";
+    public const string FastMode = "Fast";
+
+    public static readonly IReadOnlySet<string> Modes = new HashSet<string>(StringComparer.Ordinal) { QualityMode, FastMode };
+
+    public string InstallDirectory { get; set; } = DefaultInstallDirectory;
+
+    /// <summary>Basalt's start script (run with <c>-Config &lt;file&gt;</c>).</summary>
+    public string StartScript { get; set; } = DefaultStartScript;
+
+    public string QualityConfig { get; set; } = DefaultQualityConfig;
+    public string FastConfig { get; set; } = DefaultFastConfig;
+
+    /// <summary>The port Basalt serves its API and dashboard on (127.0.0.1). Both configurations use the same one.</summary>
+    public int Port { get; set; } = DefaultPort;
+
+    /// <summary>How long a graceful stop (Ctrl+C to Basalt's console) may take before Basalt's processes are ended.</summary>
+    public int StopWaitSeconds { get; set; } = DefaultStopWaitSeconds;
+
+    /// <summary>How long a start may take until Basalt answers (loading the model included).</summary>
+    public int StartWaitSeconds { get; set; } = DefaultStartWaitSeconds;
+
+    /// <summary>The configuration chosen last on the page: <see cref="QualityMode"/> or <see cref="FastMode"/>.</summary>
+    public string Mode { get; set; } = QualityMode;
+
+    public string ConfigFor(string mode) => mode == FastMode ? FastConfig : QualityConfig;
+
+    /// <summary>A path from these settings as a full path: relative ones are taken from the install folder.</summary>
+    public string Resolve(string path) => WindowsPath.Combine(InstallDirectory, path);
+
+    public IReadOnlyList<string> Normalize()
+    {
+        var notes = new List<string>();
+        if (!WindowsPath.IsUsable(InstallDirectory))
+        {
+            notes.Add($"Basalt 설치 폴더 값이 올바르지 않아 기본값({DefaultInstallDirectory})으로 바꿨습니다.");
+            InstallDirectory = DefaultInstallDirectory;
+        }
+
+        InstallDirectory = InstallDirectory.Trim();
+        StartScript = Checked(StartScript, DefaultStartScript, "시작 스크립트", notes);
+        if (!StartScript.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            notes.Add($"Basalt 시작 스크립트는 PowerShell 스크립트(.ps1)여야 해서 기본값({DefaultStartScript})으로 바꿨습니다.");
+            StartScript = DefaultStartScript;
+        }
+
+        QualityConfig = Checked(QualityConfig, DefaultQualityConfig, "품질용 설정 파일", notes);
+        FastConfig = Checked(FastConfig, DefaultFastConfig, "빠른 모드 설정 파일", notes);
+        if (Port is < 1 or > 65535)
+        {
+            notes.Add($"Basalt 포트 {Port}은(는) 허용 범위(1~65535)를 벗어나 {DefaultPort}으로 바꿨습니다.");
+            Port = DefaultPort;
+        }
+
+        if (StopWaitSeconds is < MinStopWaitSeconds or > MaxStopWaitSeconds)
+        {
+            notes.Add($"Basalt 정상 종료 대기 {StopWaitSeconds}초는 허용 범위({MinStopWaitSeconds}~{MaxStopWaitSeconds}초)를 벗어나 {DefaultStopWaitSeconds}초로 바꿨습니다.");
+            StopWaitSeconds = DefaultStopWaitSeconds;
+        }
+
+        if (StartWaitSeconds is < MinStartWaitSeconds or > MaxStartWaitSeconds)
+        {
+            notes.Add($"Basalt 시작 대기 {StartWaitSeconds}초는 허용 범위({MinStartWaitSeconds}~{MaxStartWaitSeconds}초)를 벗어나 {DefaultStartWaitSeconds}초로 바꿨습니다.");
+            StartWaitSeconds = DefaultStartWaitSeconds;
+        }
+
+        if (Mode is null || !Modes.Contains(Mode))
+        {
+            Mode = QualityMode;
+        }
+
+        return notes;
+    }
+
+    private static string Checked(string? value, string fallback, string label, List<string> notes)
+    {
+        if (WindowsPath.IsUsable(value))
+        {
+            return value!.Trim();
+        }
+
+        notes.Add($"Basalt {label} 값이 올바르지 않아 기본값({fallback})으로 바꿨습니다.");
+        return fallback;
+    }
+}
+
+/// <summary>Windows paths handled the same way on every OS (the settings are Windows paths; tests run on Linux too).</summary>
+public static class WindowsPath
+{
+    private static readonly char[] Forbidden = ['"', '<', '>', '|', '?', '*'];
+
+    /// <summary>Non-empty, at most 260 characters, no control characters, quotes or wildcards.</summary>
+    public static bool IsUsable(string? path)
+        => path is { Length: > 0 and <= 260 } && path.Trim().Length > 0 && path.IndexOfAny(Forbidden) < 0 && !path.Any(char.IsControl);
+
+    /// <summary>A drive path (C:\ or C:/) or a UNC path (\\server\share), on any OS.</summary>
+    public static bool IsFullyQualified(string path)
+        => (path.Length >= 3 && char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/')
+           || path.StartsWith(@"\\", StringComparison.Ordinal);
+
+    public static string Combine(string directory, string path)
+    {
+        path = path.Trim();
+        if (IsFullyQualified(path) || (!OperatingSystem.IsWindows() && Path.IsPathFullyQualified(path)))
+        {
+            return path;
+        }
+
+        directory = directory.Trim();
+        var separator = directory.Contains('\\') || !directory.Contains('/') ? '\\' : '/';
+        if (!OperatingSystem.IsWindows() && Path.IsPathFullyQualified(directory))
+        {
+            separator = '/';
+        }
+
+        return directory.TrimEnd('\\', '/') + separator + path.TrimStart('\\', '/');
     }
 }
 

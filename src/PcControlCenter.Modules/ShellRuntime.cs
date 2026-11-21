@@ -1,4 +1,7 @@
 using LocalAiPerf.Core.Diagnostics;
+using PcControlCenter.Basalt;
+using PcControlCenter.Basalt.Mock;
+using PcControlCenter.Basalt.Windows;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
 using PcControlCenter.Hardware;
@@ -20,6 +23,15 @@ public sealed record ShellOptions
 
     /// <summary>Tests: the GPU memory provider to use instead of the Windows/MOCK one chosen from the settings.</summary>
     public Func<IGpuMemoryProvider>? GpuMemoryProvider { get; init; }
+
+    /// <summary>PcControlCenter.ConsoleSignal.exe (sends Ctrl+C to Basalt's console); null = Basalt is stopped without it.</summary>
+    public string? BasaltSignalHelper { get; init; }
+
+    /// <summary>Tests: the system the Basalt controller uses instead of the Windows/MOCK one.</summary>
+    public Func<IBasaltSystem>? BasaltSystem { get; init; }
+
+    /// <summary>Tests: shorter Basalt intervals.</summary>
+    public BasaltTimings? BasaltTimings { get; init; }
 }
 
 /// <summary>
@@ -31,7 +43,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     private DataRootLock? _lock;
 
     private ShellRuntime(ShellPaths paths, ShellSettingsStore store, LoadedShellSettings loaded, DataRootLock rootLock, FileAppLogger fileLog,
-        MemoryLogSink log, SharedHardwareHub hub, GpuMemoryMonitor gpuMemory, ShellOptions options)
+        MemoryLogSink log, SharedHardwareHub hub, GpuMemoryMonitor gpuMemory, BasaltController basalt, ShellOptions options)
     {
         Paths = paths;
         SettingsStore = store;
@@ -42,6 +54,7 @@ public sealed class ShellRuntime : IAsyncDisposable
         Log = log;
         Hub = hub;
         GpuMemory = gpuMemory;
+        Basalt = basalt;
         Options = options;
         Intervals = new SensorIntervalCoordinator(hub, TimeSpan.FromMilliseconds(Settings.Hardware.MaxIntervalMs));
         Supervisor = new ModuleSupervisor(log);
@@ -80,6 +93,12 @@ public sealed class ShellRuntime : IAsyncDisposable
     /// of the shared reader: it never opens NVML, and when it fails only the GPU memory page shows N/A.
     /// </summary>
     public GpuMemoryMonitor GpuMemory { get; }
+
+    /// <summary>
+    /// The local Basalt server (로컬 AI › Basalt): watched every few seconds, started and stopped only on request. Not a
+    /// module: it works with the local AI module off, and closing the app leaves Basalt running.
+    /// </summary>
+    public BasaltController Basalt { get; }
 
     public SensorIntervalCoordinator Intervals { get; }
     public ModuleSupervisor Supervisor { get; }
@@ -131,9 +150,14 @@ public sealed class ShellRuntime : IAsyncDisposable
         var gpuMemory = options.GpuMemoryProvider is { } provider
             ? new GpuMemoryMonitor(provider, options.Time, log)
             : GpuMemoryMonitor.Create(hardware.ProcessMemoryEnabled, options.MockSensors, options.Time, log);
+        IBasaltSystem basaltSystem = options.BasaltSystem?.Invoke()
+                                     ?? (options.MockSensors ? new MockBasaltSystem(options.Time)
+                                         : OperatingSystem.IsWindows() ? new WindowsBasaltSystem(options.BasaltSignalHelper)
+                                         : new UnavailableBasaltSystem());
+        var basalt = new BasaltController(basaltSystem, loaded.Settings.Basalt, options.Time, log, options.BasaltTimings);
         log.Info("app", $"시작 {AppInfo.Version}, 데이터 폴더 {(paths.IsPortable ? "(포터블)" : paths.Root)}, 관리자 권한 {Environment.IsPrivilegedProcess}, "
                         + $"센서 {(hub.IsMock ? "MOCK" : hub.GpuProviderName)}");
-        return new ShellRuntime(paths, store, loaded, rootLock, fileLog, log, hub, gpuMemory, options);
+        return new ShellRuntime(paths, store, loaded, rootLock, fileLog, log, hub, gpuMemory, basalt, options);
     }
 
     /// <summary>Starts the sensor reader and the GPU memory reader, then all modules in parallel.</summary>
@@ -141,6 +165,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     {
         Hub.Start();
         GpuMemory.Start();
+        Basalt.Start();
         await Supervisor.StartAllAsync(cancellationToken).ConfigureAwait(false);
         foreach (var module in Supervisor.Modules)
         {
@@ -151,6 +176,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     public async Task StopAsync()
     {
         await Supervisor.StopAllAsync().ConfigureAwait(false);
+        await Basalt.StopWatchingAsync().ConfigureAwait(false);
         await GpuMemory.StopAsync().ConfigureAwait(false);
         await Hub.StopAsync().ConfigureAwait(false);
     }
@@ -159,6 +185,7 @@ public sealed class ShellRuntime : IAsyncDisposable
     {
         await StopAsync().ConfigureAwait(false);
         await GpuMemory.DisposeAsync().ConfigureAwait(false);
+        await Basalt.DisposeAsync().ConfigureAwait(false);
         await Hub.DisposeAsync().ConfigureAwait(false);
         Log.Info("app", "종료");
         FileLog.Dispose();

@@ -15,5 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="PcControlCenter.Tests" />
+    <!-- The Basalt server control reads the same process list, start times and TCP listeners. -->
+    <InternalsVisibleTo Include="PcControlCenter.Basalt" />
   </ItemGroup>
 </Project>
