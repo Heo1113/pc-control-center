@@ -289,7 +289,7 @@ public class BasaltControllerTests
     public async Task After_the_wait_the_listener_is_ended_first_then_the_wrapper_the_engine_and_the_window()
     {
         var system = new FakeBasaltSystem { Signal = FakeSignal.Ignored };
-        await using var controller = BasaltTest.Controller(system);
+        await using var controller = BasaltTest.Controller(system, timings: BasaltTest.ShortStopWait);
         await controller.StartServerAsync(BasaltSettings.QualityMode, Ct);
         await BasaltTest.WaitFor(controller, s => s.State == BasaltState.Running);
 
@@ -335,7 +335,7 @@ public class BasaltControllerTests
             }
         };
         system.AddTree(DateTimeOffset.UtcNow.AddMinutes(-1), withLauncher: false);
-        await using var controller = BasaltTest.Controller(system);
+        await using var controller = BasaltTest.Controller(system, timings: BasaltTest.ShortStopWait);
 
         var report = await controller.StopServerAsync(Ct);
 
@@ -382,7 +382,7 @@ public class BasaltControllerTests
                 s.Add(new BasaltProcess(Engine, Explorer, "notepad.exe", DateTimeOffset.UtcNow));
             }
         };
-        await using var controller = BasaltTest.Controller(system);
+        await using var controller = BasaltTest.Controller(system, timings: BasaltTest.ShortStopWait);
 
         var report = await controller.StopServerAsync(Ct);
 
