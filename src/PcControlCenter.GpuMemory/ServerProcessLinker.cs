@@ -44,7 +44,12 @@ public static class ServerProcessLinker
 {
     public const int MaxDepth = 3;
 
-    public static ServerProcessLink Link(string? endpoint, GpuMemorySnapshot snapshot)
+    /// <param name="wrapperName">
+    /// Executables that wrap the server from above (Basalt: basalt.exe starts its Python server, which listens). Matching
+    /// ancestors of the listener, each verified to have started before its child, are linked with their verified
+    /// descendants too (an engine started by the wrapper beside the server). Null = the listener and its descendants only.
+    /// </param>
+    public static ServerProcessLink Link(string? endpoint, GpuMemorySnapshot snapshot, Func<string, bool>? wrapperName = null)
     {
         if (string.IsNullOrWhiteSpace(endpoint) || !Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
         {
@@ -94,6 +99,25 @@ public static class ServerProcessLinker
         var seen = new HashSet<int> { pid };
         var queue = new Queue<(ProcessEntry Parent, int Depth)>();
         queue.Enqueue((listener, 0));
+        for (var (child, up) = (listener, 1); wrapperName is not null && up <= MaxDepth; up++)
+        {
+            if (snapshot.Process(child.ParentProcessId) is not { } parent || parent.ProcessId == child.ProcessId || !wrapperName(parent.Name) || !seen.Add(parent.ProcessId))
+            {
+                break;
+            }
+
+            if (parent.StartTime is not { } wrapperStart || child.StartTime is not { } below || parent.State != ProcessIdentityState.Verified || wrapperStart > below)
+            {
+                unverified.Add($"PID {parent.ProcessId} {parent.Name}: PID {child.ProcessId}의 부모로 보이지만 시작 시각을 확인할 수 없어 연결하지 않음");
+                break;
+            }
+
+            linked.Add(new LinkedProcess(parent, -up, MemoryOf(snapshot, parent.ProcessId)));
+            evidence.Add($"PID {parent.ProcessId} {parent.Name}: PID {child.ProcessId} {child.Name}의 부모 (래퍼, 시작 시각 확인: {Clock(wrapperStart)} ≤ {Clock(below)})");
+            queue.Enqueue((parent, 0));
+            child = parent;
+        }
+
         while (queue.Count > 0)
         {
             var (parent, depth) = queue.Dequeue();

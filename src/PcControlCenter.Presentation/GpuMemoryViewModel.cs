@@ -141,6 +141,18 @@ public sealed record ProcessDetailView(
 {
     /// <summary>An info mark after the composition note when its full explanation is in the tooltip.</summary>
     public string BreakdownInfoGlyph => string.IsNullOrEmpty(BreakdownDetails) ? "" : GpuMemoryViewModel.InfoGlyphText;
+
+    /// <summary>The local LLM server the process is linked to ("Basalt", "Strata"); empty when none.</summary>
+    public string ServerLabel { get; init; } = "";
+
+    /// <summary>The title over the local AI module's report (it reads Basalt through Strata's API when both share the port).</summary>
+    public string StrataTitle { get; init; } = "Strata가 보고한 값";
+
+    /// <summary>How the process was linked to Basalt (port owner, descendants, wrapper); null when it is not Basalt's.</summary>
+    public string? BasaltEvidence { get; init; }
+
+    /// <summary>The link evidence for the server chip.</summary>
+    public string? ServerEvidence => BasaltEvidence ?? StrataEvidence;
 }
 
 /// <summary>
@@ -160,6 +172,12 @@ public interface IProcessIcons
 /// variable its settings read the API key from (the page reads the key for each request to Strata's /metrics, never keeps it).
 /// </summary>
 public sealed record StrataContext(RuntimeSnapshot? Snapshot, string? Unavailable, string? CredentialVariable = null);
+
+/// <summary>
+/// The Basalt server for this page: its port while Basalt runs (or starts, or stops), null otherwise. The page links the
+/// port's listener, its descendants and its basalt* wrapper to the measured processes; nothing is asked of Basalt here.
+/// </summary>
+public sealed record BasaltContext(int? Port, string State);
 
 /// <summary>One row of the process table. Updated in place on every reading, so selection and sort order survive refreshes.</summary>
 public sealed partial class GpuProcessRow(ProcessKey key, long luid) : ObservableObject
@@ -213,6 +231,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
     [ObservableProperty] public partial string Adapter { get; set; } = "";
     [ObservableProperty] public partial string AdapterFull { get; set; } = "";
     [ObservableProperty] public partial bool IsStrata { get; set; }
+
+    /// <summary>The local LLM server this process is linked to by port and process tree ("Basalt", "Strata"); empty when none.</summary>
+    [ObservableProperty] public partial string ServerLabel { get; set; } = "";
     /// <summary>Why the row's identity is uncertain; null when it was verified (no tooltip then).</summary>
     [ObservableProperty] public partial string? Identity { get; set; }
     [ObservableProperty] public partial bool IsUncertain { get; set; }
@@ -326,6 +347,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private List<Baseline.Entry> _gone = [];
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
+    private ServerProcessLink? _basaltLink;
+    private BasaltContext? _basaltContext;
+    private readonly Func<BasaltContext>? _basalt;
     private RuntimeSnapshot? _strataSnapshot;
     private bool _rendered;
     private DateTimeOffset? _renderedAt;
@@ -339,12 +363,15 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// null asks nothing.
     /// </param>
     /// <param name="icons">The processes' executable icons for the table; null shows none.</param>
+    /// <param name="basalt">The Basalt server's port while it runs (the shell's Basalt control); null leaves Basalt out.</param>
     public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
-        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null, IProcessIcons? icons = null)
+        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null, IProcessIcons? icons = null,
+        Func<BasaltContext>? basalt = null)
     {
         _monitor = monitor;
         _hub = hub;
         _strata = strata;
+        _basalt = basalt;
         _time = time ?? TimeProvider.System;
         _page = page ?? new GpuMemoryPageSettings();
         _page.Normalize();
@@ -411,6 +438,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
     /// <summary>Strata's status is shown in the toolbar only while Strata answers (reachable); otherwise it is in the status tooltip.</summary>
     [ObservableProperty] public partial bool ShowStrataStatus { get; set; }
+
+    /// <summary>Basalt's status in the toolbar, shown while Basalt runs (the Basalt page controls it).</summary>
+    [ObservableProperty] public partial bool ShowBasaltStatus { get; set; }
+    [ObservableProperty] public partial string BasaltText { get; set; } = "";
+    [ObservableProperty] public partial string BasaltToolTip { get; set; } = "";
+    [ObservableProperty] public partial Level BasaltLevel { get; set; } = Level.Muted;
 
     /// <summary>A baseline is held: rows and adapters show the change since it (B1).</summary>
     [ObservableProperty] public partial bool HasBaseline { get; set; }
@@ -576,6 +609,29 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     }
 
     private bool CanShowStrata() => _rows.Values.Any(r => r.IsStrata);
+
+    /// <summary>Selects the Basalt process with the most dedicated memory (its engine, usually), clearing filters that hide it.</summary>
+    [RelayCommand(CanExecute = nameof(CanShowBasalt))]
+    private void ShowBasalt()
+    {
+        if (_rows.Values.Where(r => r.ServerLabel == "Basalt").OrderByDescending(r => r.Dedicated).FirstOrDefault() is not { } row)
+        {
+            return;
+        }
+
+        if (!_shown.Contains(row))
+        {
+            Filter = "";
+            ClearKindFilter();
+        }
+
+        SelectedProcess = row;
+    }
+
+    private bool CanShowBasalt() => _rows.Values.Any(r => r.ServerLabel == "Basalt");
+
+    /// <summary>The port of a running Basalt on this PC; null when Basalt is off (or the shell has no Basalt control).</summary>
+    public static int? BasaltPort(BasaltContext? basalt) => basalt?.Port is int port and > 0 and <= 65535 ? port : null;
 
     public void SetSort(string column, bool descending)
     {
@@ -942,6 +998,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         var health = _monitor.Health;
         var latest = _monitor.Latest;
         var strata = _strata();
+        var basalt = _basalt?.Invoke();
+        _basaltContext = basalt;
         UpdateWatchedPorts(strata, now);
         var age = latest is null ? (TimeSpan?)null : now - latest.Timestamp;
         // Stale by age, or because no further readings can come (reader stopped, unavailable or switched off).
@@ -953,11 +1011,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
 
         UpdateStatus(health, latest, age, stale);
-        var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}";
+        var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}|{BasaltPort(basalt)}";
         _strataContext = strata;
         if (_rendered && latest?.Timestamp == _renderedAt && stale == _renderedStale && key == _renderedKey)
         {
             UpdateStrata(strata, now);
+            UpdateBasalt();
             if (UpdateReports())
             {
                 BuildDetail();
@@ -974,7 +1033,11 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _current = latest is not null && !stale ? latest : null;
         _strataSnapshot = strata.Snapshot;
         _link = _current is not null && StrataPort(strata, now) is not null ? ServerProcessLinker.Link(strata.Snapshot!.Endpoint, _current) : null;
+        _basaltLink = _current is not null && BasaltPort(basalt) is int basaltPort
+            ? ServerProcessLinker.Link($"http://127.0.0.1:{basaltPort.ToString(CultureInfo.InvariantCulture)}", _current, ProcessKinds.IsBasaltName)
+            : null;
         UpdateStrata(strata, now);
+        UpdateBasalt();
         UpdateReports();
         HasValues = _current is not null;
         Replace(Issues, [.. (latest?.Issues ?? []).Select(i => $"{i.Source} [{i.Scope}]: {i.Message}").Distinct()]);
@@ -1036,7 +1099,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             ? link.Processes.FirstOrDefault(p => p.Memory.Any(m => m.DedicatedBytes > 0))?.Process ?? link.Listener
             : null;
         StrataLevel = !rt.IsReachable ? Level.Muted : port is null ? Level.Warning : Level.Good;
-        ShowStrataStatus = rt.IsReachable;
+        // The local AI module reading Basalt through Strata's API (same port): one chip, Basalt's.
+        ShowStrataStatus = rt.IsReachable && !(port is not null && port == BasaltPort(_basaltContext) && _basaltLink is { IsLinked: true });
         StrataText = !rt.IsReachable ? $"Strata {RuntimeStateText.ToKorean(rt.State)}"
             : holder is not null ? $"Strata · {holder.Name}"
             : "Strata 연결됨";
@@ -1050,7 +1114,36 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     }
 
     private void UpdateWatchedPorts(StrataContext strata, DateTimeOffset now)
-        => _monitor.SetWatchedPorts(StrataPort(strata, now) is int port ? [port] : []);
+        => _monitor.SetWatchedPorts(new[] { StrataPort(strata, now), BasaltPort(_basaltContext) }.OfType<int>().Distinct());
+
+    private void UpdateBasalt()
+    {
+        if (BasaltPort(_basaltContext) is not int port)
+        {
+            ShowBasaltStatus = false;
+            BasaltText = "";
+            BasaltToolTip = _basaltContext?.State ?? "";
+            ShowBasaltCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        var holder = _basaltLink is { IsLinked: true } link
+            ? link.Processes.Where(p => p.Memory.Any(m => m.DedicatedBytes > 0)).OrderByDescending(p => p.Memory.Sum(m => m.DedicatedBytes ?? 0)).FirstOrDefault()?.Process
+              ?? link.Listener
+            : null;
+        ShowBasaltStatus = true;
+        BasaltLevel = _basaltLink is { IsLinked: true } ? Level.Good : Level.Warning;
+        BasaltText = holder is not null ? $"Basalt · {holder.Name}" : "Basalt";
+        var sharesPort = StrataPort(_strataContext ?? new StrataContext(null, null), _time.GetUtcNow()) == port;
+        BasaltToolTip = string.Join(Environment.NewLine, new[]
+        {
+            $"{_basaltContext!.State} · 127.0.0.1:{port}",
+            sharesPort ? "로컬 AI 모듈도 이 주소에 Strata API로 연결되어 있습니다." : null,
+            _basaltLink is { IsLinked: false, Reason: { } reason } ? reason : null,
+            _basaltLink is { IsLinked: true } l ? string.Join(Environment.NewLine, l.Evidence) : null,
+        }.Where(x => x is not null));
+        ShowBasaltCommand.NotifyCanExecuteChanged();
+    }
 
     private void SyncAdapters(IReadOnlyList<(long Luid, AdapterView View)> views)
     {
@@ -1325,6 +1418,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.AdapterFull = s.Adapter(p.Luid)?.Info?.Name ?? GpuLuid.Format(p.Luid);
         row.Adapter = ShortAdapterName(row.AdapterFull);
         row.IsStrata = strata;
+        row.ServerLabel = ServerOf(p.ProcessId);
         row.IsUncertain = entry?.State is not ProcessIdentityState.Verified;
         row.Identity = IdentityText(entry) is { Length: > 0 } identity ? identity : null;
     }
@@ -1352,6 +1446,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         // executable name: the header cannot say how it places the model either way.
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
         (string Note, string Details)? withheld = model is null ? null
+            : IsBasalt(p.ProcessId) ? ("Basalt(Strata에서 갈라진 엔진)는 메모리를 자체 방식으로 배치한다고 보고 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
+                "Basalt는 Strata에서 갈라진 엔진이라 Strata처럼 전문가 캐시·KV·세션 버퍼를 자체 방식으로 배치한다고 보고, GGUF 헤더로 나누지 않습니다. "
+                + "이 판단은 Basalt의 구조를 실기기에서 확인하기 전의 추정입니다. 위 값은 Windows가 측정한 값입니다.")
             : IsStrata(p.ProcessId) ? ("Strata 엔진은 메모리를 자체 방식으로 배치해 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
                 "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
                 + "위 값은 측정값과 Strata가 보고한 값입니다.")
@@ -1485,7 +1582,12 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             evidence,
             reports,
             KindNotes[kind.Kind],
-            BuildChart(row, p));
+            BuildChart(row, p))
+        {
+            ServerLabel = ServerOf(p.ProcessId),
+            StrataTitle = IsBasalt(p.ProcessId) ? "로컬 AI 모듈이 보고한 값 (Basalt를 Strata API로 읽음)" : "Strata가 보고한 값",
+            BasaltEvidence = IsBasalt(p.ProcessId) && _basaltLink is { IsLinked: true } bl ? string.Join(Environment.NewLine, bl.Evidence) : null,
+        };
     }
 
     private ChartModel BuildChart(GpuProcessRow row, GpuProcessMemory p)
@@ -1613,7 +1715,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private KindResult KindOf(GpuMemorySnapshot s, GpuProcessMemory p)
     {
         var name = s.Process(p.ProcessId)?.Name ?? "";
-        var classified = ProcessKinds.Classify(p.ProcessId, name, s.Detail(p.ProcessId), p.Engines, IsStrata(p.ProcessId));
+        var server = ServerOf(p.ProcessId);
+        var classified = ProcessKinds.Classify(p.ProcessId, name, s.Detail(p.ProcessId), p.Engines, server.Length > 0, server.Length > 0 ? server : "Strata");
         return OverrideOf(p.ProcessId, name) is { } kind
             ? new KindResult(kind, $"사용자가 지정함 (자동 분류: {KindLabels[classified.Kind]} — {classified.Basis})")
             : classified;
@@ -1674,6 +1777,11 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     }
 
     private bool IsStrata(int pid) => _link is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
+
+    private bool IsBasalt(int pid) => _basaltLink is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
+
+    /// <summary>"Basalt" when linked to Basalt's port (also when the local AI module reads it as Strata), "Strata", or empty.</summary>
+    private string ServerOf(int pid) => IsBasalt(pid) ? "Basalt" : IsStrata(pid) ? "Strata" : "";
 
     /// <summary>Completes when the runtimes asked so far have answered (tests wait on it).</summary>
     internal Task ReportsIdle() => _reports?.WhenIdle() ?? Task.CompletedTask;

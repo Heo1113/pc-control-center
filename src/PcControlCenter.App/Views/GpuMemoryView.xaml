@@ -275,8 +275,8 @@
               <TextBlock DockPanel.Dock="Left" Text="{Binding Pid, StringFormat='PID {0}'}" Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource StatLabel}" FontSize="12" />
               <TextBlock DockPanel.Dock="Left" Text="{Binding Kind}" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12"
                          Foreground="{StaticResource TextSecondaryBrush}" ToolTip="{Binding KindBasis}" />
-              <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" Visibility="{Binding IsStrata, Converter={StaticResource BoolToVisibility}}" ToolTip="{Binding StrataEvidence}">
-                <TextBlock Text="Strata" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
+              <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" Visibility="{Binding ServerLabel, Converter={StaticResource NotEmptyToVisibility}}" ToolTip="{Binding ServerEvidence}">
+                <TextBlock Text="{Binding ServerLabel}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
               </Border>
             </DockPanel>
             <TextBlock Text="{Binding Subtitle}" Style="{StaticResource Caption}" Margin="0,1,0,2" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
@@ -353,7 +353,7 @@
             </ItemsControl>
 
             <StackPanel Visibility="{Binding StrataModel, Converter={StaticResource NotEmptyToVisibility}}">
-              <TextBlock Text="Strata가 보고한 값" Style="{StaticResource SectionLabel}" ToolTip="{Binding StrataEvidence}" />
+              <TextBlock Text="{Binding StrataTitle}" Style="{StaticResource SectionLabel}" ToolTip="{Binding StrataEvidence}" />
               <WrapPanel>
                 <StackPanel Style="{StaticResource Stat}">
                   <TextBlock Text="모델" Style="{StaticResource StatLabel}" />
@@ -492,14 +492,24 @@
       </Button>
       <TextBlock x:Name="Notice" Grid.Column="2" Margin="12,0" VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="12" Visibility="Collapsed"
                  Foreground="{StaticResource TextPrimaryBrush}" AutomationProperties.LiveSetting="Polite" />
-      <Button Grid.Column="3" Style="{StaticResource FlatButton}" Command="{Binding ShowStrataCommand}" ToolTip="{Binding StrataToolTip}" Margin="0,0,6,0"
-              ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Strata 프로세스 선택"
-              Visibility="{Binding ShowStrataStatus, Converter={StaticResource BoolToVisibility}}">
-        <StackPanel Orientation="Horizontal">
-          <Ellipse Style="{StaticResource StatusDot}" Width="7" Height="7" Fill="{Binding StrataLevel, Converter={StaticResource LevelBrush}}" />
-          <TextBlock Text="{Binding StrataText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
-        </StackPanel>
-      </Button>
+      <StackPanel Grid.Column="3" Orientation="Horizontal">
+        <Button Style="{StaticResource FlatButton}" Command="{Binding ShowBasaltCommand}" ToolTip="{Binding BasaltToolTip}" Margin="0,0,6,0"
+                ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Basalt 프로세스 선택"
+                Visibility="{Binding ShowBasaltStatus, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Style="{StaticResource StatusDot}" Width="7" Height="7" Fill="{Binding BasaltLevel, Converter={StaticResource LevelBrush}}" />
+            <TextBlock Text="{Binding BasaltText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+          </StackPanel>
+        </Button>
+        <Button Style="{StaticResource FlatButton}" Command="{Binding ShowStrataCommand}" ToolTip="{Binding StrataToolTip}" Margin="0,0,6,0"
+                ToolTipService.ShowOnDisabled="True" AutomationProperties.Name="Strata 프로세스 선택"
+                Visibility="{Binding ShowStrataStatus, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel Orientation="Horizontal">
+            <Ellipse Style="{StaticResource StatusDot}" Width="7" Height="7" Fill="{Binding StrataLevel, Converter={StaticResource LevelBrush}}" />
+            <TextBlock Text="{Binding StrataText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
       <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center" ToolTip="{Binding StatusToolTip}"
                   AutomationProperties.AutomationId="GpuMemoryStatus">
         <Ellipse Style="{StaticResource StatusDot}" Width="7" Height="7" Fill="{Binding StatusLevel, Converter={StaticResource LevelBrush}}" />
@@ -610,8 +620,8 @@
                       </Style>
                     </TextBlock.Style>
                   </TextBlock>
-                  <Border Style="{StaticResource Chip}" Margin="0" Visibility="{Binding IsStrata, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Text="Strata" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
+                  <Border Style="{StaticResource Chip}" Margin="0" Visibility="{Binding ServerLabel, Converter={StaticResource NotEmptyToVisibility}}">
+                    <TextBlock Text="{Binding ServerLabel}" FontSize="11" Foreground="{StaticResource TextPrimaryBrush}" />
                   </Border>
                 </StackPanel>
               </DataTemplate>

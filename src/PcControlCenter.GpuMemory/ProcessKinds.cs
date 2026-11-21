@@ -27,7 +27,10 @@ public static class ProcessKinds
     public static bool IsStrataEngineName(string name)
         => name.Equals("strata.exe", StringComparison.OrdinalIgnoreCase) || name.Equals("strata", StringComparison.OrdinalIgnoreCase);
 
-    private static readonly string[] LlmNames = ["llama-", "llama.", "ollama", "lm studio", "lmstudio", "llmster", "koboldcpp", "jan.", "gpt4all", "llamafile", "strata"];
+    /// <summary>Basalt (a Strata fork): basalt.exe and the executables it ships whose names start with "basalt".</summary>
+    public static bool IsBasaltName(string name) => name.StartsWith("basalt", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly string[] LlmNames = ["llama-", "llama.", "ollama", "lm studio", "lmstudio", "llmster", "koboldcpp", "jan.", "gpt4all", "llamafile", "strata", "basalt"];
 
     private static readonly IReadOnlySet<string> Browsers = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
@@ -39,7 +42,8 @@ public static class ProcessKinds
         "csrss.exe", "winlogon.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe", "system",
     };
 
-    public static KindResult Classify(int pid, string name, ProcessDetail? detail, EngineUsage? engines, bool isStrataProcess)
+    /// <param name="isStrataProcess">Linked to a local LLM server's port (Strata, or Basalt with <paramref name="server"/>).</param>
+    public static KindResult Classify(int pid, string name, ProcessDetail? detail, EngineUsage? engines, bool isStrataProcess, string server = "Strata")
     {
         var lower = name.ToLowerInvariant();
         var runtimes = detail?.Runtimes ?? [];
@@ -60,7 +64,7 @@ public static class ProcessKinds
 
         if (isStrataProcess)
         {
-            return new(ProcessKind.Llm, "Strata 서버 포트와 프로세스 트리");
+            return new(ProcessKind.Llm, $"{server} 서버 포트와 프로세스 트리");
         }
 
         if (detail?.Models.FirstOrDefault(m => m.Gguf?.Kind == "LLM") is { } llm)

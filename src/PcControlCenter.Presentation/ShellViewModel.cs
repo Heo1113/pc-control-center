@@ -113,7 +113,7 @@ public sealed partial class ShellViewModel : ObservableObject
         // Local runtimes are asked about the selected process only (loopback GETs); MOCK answers with --mock-sensors.
         GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time,
             runtime.Settings.GpuMemoryPage, () => runtime.SettingsStore.Save(runtime.Settings),
-            runtime.Options.MockSensors ? new MockRuntimeHttp() : new HttpRuntimeClient(), processIcons);
+            runtime.Options.MockSensors ? new MockRuntimeHttp() : new HttpRuntimeClient(), processIcons, () => BasaltOf(runtime));
         History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);
@@ -352,6 +352,23 @@ public sealed partial class ShellViewModel : ObservableObject
                 Dashboard.Invalidate();
             }
         }
+    }
+
+    /// <summary>Basalt's port for the GPU memory page while it runs, starts or stops (its processes are linked by that port).</summary>
+    private static BasaltContext BasaltOf(ShellRuntime runtime)
+    {
+        var status = runtime.Basalt.Status;
+        var live = status.State is PcControlCenter.Basalt.BasaltState.Running or PcControlCenter.Basalt.BasaltState.Starting
+            or PcControlCenter.Basalt.BasaltState.Stopping or PcControlCenter.Basalt.BasaltState.Failed;
+        return new BasaltContext(live && status.Tree?.Owner is not null ? status.Port : null,
+            $"Basalt {status.State switch
+            {
+                PcControlCenter.Basalt.BasaltState.Running => "실행 중",
+                PcControlCenter.Basalt.BasaltState.Starting => "켜는 중",
+                PcControlCenter.Basalt.BasaltState.Stopping => "끄는 중",
+                PcControlCenter.Basalt.BasaltState.Off => "꺼짐",
+                _ => status.Detail,
+            }}");
     }
 
     /// <summary>The local AI module's latest Strata poll for the GPU memory page, or why there is none.</summary>
