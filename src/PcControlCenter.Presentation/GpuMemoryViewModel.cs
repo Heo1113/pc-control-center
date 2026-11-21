@@ -96,9 +96,13 @@ public sealed record DetailFact(string Label, string Value, bool IsEstimate = fa
 /// What a runtime reported about itself (Strata's engine, Ollama, llama.cpp's server): settings or its last report, never the
 /// current use. The title says which and from when; the note says what the values mean and where they came from.
 /// </summary>
-public sealed record ReportGroup(string Title, string Note, IReadOnlyList<DetailFact> Facts, bool IsError = false)
+public sealed record ReportGroup(string Title, string Note, IReadOnlyList<DetailFact> Facts, bool IsError = false, string? Details = null)
 {
-    public bool SameAs(ReportGroup other) => Title == other.Title && Note == other.Note && IsError == other.IsError && Facts.SequenceEqual(other.Facts);
+    /// <summary>An info mark after the short note when there is more to read (in its tooltip).</summary>
+    public string InfoGlyph => string.IsNullOrEmpty(Details) ? "" : GpuMemoryViewModel.InfoGlyphText;
+
+    public bool SameAs(ReportGroup other)
+        => Title == other.Title && Note == other.Note && Details == other.Details && IsError == other.IsError && Facts.SequenceEqual(other.Facts);
 }
 
 /// <summary>A model file mapped into the selected process.</summary>
@@ -122,6 +126,7 @@ public sealed record ProcessDetailView(
     IReadOnlyList<BarSegment> Breakdown,
     IReadOnlyList<LegendItem> BreakdownLegend,
     string? BreakdownNote,
+    string? BreakdownDetails,
     string BreakdownTitle,
     string GpuCaption,
     string Runtimes,
@@ -132,7 +137,23 @@ public sealed record ProcessDetailView(
     string? StrataEvidence,
     IReadOnlyList<ReportGroup> Reports,
     string Note,
-    ChartModel? Chart);
+    ChartModel? Chart)
+{
+    /// <summary>An info mark after the composition note when its full explanation is in the tooltip.</summary>
+    public string BreakdownInfoGlyph => string.IsNullOrEmpty(BreakdownDetails) ? "" : GpuMemoryViewModel.InfoGlyphText;
+}
+
+/// <summary>
+/// Small icons of the processes' executables (the app layer reads them in the background). <see cref="Icon"/> returns an
+/// image object for the view, or a generic program icon while the real one is unknown or cannot be read; it never blocks.
+/// <see cref="Changed"/> fires (on the UI thread) when icons arrived.
+/// </summary>
+public interface IProcessIcons
+{
+    object? Icon(int pid, string name);
+
+    event Action? Changed;
+}
 
 /// <summary>
 /// The local AI module's view of Strata for this page: its latest poll, or why there is none, and the name of the environment
@@ -155,6 +176,9 @@ public sealed partial class GpuProcessRow(ProcessKey key, long luid) : Observabl
 
     /// <summary>The kind was given by the user (by executable name), not classified from evidence.</summary>
     [ObservableProperty] public partial bool KindOverridden { get; set; }
+
+    /// <summary>The executable's small icon (an image for the view), or a generic program icon; null without an icon source.</summary>
+    [ObservableProperty] public partial object? Icon { get; set; }
 
     /// <summary>Bytes for sorting; -1 = N/A (sorts last when the largest come first).</summary>
     [ObservableProperty] public partial long Dedicated { get; set; }
@@ -255,6 +279,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     };
 
     private const string DefaultPlaceholder = "표에서 프로세스를 고르면 자세한 내용이 여기에 나옵니다.";
+
+    /// <summary>The icon font's "info" glyph, after a short note whose full explanation is in its tooltip.</summary>
+    public const string InfoGlyphText = "\uE946";
     private static readonly string[] AdapterNoise = ["NVIDIA GeForce ", "NVIDIA ", "AMD ", "Intel(R) ", "Microsoft ", "(R)", "(TM)"];
     private const string UnattributedColor = "#43423D";
     private const long OverlapTolerance = 16L << 20;
@@ -290,11 +317,13 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private readonly GpuMemoryPageSettings _page;
     private readonly Action? _savePage;
     private readonly RuntimeReportPoller? _reports;
+    private readonly IProcessIcons? _icons;
     private int _reportsVersion = -1;
     private StrataContext? _strataContext;
     private (string Name, int Pid)? _lost;
     private Baseline? _baseline;
-    private Dictionary<(ProcessKey, long), (long? Delta, string? Note)> _deltas = [];
+    private Dictionary<(ProcessKey, long), (long? Delta, string? Note, Baseline.Entry? Then)> _deltas = [];
+    private List<Baseline.Entry> _gone = [];
     private GpuMemorySnapshot? _current;
     private ServerProcessLink? _link;
     private RuntimeSnapshot? _strataSnapshot;
@@ -309,8 +338,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// Asks local runtimes about the selected process (Strata's /metrics, Ollama's /api/ps, llama.cpp's /props and /models);
     /// null asks nothing.
     /// </param>
+    /// <param name="icons">The processes' executable icons for the table; null shows none.</param>
     public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
-        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null)
+        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null, IProcessIcons? icons = null)
     {
         _monitor = monitor;
         _hub = hub;
@@ -320,6 +350,17 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _page.Normalize();
         _savePage = savePage;
         _reports = runtimeHttp is null ? null : new RuntimeReportPoller(runtimeHttp, _time);
+        _icons = icons;
+        if (icons is not null)
+        {
+            icons.Changed += () =>
+            {
+                foreach (var row in _rows.Values)
+                {
+                    row.Icon = icons.Icon(row.Pid, row.Name);
+                }
+            };
+        }
         ShowAll = _page.ShowAll;
         ChartMetric = _page.ChartMetric;
         ChartMinutes = _page.ChartMinutes;
@@ -444,6 +485,51 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     /// <summary>Height of the detail panel chosen with the splitter; 0 = the default share.</summary>
     public double DetailHeight => _page.DetailHeight;
 
+    /// <summary>Where the detail panel goes: "Auto", "Below" or "Beside" (remembered).</summary>
+    public string LayoutMode => _page.Layout;
+
+    public double DetailWidth => _page.DetailWidth;
+
+    /// <summary>The narrowest the detail panel can be beside the table (its figures and the chart stacked).</summary>
+    public const double DetailMinWidth = 440;
+
+    /// <summary>
+    /// Whether the detail panel goes beside the table: always for "Beside", never for "Below"; for "Auto" only when the width
+    /// (device-independent pixels, so a 4K screen at 175% counts as about 2,190) holds the visible columns at their minimum
+    /// widths plus the splitter and the detail panel's minimum, so the table never needs a horizontal scroll bar for it.
+    /// </summary>
+    public static bool UseBeside(string mode, double available, double tableMinWidth)
+        => mode switch
+        {
+            "Beside" => true,
+            "Below" => false,
+            _ => double.IsFinite(available) && available >= tableMinWidth + 6 + DetailMinWidth,
+        };
+
+    /// <summary>Remembers where the detail panel goes.</summary>
+    public void SetLayoutMode(string mode)
+    {
+        if (!GpuMemoryPageSettings.Layouts.Contains(mode) || mode == _page.Layout)
+        {
+            return;
+        }
+
+        _page.Layout = mode;
+        SavePage();
+        OnPropertyChanged(nameof(LayoutMode));
+    }
+
+    /// <summary>Remembers the detail panel's width beside the table (0: the default share).</summary>
+    public void SetDetailWidth(double width)
+    {
+        var value = double.IsFinite(width) && width is > 0 and < 4000 ? Math.Round(width) : 0;
+        if (value != _page.DetailWidth)
+        {
+            _page.DetailWidth = value;
+            SavePage();
+        }
+    }
+
     [RelayCommand]
     private void TogglePause() => IsPaused = !IsPaused;
 
@@ -566,9 +652,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         if (d.BreakdownLegend.Count > 0)
         {
             lines.Add((d.Breakdown.Count > 0 ? "구성 (추정): " : "비교: ") + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}"))
-                      + (d.BreakdownNote is { } note ? $" — {note}" : ""));
+                      + ((d.BreakdownDetails ?? d.BreakdownNote) is { } note ? $" — {note}" : ""));
         }
-        else if (d.BreakdownNote is { } withheldNote)
+        else if ((d.BreakdownDetails ?? d.BreakdownNote) is { } withheldNote)
         {
             lines.Add($"구성: {withheldNote}");
         }
@@ -579,7 +665,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
 
         lines.AddRange(d.Reports.Select(g => $"{g.Title}: " + string.Join(" · ", g.Facts.Select(f => $"{f.Label} {f.Value}"))
-                                             + (g.Note.Length > 0 ? $" — {g.Note}" : "")));
+                                             + ((g.Details ?? g.Note) is { Length: > 0 } text ? $" — {text}" : "")));
 
         lines.Add($"측정 {Text.DateTime(s.Timestamp)} · 출처 {s.Source}");
         return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
@@ -731,6 +817,62 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
 
         return string.Join(Environment.NewLine, lines);
     }
+
+    /// <summary>
+    /// The comparison with the baseline as CSV (G4): one row per adapter, per process in this reading and per process gone
+    /// since, with the baseline's and this reading's times, the GPU, the process (name, PID, start time), both values, the
+    /// difference and the unit (bytes, as measured). Times are local with their offset (ISO 8601).
+    /// </summary>
+    public string? BaselineCsv()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        static string Iso(DateTimeOffset? t) => t is { } v ? v.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture) : "";
+        static string Num(long? v) => v is long n ? n.ToString(CultureInfo.InvariantCulture) : "";
+        string Gpu(long luid) => s.Adapter(luid)?.Info?.Name ?? GpuLuid.Format(luid);
+        var rows = new List<string[]>
+        {
+            new[] { "구분", "이름", "PID", "프로세스 시작 시각", "GPU", "기준점 측정 시각", "현재 측정 시각", "기준점 전용", "현재 전용", "차이", "단위", "비고" },
+        };
+        foreach (var a in s.Adapters)
+        {
+            if (b.AdapterDedicated.TryGetValue(a.Luid, out var then))
+            {
+                rows.Add(["어댑터", Gpu(a.Luid), "", "", Gpu(a.Luid), Iso(b.At), Iso(s.Timestamp), Num(then), Num(a.DedicatedUsageBytes),
+                    Num(Diff(a.DedicatedUsageBytes, then)), "bytes", "어댑터 전용 사용량 (측정)"]);
+            }
+        }
+
+        foreach (var p in s.Processes.OrderByDescending(p => p.DedicatedBytes ?? 0).ThenBy(p => p.ProcessId))
+        {
+            if (!_deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+            {
+                continue;
+            }
+
+            var entry = s.Process(p.ProcessId);
+            rows.Add(["프로세스", entry?.Name ?? $"PID {p.ProcessId}", p.ProcessId.ToString(CultureInfo.InvariantCulture), Iso(entry?.StartTime), Gpu(p.Luid),
+                Iso(b.At), Iso(s.Timestamp), Num(change.Then?.Dedicated), Num(p.DedicatedBytes), Num(change.Delta), "bytes", change.Note ?? "같은 프로세스"]);
+        }
+
+        foreach (var g in _gone)
+        {
+            rows.Add(["사라짐", g.Name, g.Pid.ToString(CultureInfo.InvariantCulture), g.Key.StartTicks > 0 ? Iso(new DateTimeOffset(g.Key.StartTicks, TimeSpan.Zero)) : "",
+                Gpu(g.Luid), Iso(b.At), Iso(s.Timestamp), Num(g.Dedicated), "", g.Dedicated is long d ? Num(-d) : "", "bytes", "종료했거나 GPU 메모리를 놓음"]);
+        }
+
+        return string.Join("\r\n", rows.Select(r => string.Join(',', r.Select(CsvField)))) + "\r\n";
+    }
+
+    /// <summary>A CSV field, quoted when it holds a comma, a quote or a line break (RFC 4180).</summary>
+    private static string CsvField(string value)
+        => value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>A file name for the CSV: when the comparison was saved.</summary>
+    public string BaselineCsvFileName() => $"gpu-memory-baseline-{_time.GetUtcNow().ToLocalTime():yyyyMMdd-HHmmss}.csv";
 
     partial void OnKindFilterChanged(ProcessKind? value)
     {
@@ -1150,6 +1292,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         row.KindColor = KindColors[kind.Kind];
         row.KindBasis = $"분류 근거: {kind.Basis}";
         row.KindOverridden = OverrideOf(p.ProcessId, row.Name) is not null;
+        row.Icon = _icons?.Icon(p.ProcessId, row.Name);
         row.Dedicated = p.DedicatedBytes ?? -1;
         row.DedicatedText = Text.Bytes(p.DedicatedBytes);
         row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
@@ -1208,18 +1351,22 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         // Strata's engine is recognised by the link to its server or, without one (the local AI module not connected), by its
         // executable name: the header cannot say how it places the model either way.
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
-        var withheld = model is null ? null
-            : IsStrata(p.ProcessId) ? "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
-                                      + "위 값은 측정값과 Strata가 보고한 값입니다."
-            : ProcessKinds.IsStrataEngineName(entry?.Name ?? "") ? "이름이 Strata 엔진(strata.exe)이라 구성을 그리지 않습니다. Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 "
-                                      + "자체 방식으로 배치해 GGUF 헤더로는 나눌 수 없습니다. 로컬 AI 모듈이 이 Strata에 연결되면 엔진이 보고한 값도 함께 보여 줍니다."
-            : model.Experts is > 0 ? "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다."
+        (string Note, string Details)? withheld = model is null ? null
+            : IsStrata(p.ProcessId) ? ("Strata 엔진은 메모리를 자체 방식으로 배치해 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
+                "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
+                + "위 값은 측정값과 Strata가 보고한 값입니다.")
+            : ProcessKinds.IsStrataEngineName(entry?.Name ?? "") ? ("Strata 엔진(strata.exe)이라 헤더로 나누지 않습니다.",
+                "이름이 Strata 엔진(strata.exe)이라 구성을 그리지 않습니다. Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 "
+                + "자체 방식으로 배치해 GGUF 헤더로는 나눌 수 없습니다. 로컬 AI 모듈이 이 Strata에 연결되면 엔진이 보고한 값도 함께 보여 줍니다.")
+            : model.Experts is > 0 ? ("전문가(MoE) 모델이라 GPU에 있는 가중치를 헤더로 정할 수 없어 나누지 않습니다.",
+                "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다.")
             : null;
         long? context = null; // no runtime reports the context of a process other than Strata's yet, so KV is not split
         var estimate = model is null || withheld is not null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
         IReadOnlyList<BarSegment> breakdown = [];
         IReadOnlyList<LegendItem> breakdownLegend = [];
         string? breakdownNote = null;
+        string? breakdownDetails = null;
         if (estimate is { FitsAllLayers: false })
         {
             // Not every layer can be on the GPU, and which part of the measured total is weights is unknown: the two numbers
@@ -1229,8 +1376,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 new(WeightsColor, "가중치 (모든 층 GPU 가정, 이론값)", Text.Bytes(estimate.WeightsAllLayers), true),
                 new(MeasuredColor, "이 프로세스 전용 (측정)", Text.Bytes(estimate.Total)),
             ];
-            breakdownNote = "모든 층을 GPU에 올렸을 때의 가중치가 이 프로세스의 전용 메모리보다 커서 일부 층만 GPU에 있는 것으로 보입니다. "
-                            + "측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어 구성은 그리지 않습니다.";
+            breakdownNote = "일부 층만 GPU에 있는 것으로 보여 구성은 그리지 않습니다.";
+            breakdownDetails = "모든 층을 GPU에 올렸을 때의 가중치가 이 프로세스의 전용 메모리보다 커서 일부 층만 GPU에 있는 것으로 보입니다. "
+                               + "측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어 구성은 그리지 않습니다.";
         }
         else if (estimate is { Rest: long rest })
         {
@@ -1247,18 +1395,27 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(rest), true));
             breakdown = segments;
             breakdownLegend = legend;
-            breakdownNote = string.Join(" ", new[]
+            var kvShort = estimate.KvCache is not null ? null
+                : model!.KvUnknownReason is { } reason ? $"KV는 나누지 않음 ({reason})"
+                : context is null ? "KV는 나누지 않음 (컨텍스트 미보고)"
+                : "KV는 나누지 않음 (추정값이 남은 양보다 큼)";
+            breakdownNote = kvShort is null ? "모든 층이 GPU에 있다고 가정한 추정입니다." : $"모든 층이 GPU에 있다고 가정한 추정입니다. {kvShort}.";
+            breakdownDetails = string.Join(" ", new[]
             {
                 "모든 층이 GPU에 있다고 가정한 추정입니다.",
                 estimate.KvCache is not null ? null
-                    : model!.KvUnknownReason is { } reason ? $"{reason}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
+                    : model!.KvUnknownReason is { } reason2 ? $"{reason2}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
                     : context is null ? "런타임이 컨텍스트를 알려 주지 않아 KV 캐시는 나누지 않았습니다."
                     : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.",
             }.Where(x => x is not null));
+            if (breakdownDetails == breakdownNote)
+            {
+                breakdownDetails = null;
+            }
         }
-        else if (withheld is not null)
+        else if (withheld is { } why)
         {
-            breakdownNote = withheld;
+            (breakdownNote, breakdownDetails) = why;
         }
 
         IReadOnlyList<ModelRow> models = (detail?.Models ?? []).Select(m => new ModelRow(
@@ -1316,6 +1473,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             breakdown,
             breakdownLegend,
             breakdownNote,
+            breakdownDetails,
             breakdown.Count > 0 ? "구성 (추정)" : breakdownLegend.Count > 0 ? "모델 가중치와 측정값" : "구성",
             engines is null || engines.Busiest < 1 ? "" : EngineName(engines),
             detail is null ? "아직 확인하지 않음" : detail.AccessDenied ? "확인할 수 없음 (보호되었거나 다른 사용자의 프로세스)"
@@ -1386,6 +1544,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
     private void CompareWithBaseline(GpuMemorySnapshot s)
     {
         _deltas = [];
+        _gone = [];
         if (_baseline is not { } b)
         {
             BaselineText = "";
@@ -1403,7 +1562,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var entry = s.Process(p.ProcessId);
             if (b.Processes.FirstOrDefault(x => x.Key == key && x.Luid == p.Luid) is { } same)
             {
-                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null);
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null, same);
                 continue;
             }
 
@@ -1412,18 +1571,19 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                     .OrderByDescending(x => x.Dedicated ?? 0).FirstOrDefault() is { } previous)
             {
                 restartedFrom.Add(previous);
-                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})");
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})", previous);
                 continue;
             }
 
             var startedAfter = entry?.StartTime is { } started && started > b.At;
-            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작");
+            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작", null);
         }
 
         var gone = b.Processes
             .Where(x => !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x) && (x.Dedicated >= GpuMemoryRules.MiB || x.Shared >= 16 * GpuMemoryRules.MiB))
             .OrderByDescending(x => x.Dedicated ?? 0)
             .ToList();
+        _gone = gone;
         BaselineGone = gone.Count == 0 ? ""
             : $"사라짐 {gone.Count}개: " + string.Join(", ", gone.Take(4).Select(x => $"{x.Name} (PID {x.Pid}) {Signed(-(x.Dedicated ?? 0))}"))
               + (gone.Count > 4 ? " 외" : "") + " (종료했거나 GPU 메모리를 놓음)";
@@ -1681,7 +1841,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         Add(settings, "엔진", r.EngineVersion);
         if (settings.Count > 0)
         {
-            yield return new ReportGroup("Strata 엔진 · 시작 때 정한 값", $"엔진이 시작할 때 /metrics의 engine으로 알린 설정입니다 ({read}).", settings);
+            yield return new ReportGroup("Strata 엔진 · 시작 때 정한 값", $"엔진 시작 때 보고 · {read}", settings,
+                Details: $"엔진이 시작할 때 /metrics의 engine으로 알린 설정입니다 ({read}).");
         }
 
         var a = r.LastAdjustment;
@@ -1702,8 +1863,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         if (last.Count > 0)
         {
             yield return new ReportGroup(a is null ? "Strata 엔진 · 마지막 보고 (시작 시)" : "Strata 엔진 · 마지막 보고 (VRAM 조정 시)",
-                $"엔진이 {(a is null ? "시작할 때" : "마지막 VRAM 조정 때")} 알린 값입니다. 지금 이 프로세스의 VRAM 사용량은 위의 전용 메모리(Windows 측정)이며, "
-                + $"이 값과 다를 수 있습니다 ({read}).", last);
+                $"보고값 · 지금 사용량은 위의 측정값 · {read}", last,
+                Details: $"엔진이 {(a is null ? "시작할 때" : "마지막 VRAM 조정 때")} 알린 값입니다. 지금 이 프로세스의 VRAM 사용량은 위의 전용 메모리(Windows 측정)이며, "
+                         + $"이 값과 다를 수 있습니다 ({read}).");
         }
     }
 
@@ -1742,7 +1904,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                 notes.Add("어느 실행기가 어느 모델인지는 Ollama가 알려 주지 않아, 서버에 로드된 모델을 모두 보여 줍니다.");
             }
 
-            yield return new ReportGroup($"Ollama · {m.Name}", string.Join(" ", notes), facts);
+            yield return new ReportGroup($"Ollama · {m.Name}", $"Ollama 계산값 · 전체 − VRAM은 RAM 사용량이 아님 · {read}", facts, Details: string.Join(" ", notes));
         }
     }
 
@@ -1753,7 +1915,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         Add(facts, "슬롯", r.TotalSlots is long slots ? Text.Count(slots) : null, "동시에 처리하는 요청 수 (--parallel)");
         Add(facts, "모델 파일", r.ModelFile);
         Add(facts, "빌드", r.Build);
-        return new ReportGroup("llama.cpp 서버 · 설정", $"/props가 알린 설정입니다 ({read}). KV 형식은 알려 주지 않아 KV 크기는 나누지 않습니다.", facts);
+        return new ReportGroup("llama.cpp 서버 · 설정", $"설정값 · KV 형식 미보고라 KV는 나누지 않음 · {read}", facts,
+            Details: $"/props가 알린 설정입니다 ({read}). KV 형식은 알려 주지 않아 KV 크기는 나누지 않습니다.");
     }
 
     /// <summary>
@@ -1784,8 +1947,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
 
         return new ReportGroup(own ? "llama.cpp 라우터 · 로드된 인스턴스" : "llama.cpp 라우터 · 이 인스턴스",
-            $"라우터의 /models가 알린, 인스턴스가 불러온 뒤 실제로 할당한 크기(effective)입니다 ({read}). "
-            + "min·max는 컨텍스트에 따라 필요할 것으로 본 범위라 표시하지 않습니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.", facts);
+            $"인스턴스가 실제 할당한 크기(effective) · min·max는 표시 안 함 · {read}", facts,
+            Details: $"라우터의 /models가 알린, 인스턴스가 불러온 뒤 실제로 할당한 크기(effective)입니다 ({read}). "
+                     + "min·max는 컨텍스트에 따라 필요할 것으로 본 범위라 표시하지 않습니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.");
     }
 
     private static ProcessKey KeyOf(GpuMemorySnapshot s, GpuProcessMemory p) => s.Process(p.ProcessId)?.Key ?? new ProcessKey(p.ProcessId, 0, $"PID {p.ProcessId}");

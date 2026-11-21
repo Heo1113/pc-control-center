@@ -245,7 +245,21 @@
           <ColumnDefinition Width="16" />
           <ColumnDefinition Width="*" MinWidth="280" MaxWidth="560" />
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <ScrollViewer.Style>
+            <Style TargetType="ScrollViewer">
+              <Style.Triggers>
+                <!-- Beside the table the panel is narrow: the figures take the whole width and the chart goes under them. -->
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" Value="Stacked">
+                  <Setter Property="Grid.ColumnSpan" Value="3" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </ScrollViewer.Style>
           <StackPanel>
             <DockPanel LastChildFill="False">
               <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnCopyDetail" ToolTip="이 프로세스의 값을 텍스트로 복사 (출처·추정 표시 포함)"
@@ -301,7 +315,10 @@
               <c:SegmentBar Segments="{Binding Breakdown}" Height="8" Visibility="{Binding Breakdown, Converter={StaticResource NotEmptyToVisibility}}" />
               <ItemsControl ItemsSource="{Binding BreakdownLegend}" ItemTemplate="{StaticResource Legend}" ItemsPanel="{StaticResource Wrap}" Focusable="False" Margin="0,4,0,0"
                             Visibility="{Binding BreakdownLegend, Converter={StaticResource NotEmptyToVisibility}}" />
-              <TextBlock Text="{Binding BreakdownNote}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+              <!-- One key line; the full explanation is the tooltip (and in the copied text). -->
+              <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" ToolTip="{Binding BreakdownDetails}">
+                <Run Text="{Binding BreakdownNote, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding BreakdownInfoGlyph, Mode=OneWay}" FontFamily="{StaticResource IconFont}" FontSize="11" />
+              </TextBlock>
             </StackPanel>
 
             <Grid Margin="0,8,0,0">
@@ -371,7 +388,9 @@
                         </DataTemplate>
                       </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Text="{Binding Note}" Style="{StaticResource Caption}" Margin="0,2,0,0" />
+                    <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0" ToolTip="{Binding Details}">
+                      <Run Text="{Binding Note, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding InfoGlyph, Mode=OneWay}" FontFamily="{StaticResource IconFont}" FontSize="11" />
+                    </TextBlock>
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -381,6 +400,19 @@
           </StackPanel>
         </ScrollViewer>
         <DockPanel Grid.Column="2">
+          <DockPanel.Style>
+            <Style TargetType="DockPanel">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" Value="Stacked">
+                  <Setter Property="Grid.Row" Value="1" />
+                  <Setter Property="Grid.Column" Value="0" />
+                  <Setter Property="Grid.ColumnSpan" Value="3" />
+                  <Setter Property="Height" Value="240" />
+                  <Setter Property="Margin" Value="0,10,0,0" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </DockPanel.Style>
           <DockPanel DockPanel.Dock="Top" Margin="0,0,0,2" LastChildFill="False">
             <ListBox DockPanel.Dock="Left" Style="{StaticResource Choices}" ItemsSource="{Binding Data.ChartMetricOptions, Source={StaticResource Proxy}}"
                      DisplayMemberPath="Label" SelectedValuePath="Value" SelectedValue="{Binding Data.ChartMetric, Source={StaticResource Proxy}}"
@@ -395,20 +427,26 @@
     </DataTemplate>
   </UserControl.Resources>
 
-  <Grid Margin="6,0,6,6">
+  <Grid x:Name="LayoutRoot" Margin="6,0,6,6">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition Height="Auto" />
       <RowDefinition x:Name="TableRow" Height="3*" MinHeight="120" />
       <RowDefinition Height="Auto" />
-      <RowDefinition Height="6" />
+      <RowDefinition x:Name="SplitRow" Height="6" />
       <RowDefinition x:Name="DetailRow" Height="2*" MinHeight="210" MaxHeight="900" />
     </Grid.RowDefinitions>
+    <!-- The detail panel goes under the table, or beside it (these two columns) when the user chose so or the width allows it. -->
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition x:Name="SplitCol" Width="0" />
+      <ColumnDefinition x:Name="DetailCol" Width="0" />
+    </Grid.ColumnDefinitions>
 
     <!-- Toolbar: find (and the kind filter while one is on) on the left; the reading's status and the three actions on the right.
          Counts and "작은 프로세스 포함" sit under the table, MOCK is in the status text, Strata only while it answers. -->
-    <Grid Margin="0,0,0,8">
+    <Grid Grid.ColumnSpan="3" Margin="0,0,0,8">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto" />
         <ColumnDefinition Width="Auto" />
@@ -468,6 +506,10 @@
         <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="{StaticResource TextMutedBrush}" Typography.NumeralAlignment="Tabular" />
       </StackPanel>
       <StackPanel Grid.Column="5" Orientation="Horizontal">
+        <Button x:Name="LayoutButton" Style="{StaticResource FlatButton}" Margin="0,0,6,0" Padding="7,5" Click="OnLayoutButton"
+                ToolTip="상세 패널 배치: 자동(넓으면 표 옆) · 표 아래 · 표 옆" AutomationProperties.Name="상세 패널 배치">
+          <TextBlock Text="&#xE8A9;" Style="{StaticResource Icon}" />
+        </Button>
         <ToggleButton Style="{StaticResource ToolToggle}" Margin="0" IsChecked="{Binding HasBaseline}"
                       ToolTip="지금 값을 기준점으로 잡고, 이후 프로세스·어댑터별 증감을 표시 (다시 누르면 해제)" AutomationProperties.Name="기준점">
           <StackPanel Orientation="Horizontal">
@@ -489,7 +531,7 @@
     </Grid>
 
     <!-- The GPUs, one line each in one card. -->
-    <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6"
+    <Border Grid.Row="1" Grid.ColumnSpan="3" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6"
             Margin="0,0,0,8" Visibility="{Binding Adapters.Count, Converter={StaticResource NotEmptyToVisibility}}">
       <ItemsControl ItemsSource="{Binding Adapters}" Focusable="False" Margin="0,2">
         <ItemsControl.ItemTemplate>
@@ -501,13 +543,20 @@
     </Border>
 
     <!-- The baseline: when it was taken, how each adapter changed, what is gone since. -->
-    <Border Grid.Row="2" Background="{StaticResource InfoBannerBrush}" BorderBrush="{StaticResource InfoBannerBorderBrush}" BorderThickness="1"
+    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="{StaticResource InfoBannerBrush}" BorderBrush="{StaticResource InfoBannerBorderBrush}" BorderThickness="1"
             CornerRadius="6" Padding="12,6" Margin="0,0,0,6" Visibility="{Binding HasBaseline, Converter={StaticResource BoolToVisibility}}"
             AutomationProperties.AutomationId="GpuMemoryBaseline">
       <DockPanel>
         <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Command="{Binding ToggleBaselineCommand}" ToolTip="기준점 해제"
                 AutomationProperties.Name="기준점 해제">
           <TextBlock Text="해제" FontSize="12" />
+        </Button>
+        <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnSaveBaselineCsv" Margin="0,0,4,0"
+                ToolTip="기준점 비교를 CSV 파일로 저장 (측정 시각, GPU, 프로세스 이름·PID·시작 시각, 값·차이·단위)" AutomationProperties.Name="비교 CSV로 저장">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE74E;" Style="{StaticResource Icon}" FontSize="12" />
+            <TextBlock Text="CSV로 저장" FontSize="12" Margin="5,0,0,0" />
+          </StackPanel>
         </Button>
         <Button DockPanel.Dock="Right" Style="{StaticResource FlatButton}" Click="OnCopyBaseline" Margin="0,0,4,0"
                 ToolTip="기준점 대비 변화를 텍스트로 복사 (탭 구분)" AutomationProperties.Name="비교 복사">
@@ -548,7 +597,8 @@
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
                 <StackPanel Orientation="Horizontal" Margin="6,0,0,0" ToolTip="{Binding Identity}">
-                  <c:Swatch Color="{Binding KindColor}" Margin="0,0,8,0" />
+                  <Image Source="{Binding Icon}" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"
+                         Visibility="{Binding Icon, Converter={StaticResource NotEmptyToVisibility}}" />
                   <TextBlock Text="{Binding Name}" ToolTip="{x:Null}">
                     <TextBlock.Style>
                       <Style TargetType="TextBlock" BasedOn="{StaticResource Cell}">
@@ -572,24 +622,27 @@
               <TextBlock Text="PID" ToolTip="프로세스 ID. 찾기 칸에 PID를 넣으면 그 프로세스만" />
             </DataGridTextColumn.Header>
           </DataGridTextColumn>
-          <DataGridTemplateColumn SortMemberPath="KindLabel" Width="80" MinWidth="80">
+          <DataGridTemplateColumn SortMemberPath="KindLabel" Width="96" MinWidth="96">
             <DataGridTemplateColumn.Header>
               <TextBlock Text="종류" ToolTip="불러온 라이브러리·모델 파일·엔진·이름으로 분류한 것 (측정 아님). 근거는 칸의 툴팁" />
             </DataGridTemplateColumn.Header>
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate DataType="{x:Type p:GpuProcessRow}">
-                <TextBlock Text="{Binding KindLabel}" ToolTip="{Binding KindBasis}">
-                  <TextBlock.Style>
-                    <!-- Text colours only (the swatch beside the name carries the colour); a kind the user gave is in italics. -->
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryCell}">
-                      <Style.Triggers>
-                        <DataTrigger Binding="{Binding KindOverridden}" Value="True">
-                          <Setter Property="FontStyle" Value="Italic" />
-                        </DataTrigger>
-                      </Style.Triggers>
-                    </Style>
-                  </TextBlock.Style>
-                </TextBlock>
+                <!-- The kind group's colour as a swatch beside the kind's name (text in text colours); a kind the user gave is in italics. -->
+                <StackPanel Orientation="Horizontal" ToolTip="{Binding KindBasis}" Background="Transparent">
+                  <c:Swatch Color="{Binding KindColor}" Width="8" Height="8" Margin="0,0,6,0" />
+                  <TextBlock Text="{Binding KindLabel}" ToolTip="{Binding KindBasis}">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock" BasedOn="{StaticResource SecondaryCell}">
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding KindOverridden}" Value="True">
+                            <Setter Property="FontStyle" Value="Italic" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </StackPanel>
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
@@ -676,22 +729,22 @@
                   ResizeDirection="Rows" ToolTip="끌어서 상세 영역 크기 조절 (두 번 누르면 기본 크기)" />
 
     <!-- The selected process. -->
-    <Border Grid.Row="6" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,10,16,8">
+    <Border x:Name="DetailCard" Grid.Row="6" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,10,16,8">
       <Grid>
-        <ContentControl Content="{Binding Detail}" ContentTemplate="{StaticResource DetailTemplate}" Focusable="False" />
+        <ContentControl x:Name="DetailHost" Content="{Binding Detail}" ContentTemplate="{StaticResource DetailTemplate}" Focusable="False" />
         <TextBlock Text="{Binding DetailPlaceholder}" Style="{StaticResource Caption}" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
                    MaxWidth="640" Visibility="{Binding Detail, Converter={StaticResource EmptyToVisibility}}" />
       </Grid>
     </Border>
     <!-- Help: a panel over the table and the detail (it never narrows the table). The shadow is a layer of its own, so the
          text keeps ClearType (an effect renders its element's subtree to a bitmap). -->
-    <Border Grid.Row="3" Grid.RowSpan="4" Width="320" HorizontalAlignment="Right" Panel.ZIndex="9" Background="{StaticResource CardBrush}" CornerRadius="6"
+    <Border Grid.Row="3" Grid.RowSpan="4" Grid.ColumnSpan="3" Width="320" HorizontalAlignment="Right" Panel.ZIndex="9" Background="{StaticResource CardBrush}" CornerRadius="6"
             IsHitTestVisible="False" Visibility="{Binding HelpOpen, Converter={StaticResource BoolToVisibility}}">
       <Border.Effect>
         <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="Black" />
       </Border.Effect>
     </Border>
-    <Border Grid.Row="3" Grid.RowSpan="4" Width="320" HorizontalAlignment="Right" Panel.ZIndex="10" Background="{StaticResource CardBrush}"
+    <Border Grid.Row="3" Grid.RowSpan="4" Grid.ColumnSpan="3" Width="320" HorizontalAlignment="Right" Panel.ZIndex="10" Background="{StaticResource CardBrush}"
             BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1" CornerRadius="6" Visibility="{Binding HelpOpen, Converter={StaticResource BoolToVisibility}}"
             AutomationProperties.AutomationId="GpuMemoryHelp">
       <DockPanel>

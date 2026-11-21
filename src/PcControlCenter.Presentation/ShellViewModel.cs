@@ -80,8 +80,9 @@ public sealed partial class ShellViewModel : ObservableObject
     private readonly Dictionary<string, Func<Task>> _restarts = [];
     private readonly List<Action> _tickHandlers = [];
 
+    /// <param name="processIcons">The GPU memory page's executable icons (the app's background reader); null shows none.</param>
     public ShellViewModel(ShellRuntime runtime, IShellDispatcher ui, IShellDialogs dialogs, Func<OperatorSummary?>? operatorSummary = null,
-        IReadOnlyList<string>? moduleIdsWithRestart = null)
+        IReadOnlyList<string>? moduleIdsWithRestart = null, IProcessIcons? processIcons = null)
     {
         _runtime = runtime;
         _ui = ui;
@@ -111,7 +112,7 @@ public sealed partial class ShellViewModel : ObservableObject
         // Local runtimes are asked about the selected process only (loopback GETs); MOCK answers with --mock-sensors.
         GpuMemory = new GpuMemoryViewModel(runtime.GpuMemory, runtime.Hub, () => StrataOf(runtime), _time,
             runtime.Settings.GpuMemoryPage, () => runtime.SettingsStore.Save(runtime.Settings),
-            runtime.Options.MockSensors ? new MockRuntimeHttp() : new HttpRuntimeClient());
+            runtime.Options.MockSensors ? new MockRuntimeHttp() : new HttpRuntimeClient(), processIcons);
         History = new HistoryViewModel(new PcControlCenter.History.TimelineReader(runtime.Paths), ui, _time);
         Data = new DataMigrationViewModel(new PcControlCenter.Migration.LegacyMigrator(runtime.Paths, time: _time), new SupervisorModuleRestarter(runtime.Supervisor),
             runtime.Paths, runtime.Options.LegacyLocations ?? LegacyDataLocations.Defaults(), dialogs, ui);

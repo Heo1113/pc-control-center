@@ -153,6 +153,12 @@ internal sealed class SmokeTestRunner(
                     BringIntoView("런타임 보고"); // the detail panel scrolls in a small window
                     await Task.Delay(300);
                     await Capture("hardware-gpu-memory-runtime");
+
+                    // The detail beside the table (chosen; the runner's small screen would keep it under the table on "자동").
+                    shell.GpuMemory.SetLayoutMode("Beside");
+                    await Task.Delay(800);
+                    await Capture("hardware-gpu-memory-beside");
+                    shell.GpuMemory.SetLayoutMode("Auto");
                 }
             }
 

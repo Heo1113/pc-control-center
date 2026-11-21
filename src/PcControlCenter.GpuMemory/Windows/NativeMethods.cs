@@ -101,6 +101,28 @@ internal static unsafe partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool CloseHandle(nint handle);
 
+    // ---- Executable icons for the table (ProcessIconSource): the image path with the minimal query right, the shell's icon ----
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool QueryFullProcessImageName(nint process, uint flags, char* exeName, uint* size);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct ShFileInfo
+    {
+        public nint hIcon;
+        public int iIcon;
+        public uint dwAttributes;
+        public fixed char szDisplayName[260];
+        public fixed char szTypeName[80];
+    }
+
+    [LibraryImport("shell32.dll", EntryPoint = "SHGetFileInfoW", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial nint SHGetFileInfo(string path, uint fileAttributes, ShFileInfo* info, uint size, uint flags);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool DestroyIcon(nint icon);
+
     // ---- Address space walk: names of mapped files only, never their contents (kernel32 / psapi) ----
     public const uint ProcessQueryInformation = 0x0400;
     public const uint ProcessVmRead = 0x0010;

@@ -164,6 +164,16 @@ GitHub Actions 실행 [43599143277](https://github.com/Heo1113/pc-control-center
 - `b963e1c`의 PR 실행 [43662824074](https://github.com/Heo1113/pc-control-center/actions/runs/43662824074)에서 모듈 A 원본 테스트 `StrataConnectTests.Port_search_prefers_the_engine_that_accepts_the_key_and_is_off_when_disabled`가 한 번 실패했습니다(요청 수 기대 5, 실제 6). 같은 커밋의 push 실행과 이후 실행에서는 통과했고, 모듈 A 코드는 가져온 뒤(`e2dd355`) 바뀌지 않았습니다. 앞 어댑터의 늦은 요청이 집계되는 타이밍 문제로 보고 별도 작업으로 분리했습니다.
 - 범례 묶음 누르기, 행 오른쪽 클릭 종류 필터, 그래프 선택 단추 누르기는 CI가 누르지 않습니다(뷰모델 테스트와 캡처만).
 
+### GPU 메모리 화면 7차: 짧은 설명·CSV·아이콘·상세 배치 (같은 브랜치)
+
+커밋 `c7b7b5c`(G3 짧은 설명), `29edb07`(G4 CSV), `45b2c5d`(G2 아이콘), `136a676`(G1 배치).
+GitHub Actions 실행 [43722935306](https://github.com/Heo1113/pc-control-center/actions/runs/43722935306)(push), [43722939388](https://github.com/Heo1113/pc-control-center/actions/runs/43722939388)(PR)과 스크린숏용 실행 [43722937795](https://github.com/Heo1113/pc-control-center/actions/runs/43722937795): Linux·Windows의 모든 단계가 통과했습니다.
+
+- 통합 테스트 200개: Windows 200개 모두 통과(새 Windows 전용 테스트: 자기 실행 파일 경로·아이콘, 기본 프로그램 아이콘, 커널은 경로 없음), Linux 190개 통과(Windows 전용 10개 건너뜀). GUI 스모크 3종 예외 0, 바인딩 경로 오류 0.
+- 새 테스트: 짧은 설명과 툴팁·복사 텍스트의 전체 설명(추정/측정, 그리지 않는 이유, 오류 이유 유지), CSV의 머리글·행 수·각 행 값(어댑터, 같은 프로세스, 재시작, 기준점 뒤 시작, 사라짐)·시각·따옴표 처리, 아이콘(읽는 동안 기본 아이콘, 도착하면 제자리 갱신, 커널은 없음), 배치 결정(자동은 폭이 될 때만, 선택은 항상 따름, NaN), 배치·폭 기억과 이전 설정 파일.
+- 캡처: 표 옆 배치(스모크가 "표 옆"을 골라 찍음), 아이콘과 종류 옆 색 견본, 짧은 설명 뒤의 ⓘ. CI 창이 작아 "자동"에서는 표 아래로 유지되는 것도 확인했습니다.
+- RTX 5080·4K 화면에서의 "자동" 전환 시점, 실제 프로세스 아이콘, CSV를 Excel에서 여는 것은 사용자 PC에서 확인이 필요합니다.
+
 ## 실기에서 아직 확인하지 않은 것
 
 아래는 CI 러너(가상 머신, GPU 없음)로 확인할 수 없어 **사용자 PC에서 확인이 필요**합니다.

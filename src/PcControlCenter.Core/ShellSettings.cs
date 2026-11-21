@@ -115,6 +115,9 @@ public sealed class GpuMemoryPageSettings
 
     public static readonly IReadOnlyList<int> ChartWindows = [5, 15, 30];
 
+    /// <summary>Where the detail panel goes: "Auto" (beside the table when the width allows it), "Below" or "Beside".</summary>
+    public static readonly IReadOnlySet<string> Layouts = new HashSet<string>(StringComparer.Ordinal) { "Auto", "Below", "Beside" };
+
     /// <summary>The kinds a process can be given (the names of PcControlCenter.GpuMemory.ProcessKind).</summary>
     public static readonly IReadOnlySet<string> KindNames = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -136,6 +139,12 @@ public sealed class GpuMemoryPageSettings
 
     /// <summary>Height of the detail panel in device-independent pixels; 0 = share the height with the table.</summary>
     public double DetailHeight { get; set; }
+
+    /// <summary>Where the detail panel goes (see <see cref="Layouts"/>); the user's choice is kept.</summary>
+    public string Layout { get; set; } = "Auto";
+
+    /// <summary>Width of the detail panel beside the table, in device-independent pixels; 0 = the default share.</summary>
+    public double DetailWidth { get; set; }
 
     /// <summary>What the detail chart shows: Dedicated, Shared or Gpu (the busiest engine, %).</summary>
     public string ChartMetric { get; set; } = "Dedicated";
@@ -165,6 +174,16 @@ public sealed class GpuMemoryPageSettings
         if (double.IsNaN(DetailHeight) || DetailHeight is < 0 or > 4000)
         {
             DetailHeight = 0;
+        }
+
+        if (Layout is null || !Layouts.Contains(Layout))
+        {
+            Layout = "Auto";
+        }
+
+        if (double.IsNaN(DetailWidth) || DetailWidth is < 0 or > 4000)
+        {
+            DetailWidth = 0;
         }
 
         if (ChartMetric is null || !ChartMetrics.Contains(ChartMetric))

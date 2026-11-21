@@ -28,6 +28,7 @@ public partial class GpuMemoryView : UserControl
     private readonly DispatcherTimer _noticeTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private GpuMemoryViewModel? _vm;
     private bool _hovering;
+    private bool? _beside;
 
     public GpuMemoryView()
     {
@@ -63,8 +64,19 @@ public partial class GpuMemoryView : UserControl
         Table.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy, (_, _) => CopyRow(), (_, e) => e.CanExecute = _vm?.SelectedProcess is not null));
         PreviewKeyDown += OnPreviewKeyDown;
         FilterBox.PreviewKeyDown += OnFilterKeyDown;
-        Splitter.DragCompleted += (_, _) => _vm?.SetDetailHeight(DetailRow.ActualHeight);
-        Splitter.MouseDoubleClick += (_, _) => ResetDetailHeight();
+        Splitter.DragCompleted += (_, _) =>
+        {
+            if (_beside == true)
+            {
+                _vm?.SetDetailWidth(DetailCol.ActualWidth);
+            }
+            else
+            {
+                _vm?.SetDetailHeight(DetailRow.ActualHeight);
+            }
+        };
+        Splitter.MouseDoubleClick += (_, _) => ResetDetailSize();
+        LayoutRoot.SizeChanged += (_, _) => ApplyLayout();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -84,12 +96,8 @@ public partial class GpuMemoryView : UserControl
 
         ApplySort(vm.SortColumn, vm.SortDescending ? ListSortDirection.Descending : ListSortDirection.Ascending);
         UpdateColumns();
-        if (vm.DetailHeight > 0)
-        {
-            DetailRow.Height = new GridLength(vm.DetailHeight);
-            TableRow.Height = new GridLength(1, GridUnitType.Star);
-        }
-
+        _beside = null; // arrange afresh for this view model
+        ApplyLayout();
         ScrollToSelection();
     }
 
@@ -110,6 +118,10 @@ public partial class GpuMemoryView : UserControl
         if (e.PropertyName is nameof(GpuMemoryViewModel.ShowGpuColumn) or nameof(GpuMemoryViewModel.HasBaseline))
         {
             UpdateColumns();
+        }
+        else if (e.PropertyName == nameof(GpuMemoryViewModel.LayoutMode))
+        {
+            ApplyLayout();
         }
         else if (e.PropertyName == nameof(GpuMemoryViewModel.SelectedProcess))
         {
@@ -200,6 +212,91 @@ public partial class GpuMemoryView : UserControl
                           && (key != nameof(GpuProcessRow.Delta) || _vm.HasBaseline);
             column.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        ApplyLayout(); // the columns' minimum widths decide whether the detail fits beside the table
+    }
+
+    /// <summary>
+    /// Puts the detail panel under the table or beside it: the user's choice, or (automatic) beside only when the page's
+    /// width holds the visible columns at their minimum widths, the splitter and the detail panel's minimum.
+    /// </summary>
+    private void ApplyLayout()
+    {
+        if (_vm is null || !IsLoaded && LayoutRoot.ActualWidth <= 0)
+        {
+            return;
+        }
+
+        var tableMin = Table.Columns.Where(c => c.Visibility == Visibility.Visible).Sum(c => c.MinWidth) + 24; // borders and the scroll bar
+        var beside = GpuMemoryViewModel.UseBeside(_vm.LayoutMode, LayoutRoot.ActualWidth, tableMin);
+        if (beside == _beside)
+        {
+            return;
+        }
+
+        _beside = beside;
+        if (beside)
+        {
+            SplitRow.Height = new GridLength(0);
+            DetailRow.MinHeight = 0;
+            DetailRow.Height = new GridLength(0);
+            TableRow.Height = new GridLength(1, GridUnitType.Star);
+            SplitCol.Width = new GridLength(6);
+            DetailCol.MinWidth = GpuMemoryViewModel.DetailMinWidth;
+            DetailCol.Width = _vm.DetailWidth > 0 ? new GridLength(_vm.DetailWidth) : new GridLength(0.7, GridUnitType.Star);
+            Place(Splitter, row: 3, rowSpan: 2, column: 1);
+            Splitter.ResizeDirection = GridResizeDirection.Columns;
+            Splitter.Width = 6;
+            Splitter.Height = double.NaN;
+            Splitter.VerticalAlignment = VerticalAlignment.Stretch;
+            Splitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            Place(DetailCard, row: 3, rowSpan: 2, column: 2);
+            DetailHost.Tag = "Stacked";
+        }
+        else
+        {
+            SplitCol.Width = new GridLength(0);
+            DetailCol.MinWidth = 0;
+            DetailCol.Width = new GridLength(0);
+            SplitRow.Height = new GridLength(6);
+            DetailRow.MinHeight = 210;
+            DetailRow.Height = _vm.DetailHeight > 0 ? new GridLength(_vm.DetailHeight) : new GridLength(2, GridUnitType.Star);
+            TableRow.Height = new GridLength(_vm.DetailHeight > 0 ? 1 : 3, GridUnitType.Star);
+            Place(Splitter, row: 5, rowSpan: 1, column: 0);
+            Splitter.ResizeDirection = GridResizeDirection.Rows;
+            Splitter.Width = double.NaN;
+            Splitter.Height = 6;
+            Splitter.VerticalAlignment = VerticalAlignment.Center;
+            Splitter.HorizontalAlignment = HorizontalAlignment.Stretch;
+            Place(DetailCard, row: 6, rowSpan: 1, column: 0);
+            DetailHost.Tag = null;
+        }
+
+        static void Place(UIElement element, int row, int rowSpan, int column)
+        {
+            Grid.SetRow(element, row);
+            Grid.SetRowSpan(element, rowSpan);
+            Grid.SetColumn(element, column);
+        }
+    }
+
+    /// <summary>"상세 패널 배치": automatic, under the table, beside it (remembered).</summary>
+    private void OnLayoutButton(object sender, RoutedEventArgs e)
+    {
+        if (_vm is null)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = LayoutButton, Placement = PlacementMode.Bottom };
+        foreach (var (mode, label) in new[] { ("Auto", "자동 (넓으면 표 옆)"), ("Below", "표 아래"), ("Beside", "표 옆") })
+        {
+            var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = _vm.LayoutMode == mode };
+            item.Click += (_, _) => _vm?.SetLayoutMode(mode);
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
     }
 
     private void OnRightButtonDown(object sender, MouseButtonEventArgs e)
@@ -345,8 +442,16 @@ public partial class GpuMemoryView : UserControl
         }
     }
 
-    private void ResetDetailHeight()
+    /// <summary>The splitter's double click: the detail panel's default size in the current arrangement.</summary>
+    private void ResetDetailSize()
     {
+        if (_beside == true)
+        {
+            DetailCol.Width = new GridLength(0.7, GridUnitType.Star);
+            _vm?.SetDetailWidth(0);
+            return;
+        }
+
         TableRow.Height = new GridLength(3, GridUnitType.Star);
         DetailRow.Height = new GridLength(2, GridUnitType.Star);
         _vm?.SetDetailHeight(0);
@@ -363,6 +468,39 @@ public partial class GpuMemoryView : UserControl
     private void OnCopyDetail(object sender, RoutedEventArgs e) => Copy(_vm?.DetailText(), "상세");
 
     private void OnCopyBaseline(object sender, RoutedEventArgs e) => Copy(_vm?.BaselineReport(), "비교");
+
+    /// <summary>Saves the baseline comparison where the user chooses (UTF-8 with a byte order mark, so spreadsheets read Korean).</summary>
+    private void OnSaveBaselineCsv(object sender, RoutedEventArgs e)
+    {
+        if (_vm?.BaselineCsv() is not { } csv)
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "기준점 비교 저장",
+            FileName = _vm.BaselineCsvFileName(),
+            DefaultExt = ".csv",
+            Filter = "CSV 파일 (*.csv)|*.csv",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            System.IO.File.WriteAllText(dialog.FileName, csv, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+            ShowNotice("비교를 CSV로 저장함");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            ShowNotice($"저장하지 못했습니다: {ex.Message}");
+        }
+    }
 
     private void Copy(string? text, string what)
     {

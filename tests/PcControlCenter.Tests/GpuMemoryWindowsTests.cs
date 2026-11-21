@@ -16,6 +16,22 @@ namespace PcControlCenter.Tests;
 [SupportedOSPlatform("windows")]
 public class GpuMemoryWindowsTests
 {
+    [Fact(Timeout = 60_000)]
+    public void The_own_executable_has_a_path_and_an_icon_and_the_kernel_has_neither()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), WindowsOnly);
+        var path = ProcessIconSource.ImagePath(Environment.ProcessId);
+        Assert.NotNull(path);
+        Assert.Equal(Path.GetFileName(Environment.ProcessPath), Path.GetFileName(path), StringComparer.OrdinalIgnoreCase);
+        var icon = ProcessIconSource.SmallIcon(path);
+        Assert.NotEqual(0, icon);
+        ProcessIconSource.DestroyIcon(icon);
+        var generic = ProcessIconSource.SmallIcon(".exe", genericForExtension: true); // the default program icon, no file read
+        Assert.NotEqual(0, generic);
+        ProcessIconSource.DestroyIcon(generic);
+        Assert.Null(ProcessIconSource.ImagePath(4));
+    }
+
     private const string WindowsOnly = "Windows API (PDH, DXGI, Toolhelp, iphlpapi)";
 
     [Fact(Timeout = 60_000)]
