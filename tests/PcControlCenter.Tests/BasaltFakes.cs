@@ -261,9 +261,13 @@ internal static class BasaltTest
         RespawnWatch = TimeSpan.FromMilliseconds(400),
         RespawnQuiet = TimeSpan.FromMilliseconds(150),
         LauncherGrace = TimeSpan.FromMilliseconds(100),
-        StopWait = TimeSpan.FromMilliseconds(300),
+        // Long enough for the fake's 30 ms Ctrl+C on a busy CI runner; the cleanup tests use ShortStopWait.
+        StopWait = TimeSpan.FromSeconds(10),
         StartWait = TimeSpan.FromSeconds(5),
     };
+
+    /// <summary>For trees that ignore Ctrl+C: the cleanup starts after 300 ms.</summary>
+    public static readonly BasaltTimings ShortStopWait = Fast with { StopWait = TimeSpan.FromMilliseconds(300) };
 
     public static BasaltController Controller(FakeBasaltSystem system, BasaltSettings? settings = null, BasaltTimings? timings = null)
         => new(system, settings ?? new BasaltSettings(), timings: timings ?? Fast, selfId: FakeBasaltSystem.Self);

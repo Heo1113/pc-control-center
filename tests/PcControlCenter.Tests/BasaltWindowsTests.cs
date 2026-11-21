@@ -31,7 +31,8 @@ public class BasaltWindowsTests
         try
         {
             Assert.Null(await controller.StartServerAsync(BasaltSettings.QualityMode, Ct));
-            var running = await WaitFor(controller, s => s.State == BasaltState.Running, 90);
+            // The server listens before it starts its engine: wait for the whole tree, as a user would see it settle.
+            var running = await WaitFor(controller, s => s.State == BasaltState.Running && s.Tree?.Members.Any(m => m.Role == TreeRole.Descendant) == true, 90);
             var tree = running.Tree!;
             Assert.True(tree.IsBasalt);
             Assert.Equal("basalt-fake.exe", tree.Owner?.Name, StringComparer.OrdinalIgnoreCase);
@@ -65,7 +66,7 @@ public class BasaltWindowsTests
         try
         {
             Assert.Null(await controller.StartServerAsync(BasaltSettings.FastMode, Ct));
-            tree = (await WaitFor(controller, s => s.State == BasaltState.Running, 90)).Tree!;
+            tree = (await WaitFor(controller, s => s.State == BasaltState.Running && s.Tree?.Members.Any(m => m.Role == TreeRole.Descendant) == true, 90)).Tree!;
 
             var report = await controller.StopServerAsync(Ct);
 
