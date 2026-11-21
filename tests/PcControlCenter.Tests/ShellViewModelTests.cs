@@ -191,6 +191,13 @@ public class OperatorModuleTests
         Assert.False(module.Host.EmergencyLatched);
         Assert.Equal(ModuleState.Running, module.Status.State);
 
+        // The status bar's emergency stop follows E's task runner: outlined while no task runs, filled while one runs.
+        Assert.False(shell.Operator.IsTaskRunning);
+        shell.Operator.SetTaskRunning(true);
+        Assert.True(shell.Operator.IsTaskRunning);
+        shell.Operator.SetTaskRunning(false);
+        Assert.False(shell.Operator.IsTaskRunning);
+
         // The dashboard reads the Operator state (without E's task runner bound: host state only).
         var summary = module.Summary();
         Assert.True(summary.HostConnected);
