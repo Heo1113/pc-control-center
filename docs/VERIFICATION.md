@@ -177,7 +177,7 @@ GitHub Actions 실행 [43722935306](https://github.com/Heo1113/pc-control-center
 ### Basalt 서버 제어 브랜치 (`claude/basalt`)
 
 기준: `claude/shell-polish`에 PR #4 끝(`574fbbc`)을 병합 커밋 `c8c3b7c`로 합친 상태(재작성·강제 푸시 없음). 커밋 `57f191f`(제어 코어·Ctrl+C 도우미),
-`24fda13`(Windows 실제 프로세스 시험), `da31975`(Basalt 화면·WebView2), `9442140`(GPU 메모리 연결). 설계와 규칙: [BASALT.md](BASALT.md).
+`24fda13`(Windows 실제 프로세스 시험), `da31975`(Basalt 화면·WebView2), `9442140`(GPU 메모리 연결), `a176819`(화면 정리), `a5f3793`(시험 타이밍). 설계와 규칙: [BASALT.md](BASALT.md).
 
 GitHub Actions 실행 [44892751191](https://github.com/Heo1113/pc-control-center/actions/runs/44892751191)(`da31975`, push): Linux·Windows의 모든 단계가 통과했습니다.
 
@@ -187,6 +187,13 @@ GitHub Actions 실행 [44892751191](https://github.com/Heo1113/pc-control-center
 - 포터블 패키지에 `PcControlCenter.ConsoleSignal.exe`(트리밍)가 들어가고, GUI 스모크 3종 실패 0: MOCK 실행에서 Basalt 꺼짐 → 켜기 → 실행 중 →
   WebView2가 MOCK 페이지(`http://127.0.0.1:<임의 포트>/`)를 엶 → Ctrl+C로 끔 → "정상 종료됨 · 남은 프로세스 없음 · 포트 비어 있음". 실제 센서 실행은 상태만 읽음("Off: 꺼짐", 켜지 않음).
 - Linux(GPU 메모리 연결 `9442140` 포함): 통합 테스트 242개 중 228개 통과, 14개 건너뜀(Windows 전용).
+- 화면 정리 `a176819` 뒤 같은 코드의 미리보기 브랜치 실행 [44894709911](https://github.com/Heo1113/pc-control-center/actions/runs/44894709911)에서 Basalt 시험 2개가 실패했습니다
+  (시험의 타이밍 문제: 바쁜 러너에서 가짜 서버의 30 ms Ctrl+C 처리가 시험용 300 ms 대기를 넘김, Windows 시험이 서버가 엔진을 띄우기 직전의 트리를 봄).
+  제품 코드는 바꾸지 않고 시험을 고쳤습니다(`a5f3793`: 정상 종료 시험의 대기 10초, Ctrl+C를 무시하는 시험만 300 ms, Windows 시험은 엔진이 트리에 들어올 때까지 대기).
+- 최종 실행 [44895685253](https://github.com/Heo1113/pc-control-center/actions/runs/44895685253)(`a5f3793`)과 미리보기 실행 [44895688210](https://github.com/Heo1113/pc-control-center/actions/runs/44895688210):
+  두 실행 모두 모든 단계 통과, Windows 통합 테스트 242개 모두 통과, GUI 스모크의 Basalt 확인(대시보드 표시, 정상 종료 후 남은 것 없음) 통과.
+- 캡처(미리보기 브랜치 `claude/basalt-preview`, 로그에 스크린숏 출력 단계만 추가): Basalt 꺼짐·실행 중·끈 뒤 화면, WebView2가 그린 MOCK 대시보드, 설정의 Basalt 칸.
+  WPF 캡처에는 WebView2 영역이 비어 보이므로(창이 따로 그려짐) 대시보드는 WebView2 자체 캡처로 확인했습니다.
 
 - **실제 Basalt로는 아무것도 확인하지 않았습니다.** 이 세션은 클라우드 컨테이너라 사용자 PC에 접근할 수 없었고, 0단계 확인(실제 Basalt 켜기, 6개 주소·대시보드 API, 정상 종료 뒤 프로세스·8080)은
   사용자께서 `basalt-probe.ps1`을 실행해 결과를 주시기로 했습니다. 로컬 AI 모듈 연결(3번)은 그 결과를 본 뒤 확정합니다.
