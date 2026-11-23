@@ -19,12 +19,18 @@ public sealed partial class BasaltViewModel : ObservableObject
     private readonly IShellDialogs _dialogs;
     private readonly IShellDispatcher _ui;
     private readonly Action<string>? _navigate;
+    private readonly BasaltApiReader _api;
+    private readonly TimeProvider _time;
+    private DateTimeOffset _apiReadAt = DateTimeOffset.MinValue;
+    private bool _apiReading;
     private bool _visible;
     private string _shownKey = "";
 
     public BasaltViewModel(BasaltController controller, ShellSettingsStore store, ShellSettings settings, IShellDialogs dialogs, IShellDispatcher ui,
-        string webViewDataFolder, Action<string>? navigate = null)
+        string webViewDataFolder, Action<string>? navigate = null, BasaltApiReader? api = null, TimeProvider? time = null)
     {
+        _api = api ?? new BasaltApiReader();
+        _time = time ?? TimeProvider.System;
         _controller = controller;
         _store = store;
         _settings = settings;
@@ -66,6 +72,56 @@ public sealed partial class BasaltViewModel : ObservableObject
     public ObservableCollection<string> Processes { get; } = [];
 
     public ObservableCollection<string> LastStopLines { get; } = [];
+
+    /// <summary>What Basalt reports through Strata's read-only addresses; "미지원" where no address reports a value.</summary>
+    public ObservableCollection<BasaltField> ApiFields { get; } = [];
+
+    [ObservableProperty] public partial string ApiNote { get; private set; } = "";
+
+    /// <summary>Called every second by the shell while the page is visible: re-reads the API every 5 seconds while Basalt runs.</summary>
+    public void Tick()
+    {
+        if (!_visible || State != BasaltState.Running || _apiReading || _time.GetUtcNow() - _apiReadAt < TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        _apiReading = true;
+        _apiReadAt = _time.GetUtcNow();
+        _ = ReadApiAsync(_controller.Port);
+    }
+
+    internal async Task ReadApiAsync(int port)
+    {
+        try
+        {
+            var report = await Task.Run(() => _api.ReadAsync(port, CancellationToken.None)).ConfigureAwait(false);
+            _ui.Post(() => ApplyApi(report));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _ui.Post(() => ApiNote = "Basalt API를 읽지 못했습니다: " + ex.Message);
+        }
+        finally
+        {
+            _apiReading = false;
+        }
+    }
+
+    private void ApplyApi(BasaltApiReport report)
+    {
+        if (!ApiFields.Select(f => (f.Label, f.Text)).SequenceEqual(report.Fields.Select(f => (f.Label, f.Text))))
+        {
+            ApiFields.Clear();
+            foreach (var field in report.Fields)
+            {
+                ApiFields.Add(field);
+            }
+        }
+
+        ApiNote = $"{report.ReadAt.ToLocalTime():HH:mm:ss}에 읽음 · " + string.Join(" · ", report.Endpoints.Select(e =>
+            $"{e.Path} {(e.Status is int code ? code.ToString(CultureInfo.InvariantCulture) : e.Error)}"));
+    }
 
     public bool IsQuality
     {
@@ -118,7 +174,10 @@ public sealed partial class BasaltViewModel : ObservableObject
 
     private bool CanStart() => !IsBusy && State is BasaltState.Off or BasaltState.Unknown or BasaltState.Failed;
 
-    private bool CanStop() => !IsBusy && State is BasaltState.Running or BasaltState.Starting or BasaltState.Leftover or BasaltState.Failed;
+    /// <summary>Only a Basalt this app started can be stopped here (its window and what runs under it).</summary>
+    private bool CanStop() => !IsBusy && StartedHere && State is BasaltState.Running or BasaltState.Starting or BasaltState.Leftover or BasaltState.Failed;
+
+    [ObservableProperty] public partial bool StartedHere { get; private set; }
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
@@ -178,6 +237,7 @@ public sealed partial class BasaltViewModel : ObservableObject
     private void Apply(BasaltStatus status)
     {
         State = status.State;
+        StartedHere = status.StartedHere;
         (StateText, StateLevel) = status.State switch
         {
             BasaltState.Running => ("실행 중", Level.Good),
@@ -205,6 +265,11 @@ public sealed partial class BasaltViewModel : ObservableObject
         if (status.State != BasaltState.Running)
         {
             WebViewProblem = null; // the next start tries WebView2 again
+            if (ApiFields.Count > 0)
+            {
+                ApiFields.Clear();
+                ApiNote = "";
+            }
         }
 
         ShowDashboard = status.State == BasaltState.Running;

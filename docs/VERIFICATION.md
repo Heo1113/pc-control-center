@@ -200,6 +200,14 @@ GitHub Actions 실행 [44892751191](https://github.com/Heo1113/pc-control-center
 - CI의 실제 프로세스 시험은 Basalt와 같은 모양(래퍼 → 포트 수신 서버 → 엔진)의 `basalt-fake.exe`로 합니다. 실제 Basalt의 Python 서버가 Ctrl+C를 어떻게 처리하는지,
   엔진을 다시 띄우는 조건은 가짜 서버가 대신할 수 없습니다.
 
+### Basalt 어댑터·소유 규칙 브랜치 (`claude/basalt-adapter`, `claude/basalt` 위)
+
+- 이 프로그램이 켠 Basalt만 끄는 규칙(`BasaltOwnership`, 재시작 뒤에도 유지), Basalt API 값 표(`BasaltApiReader`, 없는 값은 미지원), 새 테스트 프로젝트 `PcControlCenter.Basalt.Tests`.
+- 이 컨테이너(Linux)에서 실제로 돌린 결과: `dotnet build PcControlCenter.slnx -c Release` 경고 0·오류 0. 테스트: A 94개 중 93개 통과(1개 건너뜀), B 145개 통과, C 132개 중 123개 통과(9개 건너뜀),
+  E 154개 통과, 통합 245개 중 231개 통과(14개 Windows 전용 건너뜀), 새 Basalt 어댑터 27개 통과. 모듈 원본 변경 목록은 그대로(수정 31·추가 5·삭제 2).
+- 모듈 A는 바꾸지 않았습니다. 모듈 A의 Strata 어댑터에 Basalt 같은 응답을 준 시험 결과: Strata 텔레메트리 v1을 유지하면 연결되고(화면 이름은 "Strata"), 스키마가 바뀌거나 `/health`만 있으면 "비호환"으로 표시됩니다.
+  Basalt 어댑터를 모듈 A에 넣을지는 확인 스크립트 결과로 정합니다.
+
 ## 실기에서 아직 확인하지 않은 것
 
 아래는 CI 러너(가상 머신, GPU 없음)로 확인할 수 없어 **사용자 PC에서 확인이 필요**합니다.
@@ -223,6 +231,8 @@ GitHub Actions 실행 [44892751191](https://github.com/Heo1113/pc-control-center
 | **Basalt** 대시보드가 WebView2에서 동작하는지(스크립트, 인증, 갱신), 링크가 앱 밖에서 열리는지, 프로필 폴더(`데이터 폴더\webview2`)에 남는 값 | Basalt 화면 본문 (CI는 MOCK 페이지만 확인) |
 | **Basalt** 로컬 AI 모듈이 그대로 연결되는지(`/v1/telemetry`의 `schema_version` 1, 키 환경 변수) — 3번, 확인 스크립트 결과로 확정 | 확인 스크립트의 `endpoints`, 로컬 AI › Strata 런타임 "연결됨" |
 | **Basalt** GPU 메모리 화면의 연결(Python 서버·엔진·래퍼에 "Basalt"), 엔진의 측정값이 작업 관리자와 같은 규모인지, 헤더 기반 구성 추정을 하지 않는 판단이 맞는지 | 하드웨어 › GPU 메모리 도구 줄의 "Basalt · 프로세스" 툴팁, 표의 Basalt 표시 |
+| **Basalt** 이 프로그램이 켠 것만 끄는지: 직접 켠 Basalt는 [끄기]가 꺼져 있는지, 이 프로그램으로 켠 뒤 앱을 닫았다 열어도 끌 수 있는지(`데이터 폴더\basalt-started.json`) | Basalt 화면의 [끄기] 상태와 알림 |
+| **Basalt** API 값 표가 실제 Basalt에서 채워지는지, 미지원으로 나오는 값이 실제로 없는 값인지 | Basalt 화면 "Basalt API 값", 확인 스크립트의 `endpoints` 결과와 비교 |
 | 4K·175% 배율, 창 크기 변경, 다중 모니터(배율이 다른 모니터 간 이동) | 창을 모니터 사이로 옮기며 글자 잘림·흐림 확인, 설정의 화면 배율 |
 | 사용자 PC의 실제 이벤트 로그 규모(오래된 기록 가져오기 속도) | 시스템 진단 › 현황 |
 | 실제 응용 프로그램(메모장·계산기·설정 앱)에 대한 Operator 작업과 승인 창 | AI Operator › 작업 실행, 긴급 중단 Ctrl+Alt+F12 |

@@ -264,6 +264,7 @@ public sealed partial class ShellViewModel : ObservableObject
         }
 
         Basalt.IsVisible = CurrentSection?.SelectedTab?.Content == Basalt;
+        Basalt.Tick();
         GpuMemory.IsVisible = CurrentSection?.SelectedTab?.Content == GpuMemory;
         if (GpuMemory.IsVisible)
         {

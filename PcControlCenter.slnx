@@ -14,6 +14,7 @@
     <Project Path="src/PcControlCenter.Presentation/PcControlCenter.Presentation.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/PcControlCenter.Basalt.Tests/PcControlCenter.Basalt.Tests.csproj" />
     <Project Path="tests/PcControlCenter.FakeBasalt/PcControlCenter.FakeBasalt.csproj" />
     <Project Path="tests/PcControlCenter.MockOperatorHost/PcControlCenter.MockOperatorHost.csproj" />
     <Project Path="tests/PcControlCenter.Tests/PcControlCenter.Tests.csproj" />

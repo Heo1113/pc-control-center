@@ -50,7 +50,12 @@ public sealed class BasaltController : IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _statusGate = new();
     private BasaltStatus _status;
-    private BasaltLaunch? _launch;
+    private readonly BasaltOwnership _ownership;
+    private int _oursNow;
+    private bool _stopLeft;
+
+    /// <summary>The window this app opened for the current Basalt (kept across restarts by <see cref="BasaltOwnership"/>).</summary>
+    private BasaltLaunch? _launch => _ownership.Launch;
     private DateTimeOffset? _launcherGoneAt;
     private bool _launchAnswered;
     private BasaltStopReport? _lastStop;
@@ -62,9 +67,11 @@ public sealed class BasaltController : IAsyncDisposable
 
     /// <param name="settings">The live settings object (the settings page edits and saves it); read at every action.</param>
     /// <param name="selfId">This app's PID (never part of a tree); default: the current process.</param>
+    /// <param name="ownershipFile">Where the processes this app started are remembered across restarts; null = this run only.</param>
     public BasaltController(IBasaltSystem system, BasaltSettings settings, TimeProvider? time = null, IAppLogger? log = null, BasaltTimings? timings = null,
-        int? selfId = null)
+        int? selfId = null, string? ownershipFile = null)
     {
+        _ownership = new BasaltOwnership(ownershipFile);
         _system = system;
         _settings = settings;
         _time = time ?? TimeProvider.System;
@@ -288,6 +295,18 @@ public sealed class BasaltController : IAsyncDisposable
         }
 
         var tree = processes is null ? null : BasaltProcessTree.Identify(port, processes, listeners, _launch, _selfId);
+        if (processes is not null)
+        {
+            var ours = tree is { HasMembers: true } ? _ownership.Ours(tree.Members.Select(m => m.Process), processes) : [];
+            _ownership.Adopt(ours);
+            _ownership.Prune(processes);
+            _oursNow = ours.Count;
+            if (_ownership.Restored && !_ownership.AnyAlive(processes))
+            {
+                _ownership.Clear(); // what an earlier run started has ended meanwhile
+            }
+        }
+
         var launcherAlive = _launch is not null && processes is not null && processes.Any(p => p.Id == _launch.ProcessId && p.StartTime == _launch.StartTime);
         if (_launch is not null && processes is not null)
         {
@@ -306,9 +325,9 @@ public sealed class BasaltController : IAsyncDisposable
             if (health.IsUp)
             {
                 _launchAnswered |= _launch is not null;
-                Publish(BasaltState.Running, health.Loaded == false
+                Publish(BasaltState.Running, (health.Loaded == false
                     ? $"응답함 · 모델을 올리는 중 (/health: loaded=false)"
-                    : $"응답함 (/health HTTP {health.StatusCode})", tree, health);
+                    : $"응답함 (/health HTTP {health.StatusCode})") + (_oursNow == 0 ? " · 이 프로그램이 켜지 않아 여기서는 끄지 않음" : ""), tree, health);
                 return;
             }
 
@@ -324,6 +343,17 @@ public sealed class BasaltController : IAsyncDisposable
             return;
         }
 
+        if (_stopLeft && tree is { HasMembers: true } afterStop)
+        {
+            Publish(BasaltState.Leftover, $"끄기 뒤 Basalt 프로세스 {afterStop.Members.Count}개가 남아 있습니다 (마지막 끄기 결과 참고).", tree, null);
+            return;
+        }
+
+        if (tree is { HasMembers: false })
+        {
+            _stopLeft = false;
+        }
+
         if (_launch is not null)
         {
             var waited = now - _launch.StartedAt;
@@ -334,7 +364,7 @@ public sealed class BasaltController : IAsyncDisposable
                     : "Basalt를 켜지 못했습니다: 시작 스크립트 창이 닫혔고 Basalt 프로세스가 없습니다. 스크립트나 설정 파일의 오류일 수 있으니 "
                       + "start-basalt.ps1을 직접 실행해 메시지를 확인하세요.";
                 _log.Warn("basalt", _launchAnswered ? "Basalt 창이 닫힘" : "시작 실패: 창이 닫혔고 프로세스 없음");
-                _launch = null;
+                _ownership.Clear();
                 Publish(BasaltState.Off, "꺼짐", tree, null);
                 return;
             }
@@ -359,7 +389,9 @@ public sealed class BasaltController : IAsyncDisposable
                 return;
             }
 
-            Publish(BasaltState.Leftover, $"Basalt 프로세스 {leftovers.Members.Count}개가 포트를 쓰지 않은 채 남아 있습니다. 끄기를 누르면 정리합니다.", tree, null);
+            Publish(BasaltState.Leftover, _oursNow > 0
+                ? $"Basalt 프로세스 {leftovers.Members.Count}개가 포트를 쓰지 않은 채 남아 있습니다. 끄기를 누르면 이 프로그램이 켠 {_oursNow}개를 정리합니다."
+                : $"이 프로그램이 켜지 않은 Basalt 프로세스 {leftovers.Members.Count}개가 포트를 쓰지 않은 채 있습니다. 이 화면에서는 끄지 않습니다.", tree, null);
             return;
         }
 
@@ -443,7 +475,8 @@ public sealed class BasaltController : IAsyncDisposable
         var request = new BasaltStartRequest(BasaltCommand.PowerShellPath(), BasaltCommand.Arguments(script, config), directory);
         try
         {
-            _launch = _system.Start(request, mode);
+            _ownership.Started(_system.Start(request, mode));
+            _stopLeft = false;
         }
         catch (BasaltStartException ex)
         {
@@ -452,7 +485,7 @@ public sealed class BasaltController : IAsyncDisposable
 
         _launcherGoneAt = null;
         _launchAnswered = false;
-        _log.Info("basalt", $"Basalt 시작 ({ModeText(mode)}, 창 PID {_launch.ProcessId}, 포트 {port})");
+        _log.Info("basalt", $"Basalt 시작 ({ModeText(mode)}, 창 PID {_launch!.ProcessId}, 포트 {port})");
         return null;
     }
 
@@ -483,12 +516,20 @@ public sealed class BasaltController : IAsyncDisposable
 
         if (!tree.HasMembers)
         {
-            _launch = null;
+            _ownership.Clear();
             _notice = "Basalt가 이미 꺼져 있습니다.";
             return null;
         }
 
-        var members = tree.Members.Select(m => m.Process).ToList();
+        // Only what this app started (its window and what runs under it) is ever stopped.
+        var ours = _ownership.Ours(tree.Members.Select(m => m.Process), processes).Select(p => p.Id).ToHashSet();
+        if (ours.Count == 0)
+        {
+            _notice = "이 Basalt는 이 프로그램이 켜지 않아 끄지 않았습니다. Basalt를 켠 창에서 Ctrl+C로 끄세요.";
+            return null;
+        }
+
+        var members = tree.Members.Where(m => ours.Contains(m.Process.Id)).Select(m => m.Process).ToList();
         var roles = tree.Members.ToDictionary(m => m.Process.Id, m => m.Role);
         PublishStopping("Ctrl+C를 보내는 중", started, tree);
 
@@ -496,7 +537,7 @@ public sealed class BasaltController : IAsyncDisposable
         string? signal = null;
         var sent = false;
         var attempts = new List<string>();
-        foreach (var candidate in tree.ConsoleCandidates)
+        foreach (var candidate in tree.ConsoleCandidates.Where(c => ours.Contains(c.Id)))
         {
             var result = _system.SendCtrlC(candidate.Id);
             if (result == ConsoleSignalResult.Sent)
@@ -537,12 +578,13 @@ public sealed class BasaltController : IAsyncDisposable
             var targets = new List<(BasaltProcess Process, TreeRole Role)>();
             if (fresh is { IsBasalt: true, Owner: not null })
             {
-                // What listens now (a restarted server included). Without a listener only the processes seen above are ended,
-                // not every basalt* process on the PC.
-                targets.AddRange(fresh.Members.Select(m => (m.Process, m.Role)));
+                // What listens now (a restarted server included), as far as it is this app's. Without a listener only the
+                // processes seen above are ended, not every basalt* process on the PC.
+                var freshOurs = _ownership.Ours(fresh.Members.Select(m => m.Process), nowProcesses).Select(p => p.Id).ToHashSet();
+                targets.AddRange(fresh.Members.Where(m => freshOurs.Contains(m.Process.Id)).Select(m => (m.Process, m.Role)));
             }
 
-            foreach (var member in tree.Members)
+            foreach (var member in tree.Members.Where(m => ours.Contains(m.Process.Id)))
             {
                 if (targets.All(t => t.Process.Id != member.Process.Id)
                     && BasaltProcessTree.StillRunning([member.Process], nowProcesses).Count > 0)
@@ -583,8 +625,10 @@ public sealed class BasaltController : IAsyncDisposable
 
         if (left.Count == 0 && finalListeners is { Count: 0 })
         {
-            _launch = null;
+            _ownership.Clear();
         }
+
+        _stopLeft = left.Count > 0;
 
         return new BasaltStopReport
         {
@@ -689,7 +733,8 @@ public sealed class BasaltController : IAsyncDisposable
 
     private void Publish(BasaltState state, string detail, BasaltTree? tree, BasaltHealth? health, DateTimeOffset? since = null)
     {
-        var startedHere = _launch is not null && state is not BasaltState.Off and not BasaltState.PortBusy;
+        var startedHere = state is not BasaltState.Off and not BasaltState.PortBusy and not BasaltState.Unavailable
+                          && (_oursNow > 0 || (state == BasaltState.Starting && _launch is not null));
         var status = new BasaltStatus
         {
             State = state,

@@ -309,15 +309,15 @@ public class BasaltControllerTests
     public async Task Without_a_console_the_processes_are_ended_without_waiting()
     {
         var system = new FakeBasaltSystem { Signal = FakeSignal.NoConsole };
-        system.AddTree(DateTimeOffset.UtcNow.AddMinutes(-1), withLauncher: false);
         await using var controller = BasaltTest.Controller(system, timings: BasaltTest.Fast with { StopWait = TimeSpan.FromSeconds(20) });
+        Assert.Null(await controller.StartServerAsync(BasaltSettings.QualityMode, Ct));
 
         var report = await controller.StopServerAsync(Ct);
 
         Assert.NotNull(report);
         Assert.Contains("콘솔이 없음", report.Signal, StringComparison.Ordinal);
-        Assert.Equal([Server, Wrapper, Engine], system.Signals); // tried in order
-        Assert.Equal([Server, Wrapper, Engine], system.Terminated);
+        Assert.Equal([Server, Wrapper, Launcher, Engine], system.Signals); // tried in order
+        Assert.Equal([Server, Wrapper, Engine, Launcher], system.Terminated);
         Assert.True(report.Took < TimeSpan.FromSeconds(10));
         Assert.True(report.Clean);
     }
@@ -334,8 +334,8 @@ public class BasaltControllerTests
                 s.Add(new BasaltProcess(532, Wrapper, "basalt-engine.exe", DateTimeOffset.UtcNow));
             }
         };
-        system.AddTree(DateTimeOffset.UtcNow.AddMinutes(-1), withLauncher: false);
         await using var controller = BasaltTest.Controller(system, timings: BasaltTest.ShortStopWait);
+        Assert.Null(await controller.StartServerAsync(BasaltSettings.QualityMode, Ct));
 
         var report = await controller.StopServerAsync(Ct);
 
@@ -367,8 +367,6 @@ public class BasaltControllerTests
     public async Task A_refused_process_is_reported_as_left_and_a_reused_pid_is_left_alone()
     {
         var system = new FakeBasaltSystem { Signal = FakeSignal.Ignored };
-        var start = DateTimeOffset.UtcNow.AddMinutes(-1);
-        system.AddTree(start, withLauncher: false);
         system.TerminateOverride = p => p.Id switch
         {
             Wrapper => TerminateResult.Denied,
@@ -383,6 +381,7 @@ public class BasaltControllerTests
             }
         };
         await using var controller = BasaltTest.Controller(system, timings: BasaltTest.ShortStopWait);
+        Assert.Null(await controller.StartServerAsync(BasaltSettings.QualityMode, Ct));
 
         var report = await controller.StopServerAsync(Ct);
 
@@ -392,6 +391,95 @@ public class BasaltControllerTests
         Assert.StartsWith("PID 510 basalt.exe — Windows가 거부함", left, StringComparison.Ordinal);
         Assert.True(system.Has(Engine)); // notepad, not the engine: not ended
         Assert.Equal(BasaltState.Leftover, controller.Status.State);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_basalt_started_elsewhere_is_shown_but_never_stopped()
+    {
+        var system = new FakeBasaltSystem();
+        system.AddTree(DateTimeOffset.UtcNow.AddMinutes(-2), withLauncher: false);
+        await using var controller = BasaltTest.Controller(system);
+        await controller.RefreshAsync(Ct);
+        Assert.Equal(BasaltState.Running, controller.Status.State);
+        Assert.False(controller.Status.StartedHere);
+        Assert.Contains("이 프로그램이 켜지 않아", controller.Status.Detail, StringComparison.Ordinal);
+
+        var report = await controller.StopServerAsync(Ct);
+
+        Assert.Null(report);
+        Assert.Empty(system.Signals);
+        Assert.Empty(system.Terminated);
+        Assert.Contains("이 프로그램이 켜지 않아 끄지 않았습니다", controller.Status.Notice, StringComparison.Ordinal);
+        Assert.True(system.Has(Server) && system.Has(Wrapper) && system.Has(Engine));
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task What_this_app_started_is_still_its_own_after_a_restart_and_nothing_else_is()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"pcc-basalt-owned-{Guid.NewGuid():N}.json");
+        try
+        {
+            var system = new FakeBasaltSystem { Signal = FakeSignal.Ignored };
+            await using (var first = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.ShortStopWait, selfId: Self, ownershipFile: file))
+            {
+                Assert.Null(await first.StartServerAsync(BasaltSettings.FastMode, Ct));
+                await BasaltTest.WaitFor(first, s => s.State == BasaltState.Running);
+            }
+
+            Assert.True(File.Exists(file));
+            Assert.DoesNotContain("basalt_config", File.ReadAllText(file), StringComparison.Ordinal); // PIDs, start times, mode only
+            system.Remove(Launcher); // the window may be gone; the server it started still is this app's
+
+            await using var second = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.ShortStopWait, selfId: Self, ownershipFile: file);
+            var status = await BasaltTest.WaitFor(second, s => s.State == BasaltState.Running);
+            Assert.True(status.StartedHere);
+            Assert.Equal(BasaltSettings.FastMode, status.Mode);
+
+            var report = await second.StopServerAsync(Ct);
+
+            Assert.NotNull(report);
+            Assert.True(report.Clean);
+            Assert.Equal([Server, Wrapper, Engine], system.Terminated);
+            Assert.False(File.Exists(file));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task A_record_of_processes_that_have_ended_owns_nothing_later()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"pcc-basalt-owned-{Guid.NewGuid():N}.json");
+        try
+        {
+            var system = new FakeBasaltSystem();
+            await using (var first = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.Fast, selfId: Self, ownershipFile: file))
+            {
+                Assert.Null(await first.StartServerAsync(BasaltSettings.QualityMode, Ct));
+                await BasaltTest.WaitFor(first, s => s.State == BasaltState.Running);
+            }
+
+            foreach (var id in new[] { Launcher, ConsoleHost, Wrapper, Server, Engine })
+            {
+                system.Remove(id);
+            }
+
+            // Someone starts Basalt by hand, reusing the same PIDs (newer start times).
+            system.AddTree(DateTimeOffset.UtcNow.AddMinutes(1), withLauncher: false);
+            await using var second = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.Fast, selfId: Self, ownershipFile: file);
+            await second.RefreshAsync(Ct);
+
+            Assert.False(second.Status.StartedHere);
+            Assert.Null(await second.StopServerAsync(Ct));
+            Assert.Empty(system.Terminated);
+            Assert.Empty(system.Signals);
+        }
+        finally
+        {
+            File.Delete(file);
+        }
     }
 
     [Fact(Timeout = 30_000)]

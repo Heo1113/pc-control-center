@@ -154,7 +154,8 @@ public sealed class ShellRuntime : IAsyncDisposable
                                      ?? (options.MockSensors ? new MockBasaltSystem(options.Time)
                                          : OperatingSystem.IsWindows() ? new WindowsBasaltSystem(options.BasaltSignalHelper)
                                          : new UnavailableBasaltSystem());
-        var basalt = new BasaltController(basaltSystem, loaded.Settings.Basalt, options.Time, log, options.BasaltTimings);
+        var basalt = new BasaltController(basaltSystem, loaded.Settings.Basalt, options.Time, log, options.BasaltTimings,
+            ownershipFile: basaltSystem.IsMock ? null : Path.Combine(paths.Root, "basalt-started.json"));
         log.Info("app", $"시작 {AppInfo.Version}, 데이터 폴더 {(paths.IsPortable ? "(포터블)" : paths.Root)}, 관리자 권한 {Environment.IsPrivilegedProcess}, "
                         + $"센서 {(hub.IsMock ? "MOCK" : hub.GpuProviderName)}");
         return new ShellRuntime(paths, store, loaded, rootLock, fileLog, log, hub, gpuMemory, basalt, options);

@@ -69,6 +69,11 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet test --project tests/PcControlCenter.Tests -c Release --no-build
 
+      - name: Basalt/Strata adapter tests (JSON, no answer, timeouts, process names - in-memory HTTP)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 10
+        run: dotnet test --project tests/PcControlCenter.Basalt.Tests -c Release --no-build
+
   windows:
     name: Windows x64 - build, all tests, real UIA tests, portable package, GUI smoke tests
     runs-on: windows-latest
@@ -115,6 +120,11 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 15
         run: dotnet test --project tests/PcControlCenter.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
+
+      - name: Basalt/Strata adapter tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 10
+        run: dotnet test --project tests/PcControlCenter.Basalt.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: Publish portable package (self-contained single-file EXE)
         id: publish

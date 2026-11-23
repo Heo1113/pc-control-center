@@ -147,6 +147,13 @@ public sealed class MockBasaltSystem : IBasaltSystem, IDisposable
                 : new LoopbackResponse(503, "application/json", "{\"service\":\"basalt-mock\",\"loaded\":false}");
         }
 
+        if (path == "/v1/status" && listening)
+        {
+            // Part of Strata's status shape only: the page shows the rest as "미지원", as with a Basalt that lacks them.
+            return new LoopbackResponse(200, "application/json",
+                "{\"service\":\"basalt-mock\",\"model\":\"MOCK-model\",\"loaded\":true,\"cache_max_tokens\":32768,\"concurrency\":{\"serving\":1}}");
+        }
+
         if (path is "/" or "/index.html")
         {
             var modeText = BasaltController.ModeText(mode);

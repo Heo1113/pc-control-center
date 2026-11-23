@@ -521,6 +521,10 @@ internal sealed class SmokeTestRunner(
         var view = FindChild<Views.BasaltView>(window);
         var shown = await WaitUntil(() => view?.DashboardSource is not null || basalt.WebViewProblem is not null, TimeSpan.FromSeconds(20));
         details["basalt-dashboard"] = view?.DashboardSource ?? basalt.WebViewProblem ?? "WebView2 did not start";
+        // The API values: the MOCK reports a model through /v1/status and nothing through /props: "미지원" there, not a guess.
+        checks["basalt-api-values"] = await WaitUntil(() => basalt.ApiFields.Any(f => f.Label == PcControlCenter.Basalt.BasaltApiReader.Model && f.Text == "MOCK-model")
+                                                            && basalt.ApiFields.Any(f => f.Label == PcControlCenter.Basalt.BasaltApiReader.ModelFile && f.Text == "미지원"),
+            TimeSpan.FromSeconds(20));
         checks["basalt-dashboard-or-reason"] = shown;
         await Task.Delay(1500);
         await Capture("local-ai-basalt-running");
