@@ -9,6 +9,8 @@ namespace PcControlCenter.Core;
 /// </summary>
 public sealed class ShellSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public const int CurrentSchemaVersion = 1;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
@@ -69,6 +71,8 @@ public sealed class ShellSettings
 /// <summary>The one hardware reader shared by all modules.</summary>
 public sealed class SharedHardwareSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public const int MinIntervalMs = 500;
     public const int MaxIntervalMsLimit = 60_000;
 
@@ -94,6 +98,8 @@ public sealed class SharedHardwareSettings
 /// <summary>Turns whole modules off (for example the Operator on a PC where no automation should run).</summary>
 public sealed class ModuleSwitches
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public bool LocalAi { get; set; } = true;
     public bool GpuEconomics { get; set; } = true;
     public bool Diagnostics { get; set; } = true;
@@ -102,6 +108,8 @@ public sealed class ModuleSwitches
 
 public sealed class ShellUiSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public double FontScale { get; set; } = 1.0;
 }
 
@@ -111,6 +119,8 @@ public sealed class ShellUiSettings
 /// </summary>
 public sealed class GpuMemoryPageSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public static readonly IReadOnlySet<string> ColumnKeys = new HashSet<string>(StringComparer.Ordinal)
     {
         "Name", "Pid", "KindLabel", "Dedicated", "Delta", "Shared", "Gpu", "Runtimes", "Inside", "Adapter",
@@ -221,6 +231,8 @@ public sealed class GpuMemoryPageSettings
 /// </summary>
 public sealed class BasaltSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     public const string DefaultInstallDirectory = @"C:\AI\basalt";
     public const string DefaultStartScript = "start-basalt.ps1";
     public const string DefaultQualityConfig = "basalt_config.json";
@@ -233,9 +245,11 @@ public sealed class BasaltSettings
     public const int MinStartWaitSeconds = 30;
     public const int MaxStartWaitSeconds = 3600;
     public const string QualityMode = "Quality";
+    public const string DualMode = "DualQuality";
+    public const string DefaultDualConfig = "basalt_config.dual.json";
     public const string FastMode = "Fast";
 
-    public static readonly IReadOnlySet<string> Modes = new HashSet<string>(StringComparer.Ordinal) { QualityMode, FastMode };
+    public static readonly IReadOnlySet<string> Modes = new HashSet<string>(StringComparer.Ordinal) { QualityMode, FastMode, DualMode };
 
     public string InstallDirectory { get; set; } = DefaultInstallDirectory;
 
@@ -243,6 +257,8 @@ public sealed class BasaltSettings
     public string StartScript { get; set; } = DefaultStartScript;
 
     public string QualityConfig { get; set; } = DefaultQualityConfig;
+    public bool EmbeddedDashboard { get; set; } = true;
+    public string DualConfig { get; set; } = DefaultDualConfig;
     public string FastConfig { get; set; } = DefaultFastConfig;
 
     /// <summary>The port Basalt serves its API and dashboard on (127.0.0.1). Both configurations use the same one.</summary>
@@ -257,7 +273,7 @@ public sealed class BasaltSettings
     /// <summary>The configuration chosen last on the page: <see cref="QualityMode"/> or <see cref="FastMode"/>.</summary>
     public string Mode { get; set; } = QualityMode;
 
-    public string ConfigFor(string mode) => mode == FastMode ? FastConfig : QualityConfig;
+    public string ConfigFor(string mode) => mode switch { FastMode => FastConfig, DualMode => DualConfig, _ => QualityConfig };
 
     /// <summary>A path from these settings as a full path: relative ones are taken from the install folder.</summary>
     public string Resolve(string path) => WindowsPath.Combine(InstallDirectory, path);
@@ -280,6 +296,7 @@ public sealed class BasaltSettings
         }
 
         QualityConfig = Checked(QualityConfig, DefaultQualityConfig, "품질용 설정 파일", notes);
+        DualConfig = Checked(DualConfig, DefaultDualConfig, "듀얼 품질 설정 파일", notes);
         FastConfig = Checked(FastConfig, DefaultFastConfig, "빠른 모드 설정 파일", notes);
         if (Port is < 1 or > 65535)
         {
@@ -354,6 +371,8 @@ public static class WindowsPath
 
 public sealed class OperatorHostSettings
 {
+    [JsonExtensionData] public Dictionary<string, JsonElement>? AdditionalSettings { get; set; }
+
     /// <summary>How many times a crashed Operator host process is restarted automatically before the user is asked.</summary>
     public int MaxAutomaticRestarts { get; set; } = 3;
 }
@@ -387,7 +406,7 @@ public sealed class ShellSettingsStore(string path)
             var notes = new List<string>(settings.Normalize());
             if (settings.SchemaVersion > ShellSettings.CurrentSchemaVersion)
             {
-                notes.Add($"설정 파일이 더 새 버전(스키마 {settings.SchemaVersion})에서 저장되었습니다. 알 수 없는 항목은 무시합니다.");
+                notes.Add($"설정 파일이 더 새 버전(스키마 {settings.SchemaVersion})에서 저장되었습니다. 알 수 없는 필드도 저장할 때 보존합니다.");
             }
 
             return new LoadedShellSettings(settings, notes, WasCreated: false);
@@ -405,9 +424,16 @@ public sealed class ShellSettingsStore(string path)
     public void Save(ShellSettings settings)
     {
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-        var temp = Path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(settings, Json));
-        File.Move(temp, Path, overwrite: true);
+        var temp = $"{Path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temp, JsonSerializer.Serialize(settings, Json));
+            File.Move(temp, Path, overwrite: true);
+        }
+        finally
+        {
+            File.Delete(temp);
+        }
     }
 
     private string? KeepAside()

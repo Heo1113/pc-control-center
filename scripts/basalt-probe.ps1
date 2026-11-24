@@ -32,6 +32,7 @@ param(
     [int]$StopTimeoutSec = 60,
     [string]$KeyVariable = '',
     [switch]$ManualStop,
+    [string]$SignalHelper = (Join-Path $PSScriptRoot 'PcControlCenter.ConsoleSignal.exe'),
     [string]$OutFile = (Join-Path $env:TEMP 'basalt-probe.json')
 )
 
@@ -97,6 +98,7 @@ $http = New-Object System.Net.Http.HttpClient($handler)
 $http.Timeout = [TimeSpan]::FromSeconds(15)
 
 function Invoke-Get([string]$path, [bool]$withKey) {
+    $response = $null
     $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Get, ($base + $path))
     if ($withKey -and $credential) {
         $request.Headers.Authorization = New-Object System.Net.Http.Headers.AuthenticationHeaderValue('Bearer', $credential)
@@ -115,6 +117,7 @@ function Invoke-Get([string]$path, [bool]$withKey) {
         return [pscustomobject]@{ Status = 0; Type = ''; Body = ''; AuthScheme = $null; Server = ''; Location = $null
             Error = $_.Exception.GetBaseException().Message }
     } finally {
+        if ($response) { $response.Dispose() }
         $request.Dispose()
     }
 }
@@ -137,16 +140,17 @@ function Get-Entry([string]$path, [bool]$withKey) {
 }
 
 function Get-Listeners([int]$p) {
-    @(Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue)
+    @(Get-NetTCPConnection -ErrorAction Stop | Where-Object { $_.State -eq 'Listen' -and $_.LocalPort -eq $p })
 }
 
 function Get-ListenerInfo($list) {
-    @($list | ForEach-Object {
-        $proc = Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+    foreach ($listener in $list) {
+        if ($null -eq $listener -or $null -eq $listener.OwningProcess) { continue }
+        $proc = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue
         $procName = $null
         if ($proc) { $procName = $proc.ProcessName }
-        [ordered]@{ pid = [int]$_.OwningProcess; name = $procName; address = [string]$_.LocalAddress }
-    })
+        [ordered]@{ pid = [int]$listener.OwningProcess; name = $procName; address = [string]$listener.LocalAddress }
+    }
 }
 
 function Get-ScriptOutline([string]$path) {
@@ -171,6 +175,7 @@ function Get-ConfigShape([string]$path) {
 }
 
 function Get-Subtree([int]$rootId, $rootCreated, $all) {
+    if (-not $rootCreated -or -not @($all | Where-Object { $_.ProcessId -eq $rootId -and $_.CreationDate -eq $rootCreated }).Count) { return }
     $result = @()
     $seen = @{ $rootId = $true }
     $queue = New-Object System.Collections.Queue
@@ -196,56 +201,53 @@ function New-TreeEntry($proc, [int]$depth, [string]$role) {
 }
 
 function Get-Alive($tree) {
-    $now = @(Get-CimInstance Win32_Process -Property ProcessId, Name, CreationDate)
-    foreach ($t in $tree) {
-        foreach ($p in $now) {
-            if ([int]$p.ProcessId -eq $t.pid -and $p.CreationDate.ToString('o') -eq $t.started) {
-                [ordered]@{ pid = $t.pid; name = $t.name; role = $t.role }
-                break
+    $now = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, Name, CreationDate -ErrorAction Stop)
+    foreach ($member in @($tree)) {
+        $parent = $now | Where-Object { $_.ProcessId -eq $member.pid -and $_.CreationDate -and $_.CreationDate.ToString('o') -eq $member.started } | Select-Object -First 1
+        if (-not $parent) { continue }
+        foreach ($item in (Get-Subtree $member.pid $parent.CreationDate $now)) {
+            $child = New-TreeEntry $item.Proc $item.Depth '확인된 하위'
+            if (-not @($tree | Where-Object { $_.pid -eq $child.pid -and $_.started -eq $child.started }).Count) {
+                [void]$tree.Add($child)
             }
+        }
+    }
+    foreach ($member in $tree) {
+        if (@($now | Where-Object { $_.ProcessId -eq $member.pid -and $_.CreationDate -and $_.CreationDate.ToString('o') -eq $member.started }).Count) {
+            [ordered]@{ pid = $member.pid; name = $member.name; role = $member.role }
         }
     }
 }
 
-function Send-CtrlC([int]$targetId) {
-    # A hidden helper PowerShell leaves its own console, joins the target's console, ignores Ctrl+C itself and sends it there.
-    # Exit codes: 0 sent, 2 could not join the console (the process has none), 3 could not send.
-    $helper = @'
-$sig = @"
-using System;
-using System.Runtime.InteropServices;
-public static class ConsoleSignal {
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool FreeConsole();
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool AttachConsole(uint processId);
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetConsoleCtrlHandler(IntPtr handler, bool add);
-    [DllImport("kernel32.dll", SetLastError = true)] public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
-}
-"@
-Add-Type -TypeDefinition $sig
-[void][ConsoleSignal]::FreeConsole()
-if (-not [ConsoleSignal]::AttachConsole(TARGET_PID)) { exit 2 }
-[void][ConsoleSignal]::SetConsoleCtrlHandler([IntPtr]::Zero, $true)
-if (-not [ConsoleSignal]::GenerateConsoleCtrlEvent(0, 0)) { exit 3 }
-Start-Sleep -Seconds 2
-exit 0
-'@
-    $helper = $helper.Replace('TARGET_PID', [string]$targetId)
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($helper))
-    $p = Start-Process -FilePath 'powershell.exe' -PassThru -Wait -WindowStyle Hidden `
-        -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded)
-    return $p.ExitCode
+function Send-CtrlC([int]$targetId, $owned) {
+    if (-not (Test-Path -LiteralPath $SignalHelper -PathType Leaf)) { return 4 }
+    $arguments = @([string]$targetId)
+    foreach ($member in $owned) {
+        $proc = Get-Process -Id $member.pid -ErrorAction SilentlyContinue
+        if (-not $proc) { continue }
+        try {
+            $ticks = $proc.StartTime.ToUniversalTime().Ticks
+            $created = [datetime]::Parse($member.started, [cultureinfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime().Ticks
+            # CIM timestamps have microsecond precision; the helper checks full FILETIME precision.
+            if ($ticks -ge $created -and $ticks - $created -lt 10) { $arguments += "$($member.pid):$ticks" }
+        } finally { $proc.Dispose() }
+    }
+    & $SignalHelper @arguments
+    return $LASTEXITCODE
 }
 
 function Wait-Stopped($tree, [datetime]$since, [int]$seconds, $stop) {
     $deadline = (Get-Date).AddSeconds($seconds)
     while ((Get-Date) -lt $deadline) {
-        if (-not $stop.Contains('secondsUntilPortFree') -and (Get-Listeners $Port).Count -eq 0) {
+        $portFree = @(Get-Listeners $Port).Count -eq 0
+        $processesGone = @(Get-Alive $tree).Count -eq 0
+        if (-not $stop.Contains('secondsUntilPortFree') -and $portFree) {
             $stop.secondsUntilPortFree = [math]::Round(((Get-Date) - $since).TotalSeconds, 1)
         }
-        if (-not $stop.Contains('secondsUntilProcessesGone') -and @(Get-Alive $tree).Count -eq 0) {
+        if (-not $stop.Contains('secondsUntilProcessesGone') -and $processesGone) {
             $stop.secondsUntilProcessesGone = [math]::Round(((Get-Date) - $since).TotalSeconds, 1)
         }
-        if ($stop.Contains('secondsUntilPortFree') -and $stop.Contains('secondsUntilProcessesGone')) { return $true }
+        if ($portFree -and $processesGone) { return $true }
         Start-Sleep -Milliseconds 500
     }
     return $false
@@ -256,9 +258,9 @@ try {
     # 1) The port must be free.
     $report.basaltProcessesBefore = @(Get-CimInstance Win32_Process -Filter "Name LIKE 'basalt%'" |
         ForEach-Object { [ordered]@{ pid = [int]$_.ProcessId; name = $_.Name } })
-    $busy = Get-Listeners $Port
+    $busy = @(Get-Listeners $Port)
     if ($busy.Count -gt 0) {
-        $report.portBusyBeforeStart = Get-ListenerInfo $busy
+        $report.portBusyBeforeStart = @(Get-ListenerInfo $busy)
         Save-Report
         Write-Host "포트 $Port 를 이미 다른 프로세스가 쓰고 있어 Basalt를 켜지 않았습니다. 결과: $OutFile"
         return
@@ -350,9 +352,9 @@ try {
 
     # 6) Who owns the port, and the process tree under the window this script opened.
     $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, Name, CreationDate)
-    $listeners = Get-Listeners $Port
+    $listeners = @(Get-Listeners $Port)
     $owners = @($listeners | ForEach-Object { [int]$_.OwningProcess } | Sort-Object -Unique)
-    $report.portOwners = Get-ListenerInfo $listeners
+    $report.portOwners = @(Get-ListenerInfo $listeners)
     $tree = @()
     $tree += New-TreeEntry $launcherInfo 0 '실행 창'
     foreach ($item in (Get-Subtree $launcher.Id $launcherInfo.CreationDate $all)) {
@@ -378,17 +380,21 @@ try {
     # 7) Graceful stop: Ctrl+C to Basalt's console (or by hand), then wait without killing anything.
     $stop = [ordered]@{ method = 'signal' }
     if ($ManualStop) { $stop.method = 'manual' }
+    $tree = [System.Collections.ArrayList]@($tree | Where-Object { $_.role -notlike '*트리 밖*' })
     $stopStart = Get-Date
     $done = $false
     if (-not $ManualStop) {
-        $target = $launcher.Id
-        $stop.signalTarget = '실행 창의 콘솔'
-        if ($owners.Count -gt 0) { $target = $owners[0]; $stop.signalTarget = '포트 소유 프로세스의 콘솔' }
-        Write-Host 'Basalt 콘솔에 Ctrl+C 신호를 보냅니다...'
-        $exitCode = Send-CtrlC $target
+        $exitCode = 4
+        if ($owners.Count -eq 1 -and @($tree | Where-Object { $_.pid -eq $owners[0] }).Count) {
+            $stop.signalTarget = '확인된 포트 소유자의 콘솔'
+            $exitCode = Send-CtrlC $owners[0] $tree
+        } elseif ($owners.Count -eq 0 -and -not $launcher.HasExited) {
+            $stop.signalTarget = '실행 창의 콘솔'
+            $exitCode = Send-CtrlC $launcher.Id $tree
+        }
         $stop.signalExitCode = $exitCode
-        switch ($exitCode) { 0 { $stop.signal = '보냄' } 2 { $stop.signal = '콘솔에 붙지 못함 (콘솔이 없는 프로세스)' } 3 { $stop.signal = '보내지 못함' } default { $stop.signal = '도우미 오류' } }
-        $done = Wait-Stopped $tree $stopStart $StopTimeoutSec $stop
+        switch ($exitCode) { 0 { $stop.signal = '보냄' } 2 { $stop.signal = '콘솔에 붙지 못함 (콘솔이 없는 프로세스)' } 3 { $stop.signal = '보내지 못함' } 4 { $stop.signal = '콘솔 소유권 미확인 또는 검증 도우미 없음' } default { $stop.signal = '도우미 오류' } }
+        if ($exitCode -eq 0) { $done = Wait-Stopped $tree $stopStart $StopTimeoutSec $stop }
         $stop.stoppedBySignal = $done
     }
     if (-not $done) {
@@ -402,8 +408,8 @@ try {
 
     # 8) What is left?
     Start-Sleep -Seconds 3
-    $after = Get-Listeners $Port
-    $report.afterStop = [ordered]@{ processesLeft = @(Get-Alive $tree); portStillListening = ($after.Count -gt 0); portOwners = Get-ListenerInfo $after }
+    $after = @(Get-Listeners $Port)
+    $report.afterStop = [ordered]@{ processesLeft = @(Get-Alive $tree); portStillListening = ($after.Count -gt 0); portOwners = @(Get-ListenerInfo $after) }
     $basaltStarted = $false
 }
 catch {
@@ -411,6 +417,7 @@ catch {
     throw
 }
 finally {
+    $http.Dispose()
     Save-Report
     Write-Host ''
     Write-Host "결과: $OutFile"

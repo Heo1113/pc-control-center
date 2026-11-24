@@ -80,7 +80,7 @@ public static class BasaltProcessTree
 
     /// <param name="selfId">This app's own PID: never part of a tree (nor are its ancestors).</param>
     public static BasaltTree Identify(int port, IReadOnlyList<BasaltProcess> processes, IReadOnlyList<BasaltListener> listeners, BasaltLaunch? launch,
-        int selfId)
+        int selfId, Func<BasaltProcess, bool>? previouslyOwned = null)
     {
         var byId = new Dictionary<int, BasaltProcess>();
         foreach (var p in processes)
@@ -220,7 +220,7 @@ public static class BasaltProcessTree
             }
 
             var named = members.Any(m => IsBasaltName(m.Process.Name));
-            var isBasalt = named || underLauncher;
+            var isBasalt = named || underLauncher || previouslyOwned?.Invoke(owner) == true;
             return new BasaltTree
             {
                 Port = port,
@@ -241,6 +241,12 @@ public static class BasaltProcessTree
         {
             Add(launcher, TreeRole.Launcher, -MaxDepth - 1, $"{launcher.Label}: 이 프로그램이 Basalt 시작 스크립트를 실행한 창");
             AddDescendants(launcher, TreeRole.LauncherDescendant);
+        }
+
+        foreach (var process in processes.Where(p => previouslyOwned?.Invoke(p) == true))
+        {
+            Add(process, TreeRole.LauncherDescendant, 0, $"{process.Label}: 기록된 PID와 시작 시각이 일치합니다.");
+            AddDescendants(process, TreeRole.Descendant);
         }
 
         foreach (var p in processes.Where(p => IsBasaltName(p.Name)).OrderBy(p => p.StartTime ?? DateTimeOffset.MaxValue))
@@ -292,7 +298,7 @@ public static class BasaltProcessTree
         var byId = now.ToDictionary(p => p.Id);
         var protectedIds = Protected(selfId, byId);
         var result = new List<BasaltProcess>();
-        var frontier = new List<BasaltProcess>(parents);
+        var frontier = parents.Where(p => byId.TryGetValue(p.Id, out var current) && p.SameAs(current)).ToList();
         for (var depth = 0; depth < MaxDepth && frontier.Count > 0; depth++)
         {
             var next = new List<BasaltProcess>();
@@ -314,6 +320,16 @@ public static class BasaltProcessTree
         }
 
         return result;
+    }
+
+    /// <summary>Possible children first seen after their parent disappeared. Observation only.</summary>
+    internal static IEnumerable<BasaltProcess> UnverifiedChildren(IReadOnlyList<BasaltProcess> previous, IReadOnlyList<BasaltProcess> now, int selfId)
+    {
+        var current = now.ToDictionary(p => p.Id);
+        var protectedIds = Protected(selfId, current);
+        var missing = previous.Where(p => p.StartTime.HasValue && !current.ContainsKey(p.Id)).ToLookup(p => p.Id);
+        return now.Where(p => !protectedIds.Contains(p.Id) && !ConsoleHosts.Contains(p.Name) &&
+            !previous.Any(old => old.SameAs(p)) && missing[p.ParentId].Any(parent => p.StartTime >= parent.StartTime));
     }
 
     private static IReadOnlyList<TreeMember> Ordered(List<TreeMember> members)

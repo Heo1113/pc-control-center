@@ -154,7 +154,9 @@ public class BasaltHealthClientTests
         Assert.False(busy.IsUp);
 
         using var auth = new BasaltHealthClient(handler: new MockHttp().Status("/health", HttpStatusCode.Unauthorized));
-        Assert.True((await auth.GetAsync(8080, Ct)).IsUp); // something answers: the server is up, it wants a key
+        var protectedHealth = await auth.GetAsync(8080, Ct);
+        Assert.Equal(401, protectedHealth.StatusCode);
+        Assert.False(protectedHealth.IsUp);
     }
 
     [Fact]

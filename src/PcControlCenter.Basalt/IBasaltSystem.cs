@@ -34,7 +34,7 @@ public interface IBasaltSystem
     BasaltLaunch Start(BasaltStartRequest request, string mode);
 
     /// <summary>Sends Ctrl+C to the console <paramref name="processId"/> is attached to (every process on it receives it).</summary>
-    ConsoleSignalResult SendCtrlC(int processId);
+    ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned);
 
     /// <summary>Ends one process, only if it is still the same process (PID and start time).</summary>
     TerminateResult Terminate(BasaltProcess process);
@@ -57,7 +57,7 @@ public sealed class UnavailableBasaltSystem : IBasaltSystem
     public bool FileExists(string path) => false;
     public bool DirectoryExists(string path) => false;
     public BasaltLaunch Start(BasaltStartRequest request, string mode) => throw new BasaltStartException(UnavailableReason!);
-    public ConsoleSignalResult SendCtrlC(int processId) => ConsoleSignalResult.Failed;
+    public ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned) => ConsoleSignalResult.Failed;
     public TerminateResult Terminate(BasaltProcess process) => TerminateResult.Failed;
     public Task<BasaltHealth> HealthAsync(int port, CancellationToken cancellationToken) => Task.FromResult(BasaltHealth.NoAnswer(UnavailableReason!));
 }

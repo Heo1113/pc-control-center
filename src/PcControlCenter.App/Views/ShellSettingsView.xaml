@@ -57,7 +57,7 @@
           <TextBlock Text="Basalt (로컬 AI › Basalt)" Style="{StaticResource SectionTitle}" />
           <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="170" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+            <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
             <TextBlock Text="설치 폴더" Style="{StaticResource Label}" VerticalAlignment="Center" />
             <TextBox Grid.Column="1" Text="{Binding BasaltInstallDirectory, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
                      AutomationProperties.Name="Basalt 설치 폴더" />
@@ -74,7 +74,11 @@
             <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding BasaltFastConfig, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
                      AutomationProperties.Name="Basalt 빠른 모드 설정 파일" />
             <Button Grid.Row="3" Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltFastConfigCommand}" />
-            <StackPanel Grid.Row="4" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,6,0,0">
+            <TextBlock Grid.Row="4" Text="듀얼 품질 설정 파일" Style="{StaticResource Label}" VerticalAlignment="Center" />
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding BasaltDualConfig, UpdateSourceTrigger=PropertyChanged}" Margin="0,2"
+                     AutomationProperties.Name="Basalt 듀얼 품질 설정 파일" />
+            <Button Grid.Row="4" Grid.Column="2" Content="찾아보기…" Style="{StaticResource ToolButton}" Margin="6,2,0,2" Command="{Binding PickBasaltDualConfigCommand}" />
+            <StackPanel Grid.Row="5" Grid.ColumnSpan="3" Orientation="Horizontal" Margin="0,6,0,0">
               <TextBlock Text="포트" Style="{StaticResource Label}" VerticalAlignment="Center" Width="170" />
               <TextBox Text="{Binding BasaltPort, UpdateSourceTrigger=PropertyChanged}" Width="80" AutomationProperties.Name="Basalt 포트" />
               <TextBlock Text="정상 종료 대기 (초)" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="24,0,8,0" />

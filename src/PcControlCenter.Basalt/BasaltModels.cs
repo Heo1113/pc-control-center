@@ -35,6 +35,7 @@ public enum ConsoleSignalResult
 
     /// <summary>PcControlCenter.ConsoleSignal.exe was not found next to the app.</summary>
     HelperMissing,
+    UnverifiedConsole,
 }
 
 /// <summary>The outcome of ending one process.</summary>
@@ -63,8 +64,8 @@ public sealed record BasaltHealth(int? StatusCode, string? Service, bool? Loaded
 {
     public static BasaltHealth NoAnswer(string error) => new(null, null, null, error);
 
-    /// <summary>The server answers: any HTTP status except "busy starting" (502/503/504, how llama.cpp-style servers say they are loading).</summary>
-    public bool IsUp => StatusCode is int code && code is not (502 or 503 or 504);
+    /// <summary>The health endpoint returned a successful HTTP status. Model readiness is reported separately.</summary>
+    public bool IsUp => StatusCode is >= 200 and < 300;
 }
 
 public enum BasaltState
@@ -97,6 +98,7 @@ public enum BasaltState
 public sealed record BasaltStopReport
 {
     public required DateTimeOffset At { get; init; }
+    public int Port { get; init; }
     public required bool Graceful { get; init; }
 
     /// <summary>Where Ctrl+C went, or why it could not be sent.</summary>

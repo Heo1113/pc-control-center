@@ -22,12 +22,13 @@
           <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="17,1,0,0" TextWrapping="Wrap"
                      Visibility="{Binding Detail, Converter={StaticResource NotEmptyToVisibility}}" />
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0"
-                    ToolTip="다음에 켤 때 쓸 설정 파일. 두 모드는 같은 포트를 써서 동시에 켤 수 없습니다.">
-          <RadioButton Content="품질용" IsChecked="{Binding IsQuality}" GroupName="BasaltMode" MinWidth="0" Margin="0,0,16,0" VerticalAlignment="Center"
-                       AutomationProperties.AutomationId="BasaltQuality" />
-          <RadioButton Content="빠른 모드" IsChecked="{Binding IsFast}" GroupName="BasaltMode" MinWidth="0" VerticalAlignment="Center"
-                       AutomationProperties.AutomationId="BasaltFast" />
+        <StackPanel Grid.Column="1" MaxWidth="280" Margin="0,0,12,0" VerticalAlignment="Center">
+          <WrapPanel>
+            <RadioButton Content="단독 품질" IsChecked="{Binding IsQuality}" GroupName="BasaltMode" Margin="0,0,8,0" AutomationProperties.AutomationId="BasaltQuality" />
+            <RadioButton Content="단독 빠름" IsChecked="{Binding IsFast}" GroupName="BasaltMode" Margin="0,0,8,0" AutomationProperties.AutomationId="BasaltFast" />
+            <RadioButton Content="듀얼 품질" IsChecked="{Binding IsDual}" GroupName="BasaltMode" AutomationProperties.AutomationId="BasaltDual" />
+          </WrapPanel>
+          <TextBlock Text="{Binding SelectedConfig}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedConfig}" />
         </StackPanel>
         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
           <Button Content="켜기" Style="{StaticResource PrimaryButton}" Padding="16,4" Command="{Binding StartCommand}" Margin="0,0,6,0"
@@ -41,6 +42,7 @@
       </Grid>
     </Border>
 
+    <CheckBox DockPanel.Dock="Top" Margin="12,4" Content="앱 안에 웹 대시보드 표시" IsChecked="{Binding EmbeddedDashboard}" />
     <Border DockPanel.Dock="Top" Background="{StaticResource NotificationBrush}" BorderBrush="{StaticResource NotificationBorderBrush}" BorderThickness="1"
             CornerRadius="4" Padding="10,6" Margin="6,0,6,6" Visibility="{Binding Notice, Converter={StaticResource NotEmptyToVisibility}}">
       <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" AutomationProperties.AutomationId="BasaltNotice" />
@@ -60,7 +62,7 @@
               <DataTemplate>
                 <StackPanel Width="190" Margin="0,0,12,6">
                   <TextBlock Text="{Binding Label}" Style="{StaticResource Caption}" />
-                  <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text}" />
+                  <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Source}" />
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>

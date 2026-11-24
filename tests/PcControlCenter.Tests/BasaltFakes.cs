@@ -189,7 +189,7 @@ internal sealed class FakeBasaltSystem : IBasaltSystem
         return new BasaltLaunch(Launcher, now, mode, now);
     }
 
-    public ConsoleSignalResult SendCtrlC(int processId)
+    public ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned)
     {
         lock (_gate)
         {

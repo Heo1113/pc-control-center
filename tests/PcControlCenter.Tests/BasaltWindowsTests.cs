@@ -173,7 +173,7 @@ public class BasaltWindowsTests
         public bool FileExists(string path) => inner.FileExists(path);
         public bool DirectoryExists(string path) => inner.DirectoryExists(path);
         public BasaltLaunch Start(BasaltStartRequest request, string mode) => inner.Start(request, mode);
-        public ConsoleSignalResult SendCtrlC(int processId) => inner.SendCtrlC(processId);
+        public ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned) => inner.SendCtrlC(processId, owned);
         public TerminateResult Terminate(BasaltProcess process) => inner.Terminate(process);
         public Task<BasaltHealth> HealthAsync(int port, CancellationToken cancellationToken) => inner.HealthAsync(port, cancellationToken);
         public void Dispose() => inner.Dispose();

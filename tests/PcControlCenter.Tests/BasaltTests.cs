@@ -136,7 +136,7 @@ public class BasaltProcessTreeTests
     }
 
     [Fact]
-    public void New_children_of_ended_processes_are_found_and_reused_pids_are_not()
+    public void New_children_require_a_live_parent_from_the_same_generation()
     {
         var parent = new BasaltProcess(Server, Wrapper, "python.exe", T0);
         var now = new List<BasaltProcess>
@@ -147,6 +147,10 @@ public class BasaltProcessTreeTests
             new(533, Server, "unrelated.exe", T0.AddSeconds(-5)),
         };
 
+        Assert.Empty(BasaltProcessTree.NewChildren([parent], now, new HashSet<int> { Server }, Self));
+        now.Add(parent with { StartTime = T0.AddSeconds(1) });
+        Assert.Empty(BasaltProcessTree.NewChildren([parent], now, new HashSet<int> { Server }, Self));
+        now[^1] = parent;
         var born = BasaltProcessTree.NewChildren([parent], now, new HashSet<int> { Server }, Self);
 
         Assert.Equal([531, 532], born.Select(p => p.Id));
@@ -323,7 +327,7 @@ public class BasaltControllerTests
     }
 
     [Fact(Timeout = 30_000)]
-    public async Task An_engine_started_again_while_ending_is_ended_too()
+    public async Task An_engine_first_seen_after_its_parent_exits_is_reported_for_manual_review()
     {
         var system = new FakeBasaltSystem { Signal = FakeSignal.Ignored };
         system.AfterTerminate = (s, ended) =>
@@ -340,10 +344,10 @@ public class BasaltControllerTests
         var report = await controller.StopServerAsync(Ct);
 
         Assert.NotNull(report);
-        Assert.Contains(532, system.Terminated);
-        Assert.False(system.Has(532));
-        Assert.Contains(report.Ended, e => e.Contains("PID 532", StringComparison.Ordinal) && e.Contains("다시 생긴", StringComparison.Ordinal));
-        Assert.True(report.Clean);
+        Assert.DoesNotContain(532, system.Terminated);
+        Assert.True(system.Has(532));
+        Assert.Contains(report.Left, e => e.Contains("PID 532", StringComparison.Ordinal) && e.Contains("부모 인스턴스 미확인", StringComparison.Ordinal));
+        Assert.False(report.Clean);
     }
 
     [Fact(Timeout = 30_000)]

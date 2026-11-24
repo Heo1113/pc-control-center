@@ -72,7 +72,7 @@ public sealed class MockBasaltSystem : IBasaltSystem, IDisposable
         }
     }
 
-    public ConsoleSignalResult SendCtrlC(int processId)
+    public ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned)
     {
         lock (_gate)
         {

@@ -56,16 +56,6 @@ public sealed class BasaltOwnership
             ours[p.Id] = p;
         }
 
-        // Children of the window even if it has already closed (a script that starts Basalt and ends): its PID is not
-        // reused by another process, and they started after it.
-        if (Launch is { StartTime: { } windowStart } launch && all.All(p => p.Id != launch.ProcessId || p.StartTime == windowStart))
-        {
-            foreach (var p in all.Where(p => p.ParentId == launch.ProcessId && p.Id != launch.ProcessId && p.StartTime >= windowStart))
-            {
-                ours[p.Id] = p;
-            }
-        }
-
         for (var changed = true; changed;)
         {
             changed = false;
@@ -111,13 +101,14 @@ public sealed class BasaltOwnership
     public void Prune(IReadOnlyList<BasaltProcess> now)
     {
         var alive = now.Where(p => p.StartTime is not null).Select(p => (p.Id, p.StartTime!.Value.UtcTicks)).ToHashSet();
-        if (_owned.RemoveWhere(o => !alive.Contains(o)) > 0)
+        var unreadable = now.Where(p => p.StartTime is null).Select(p => p.Id).ToHashSet();
+        if (_owned.RemoveWhere(o => !alive.Contains(o) && !unreadable.Contains(o.Id)) > 0)
         {
             Save();
         }
     }
 
-    public bool AnyAlive(IReadOnlyList<BasaltProcess> now) => now.Any(Owns);
+    public bool MayBeAlive(IReadOnlyList<BasaltProcess> now) => now.Any(p => Owns(p) || (p.StartTime is null && _owned.Any(k => k.Id == p.Id)));
 
     public void Clear()
     {
@@ -174,7 +165,7 @@ public sealed class BasaltOwnership
 
             Launch = new BasaltLaunch(record.LauncherId, record.LauncherStartTicks is long t ? new DateTimeOffset(t, TimeSpan.Zero) : null, record.Mode!,
                 new DateTimeOffset(record.StartedAtTicks, TimeSpan.Zero));
-            foreach (var o in record.Owned.Take(64).Where(o => o.Id > 4))
+            foreach (var o in record.Owned.Where(o => o.Id > 4 && o.StartTicks > 0))
             {
                 _owned.Add((o.Id, o.StartTicks));
             }

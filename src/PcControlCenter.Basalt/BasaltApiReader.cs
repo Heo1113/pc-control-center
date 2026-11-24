@@ -21,6 +21,7 @@ public enum BasaltFieldState
 
     /// <summary>Nothing answered (refused, timed out).</summary>
     NoAnswer,
+    HttpError,
 }
 
 public sealed record BasaltField(string Label, BasaltFieldState State, string? Value, string? Source)
@@ -30,6 +31,7 @@ public sealed record BasaltField(string Label, BasaltFieldState State, string? V
         BasaltFieldState.Reported => Value ?? "",
         BasaltFieldState.Unsupported => "미지원",
         BasaltFieldState.AuthRequired => "인증 필요 (키를 보내지 않음)",
+        BasaltFieldState.HttpError => "HTTP 오류 " + Value,
         BasaltFieldState.Invalid => "형식 오류",
         _ => "응답 없음",
     };
@@ -78,10 +80,11 @@ public sealed class BasaltApiReader : IDisposable
 
     public async Task<BasaltApiReport> ReadAsync(int port, CancellationToken cancellationToken)
     {
-        var answers = await Task.WhenAll(Paths.Select(p => GetAsync(port, p, cancellationToken))).ConfigureAwait(false);
+        var requests = Paths.Select(p => GetAsync(port, p, cancellationToken)).ToArray();
         try
         {
-            var byPath = Paths.Zip(answers).ToDictionary(x => x.First, x => x.Second);
+            var answers = await Task.WhenAll(requests).ConfigureAwait(false);
+            var byPath = Paths.Zip(answers).ToDictionary(x => x.First, x => x.Second with { Path = x.First });
             var health = byPath["/health"];
             var status = byPath["/v1/status"];
             var props = byPath["/props"];
@@ -90,7 +93,8 @@ public sealed class BasaltApiReader : IDisposable
             {
                 Pick(Service, [(health, r => Str(r, "service", 40)), (status, r => Str(r, "service", 40))]),
                 Pick(Engine, [(status, r => Str(r, "engine", 64)), (props, r => Str(r, "build_info", 64))]),
-                Pick(Model, [(status, r => Str(r, "model", 120)), (health, r => Str(r, "model", 120)), (models, FirstModel), (props, r => Str(r, "model_alias", 120))]),
+                Pick(Model, [(status, r => Str(r, "model", 120)), (health, r => Str(r, "model", 120)), (props, r => Str(r, "model_alias", 120))]),
+                Pick("모델 목록 (첫 ID)", [(models, FirstModel)]),
                 Pick(ModelFile, [(props, r => Str(r, "model_path", 1024) is { Length: > 0 } path ? Clip(path.Replace('\\', '/').Split('/')[^1], 120) : null)]),
                 Pick(Loaded, [(health, r => YesNo(Bool(r, "loaded"))), (status, r => YesNo(Bool(r, "loaded")))]),
                 Pick(Context, [(status, r => Tokens(Long(r, "cache_max_tokens"))), (health, r => Tokens(Long(r, "max_context"))),
@@ -106,9 +110,9 @@ public sealed class BasaltApiReader : IDisposable
         }
         finally
         {
-            foreach (var answer in answers)
+            foreach (var request in requests.Where(r => r.IsCompletedSuccessfully))
             {
-                answer.Document?.Dispose();
+                request.Result.Document?.Dispose();
             }
         }
     }
@@ -117,6 +121,7 @@ public sealed class BasaltApiReader : IDisposable
 
     private sealed record Answer(int? Status, string? Error, JsonDocument? Document, bool BadJson)
     {
+        public string? Path { get; init; }
         public JsonElement? Root => Document is { RootElement.ValueKind: JsonValueKind.Object } d ? d.RootElement : null;
     }
 
@@ -170,7 +175,7 @@ public sealed class BasaltApiReader : IDisposable
         {
             if (answer.Root is { } root && read(root) is { Length: > 0 } value)
             {
-                return new BasaltField(label, BasaltFieldState.Reported, value, null);
+                return new BasaltField(label, BasaltFieldState.Reported, value, answer.Path);
             }
         }
 
@@ -182,6 +187,16 @@ public sealed class BasaltApiReader : IDisposable
         if (sources.Any(s => s.Answer.BadJson))
         {
             return new BasaltField(label, BasaltFieldState.Invalid, null, null);
+        }
+
+        var failure = sources.Select(s => s.Answer).FirstOrDefault(a => a.Status is >= 300 and not 404);
+        if (failure is not null)
+        {
+            return new BasaltField(label, BasaltFieldState.HttpError, failure.Status?.ToString(CultureInfo.InvariantCulture), failure.Path);
+        }
+        if (sources.Any(s => s.Answer.Status is null))
+        {
+            return new BasaltField(label, BasaltFieldState.NoAnswer, null, null);
         }
 
         // Answered (with the value missing, or "no such address") = not supported; nothing answered at all = no answer.

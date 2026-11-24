@@ -33,6 +33,7 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
     public IReadOnlyList<BasaltProcess>? Processes()
     {
         var issues = new List<SensorIssue>();
+        var capturedAfter = DateTimeOffset.UtcNow;
         var list = ProcessQueries.List(issues);
         if (list is null)
         {
@@ -42,7 +43,9 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
         var result = new List<BasaltProcess>(list.Count);
         foreach (var (pid, (parent, name)) in list)
         {
-            result.Add(new BasaltProcess(pid, parent, name, ProcessQueries.StartTime(pid)));
+            var start = ProcessQueries.StartTime(pid);
+            // Do not pair an earlier Toolhelp parent entry with an instance born during or after that enumeration.
+            result.Add(new BasaltProcess(pid, parent, name, start <= capturedAfter ? start : null));
         }
 
         return result;
@@ -74,7 +77,11 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
                 WorkingDirectory = request.WorkingDirectory,
                 WindowStyle = ProcessWindowStyle.Minimized,
             }) ?? throw new BasaltStartException("Windows가 프로세스를 만들지 않았습니다.");
-            return new BasaltLaunch(process.Id, ProcessQueries.StartTime(process.Id), mode, DateTimeOffset.UtcNow);
+            var handle = process.SafeHandle;
+            DateTimeOffset? start = GetProcessTimes(handle.DangerousGetHandle(), out var created, out _, out _, out _) && created > 0
+                ? new DateTimeOffset(DateTime.FromFileTimeUtc(created), TimeSpan.Zero) : null;
+            GC.KeepAlive(handle);
+            return new BasaltLaunch(process.Id, start, mode, DateTimeOffset.UtcNow);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or FileNotFoundException)
         {
@@ -82,7 +89,7 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
         }
     }
 
-    public ConsoleSignalResult SendCtrlC(int processId)
+    public ConsoleSignalResult SendCtrlC(int processId, IReadOnlyList<BasaltProcess> owned)
     {
         if (_signalHelper is null || !File.Exists(_signalHelper))
         {
@@ -101,6 +108,14 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
         }
 
         info.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
+        foreach (var member in owned)
+        {
+            if (member.StartTime is { } start)
+            {
+                info.ArgumentList.Add(FormattableString.Invariant($"{member.Id}:{start.UtcTicks}"));
+            }
+        }
+
         try
         {
             using var helper = Process.Start(info);
@@ -119,6 +134,7 @@ public sealed class WindowsBasaltSystem : IBasaltSystem, IDisposable
             {
                 0 => ConsoleSignalResult.Sent,
                 2 => ConsoleSignalResult.NoConsole,
+                4 => ConsoleSignalResult.UnverifiedConsole,
                 _ => ConsoleSignalResult.Failed,
             };
         }

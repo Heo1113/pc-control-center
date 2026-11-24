@@ -87,6 +87,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Basalt probe report and shutdown observations (Windows PowerShell)
+        shell: powershell
+        run: ./tests/Check-ProbeReport.ps1 -ProbeFile ./scripts/basalt-probe.ps1
+
       - name: Build
         id: build
         run: dotnet build PcControlCenter.slnx -c Release

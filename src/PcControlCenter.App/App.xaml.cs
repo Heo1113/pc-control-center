@@ -183,6 +183,7 @@ public partial class App : Application
     {
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _timer?.Stop();
+        _shell?.Basalt.Dispose();
         _hotkey?.Dispose();
         _operator?.Dispose();
         _localAi?.Dispose();

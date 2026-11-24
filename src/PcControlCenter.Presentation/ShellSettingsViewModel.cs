@@ -39,6 +39,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
     [ObservableProperty] public partial string BasaltStartScript { get; set; } = "";
     [ObservableProperty] public partial string BasaltQualityConfig { get; set; } = "";
     [ObservableProperty] public partial string BasaltFastConfig { get; set; } = "";
+    [ObservableProperty] public partial string BasaltDualConfig { get; set; } = "";
     [ObservableProperty] public partial int BasaltPort { get; set; }
     [ObservableProperty] public partial int BasaltStopWaitSeconds { get; set; }
 
@@ -70,6 +71,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         BasaltStartScript = _settings.Basalt.StartScript;
         BasaltQualityConfig = _settings.Basalt.QualityConfig;
         BasaltFastConfig = _settings.Basalt.FastConfig;
+        BasaltDualConfig = _settings.Basalt.DualConfig;
         BasaltPort = _settings.Basalt.Port;
         BasaltStopWaitSeconds = _settings.Basalt.StopWaitSeconds;
         RefreshFolders();
@@ -107,6 +109,7 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
         _settings.Basalt.StartScript = BasaltStartScript;
         _settings.Basalt.QualityConfig = BasaltQualityConfig;
         _settings.Basalt.FastConfig = BasaltFastConfig;
+        _settings.Basalt.DualConfig = BasaltDualConfig;
         _settings.Basalt.Port = BasaltPort;
         _settings.Basalt.StopWaitSeconds = BasaltStopWaitSeconds;
         var notes = _settings.Normalize();
@@ -145,6 +148,8 @@ public sealed partial class ShellSettingsViewModel : ObservableObject
 
     [RelayCommand]
     private void PickBasaltFastConfig() => BasaltFastConfig = PickInBasalt("빠른 모드 설정 파일", "설정 파일|*.json|모든 파일|*.*", BasaltFastConfig);
+    [RelayCommand]
+    private void PickBasaltDualConfig() => BasaltDualConfig = PickInBasalt("듀얼 품질 설정 파일", "설정 파일|*.json|모든 파일|*.*", BasaltDualConfig);
 
     /// <summary>A picked file inside the install folder is kept relative to it (so moving the folder moves the files too).</summary>
     private string PickInBasalt(string title, string filter, string current)

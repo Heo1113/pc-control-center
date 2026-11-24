@@ -24,9 +24,14 @@ public partial class BasaltView : UserControl
     public BasaltView()
     {
         InitializeComponent();
-        DataContextChanged += (_, _) => Attach(DataContext as BasaltViewModel);
-        Loaded += (_, _) => Sync();
-        Unloaded += (_, _) => DisposeWeb();
+        DataContextChanged += (_, _) => { if (IsLoaded) Attach(DataContext as BasaltViewModel); };
+        Loaded += (_, _) => Attach(DataContext as BasaltViewModel);
+        IsVisibleChanged += (_, _) =>
+        {
+            if (_vm is not null) _vm.IsVisible = IsVisible && IsLoaded;
+            Sync();
+        };
+        Unloaded += (_, _) => Attach(null);
     }
 
     /// <summary>Smoke test: the dashboard as WebView2 renders it (WPF cannot capture the WebView2 window). False when none is shown.</summary>
@@ -50,11 +55,13 @@ public partial class BasaltView : UserControl
         if (_vm is not null)
         {
             _vm.PropertyChanged -= OnViewModelChanged;
+            _vm.IsVisible = false;
         }
 
         _vm = vm;
         if (vm is not null)
         {
+            vm.IsVisible = IsVisible && IsLoaded;
             vm.PropertyChanged += OnViewModelChanged;
         }
 
@@ -63,7 +70,7 @@ public partial class BasaltView : UserControl
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(BasaltViewModel.ShowDashboard) or nameof(BasaltViewModel.DashboardUrl) or nameof(BasaltViewModel.WebViewProblem))
+        if (e.PropertyName is nameof(BasaltViewModel.ShowDashboard) or nameof(BasaltViewModel.EmbeddedDashboard) or nameof(BasaltViewModel.DashboardUrl) or nameof(BasaltViewModel.WebViewProblem))
         {
             Sync();
         }
@@ -71,7 +78,7 @@ public partial class BasaltView : UserControl
 
     private void Sync()
     {
-        var show = IsLoaded && _vm is { ShowDashboard: true, WebViewProblem: null };
+        var show = IsVisible && IsLoaded && _vm is { ShowDashboard: true, EmbeddedDashboard: true, WebViewProblem: null };
         Guidance.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
         WebHost.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (show)
@@ -134,12 +141,17 @@ public partial class BasaltView : UserControl
             core.Settings.IsStatusBarEnabled = false;
             core.Settings.IsGeneralAutofillEnabled = false;
             core.Settings.IsPasswordAutosaveEnabled = false;
+            core.Settings.AreHostObjectsAllowed = false;
+            core.Settings.IsWebMessageEnabled = false;
+            core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All, CoreWebView2WebResourceRequestSourceKinds.All);
+            core.WebResourceRequested += OnResourceRequested;
+            core.FrameNavigationStarting += OnFrameNavigationStarting;
             core.NavigationStarting += OnNavigationStarting;
             core.NewWindowRequested += OnNewWindowRequested;
             core.ProcessFailed += OnProcessFailed;
             web.Source = target;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException or WebView2RuntimeNotFoundException or UnauthorizedAccessException or IOException)
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or NotImplementedException or WebView2RuntimeNotFoundException or UnauthorizedAccessException or IOException)
         {
             if (ReferenceEquals(_web, web))
             {
@@ -150,20 +162,34 @@ public partial class BasaltView : UserControl
         finally
         {
             _creating = false;
+            if (!ReferenceEquals(_web, web) && vm.WebViewProblem is null) Sync();
         }
     }
 
+    private bool IsAllowed(string address) =>
+        _vm is not null && Uri.TryCreate(address, UriKind.Absolute, out var uri) && _vm.IsDashboardAddress(uri);
+
+    private void OnResourceRequested(object? sender, CoreWebView2WebResourceRequestedEventArgs e)
+    {
+        if (sender is CoreWebView2 core && !IsAllowed(e.Request.Uri))
+        {
+            e.Response = core.Environment.CreateWebResourceResponse(null, 403, "Forbidden", "");
+        }
+    }
+
+    private void OnFrameNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e) => e.Cancel = !IsAllowed(e.Uri);
+
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
-        if (_vm is null || !Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) || _vm.IsDashboardAddress(uri))
+        if (IsAllowed(e.Uri))
         {
             return;
         }
 
         e.Cancel = true;
-        if (e.IsUserInitiated)
+        if (e.IsUserInitiated && Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri))
         {
-            _vm.OpenOutside(uri);
+            _vm?.OpenOutside(uri);
         }
     }
 
@@ -189,6 +215,7 @@ public partial class BasaltView : UserControl
         {
             Dispatcher.BeginInvoke(() =>
             {
+                if (!ReferenceEquals(_web?.CoreWebView2, sender)) return;
                 DisposeWeb();
                 Sync(); // a new WebView2 if Basalt still answers
             });
@@ -206,6 +233,8 @@ public partial class BasaltView : UserControl
         WebHost.Child = null;
         if (web.CoreWebView2 is { } core)
         {
+            core.WebResourceRequested -= OnResourceRequested;
+            core.FrameNavigationStarting -= OnFrameNavigationStarting;
             core.NavigationStarting -= OnNavigationStarting;
             core.NewWindowRequested -= OnNewWindowRequested;
             core.ProcessFailed -= OnProcessFailed;
