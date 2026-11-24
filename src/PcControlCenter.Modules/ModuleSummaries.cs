@@ -2,6 +2,7 @@ using GpuProfit.Accounting.Analysis;
 using GpuProfit.Accounting.Costs;
 using GpuProfit.Core.Domain;
 using GpuProfit.Storage;
+using PcControlCenter.Core;
 using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Core.Runtime;
 using WinDiag.Core.Events;
@@ -206,7 +207,35 @@ public sealed record OperatorSummary
 /// <summary>Stops and starts one module of the shell (used when its data is replaced by an import).</summary>
 public sealed class SupervisorModuleRestarter(PcControlCenter.Core.ModuleSupervisor supervisor) : PcControlCenter.Migration.IModuleRestarter
 {
-    public Task StopAsync(string moduleId) => supervisor.Find(moduleId)?.StopAsync() ?? Task.CompletedTask;
+    private ShellModuleBase Find(string moduleId) => supervisor.Find(moduleId) as ShellModuleBase
+        ?? throw new InvalidOperationException($"가져오기 모듈을 찾지 못했습니다 ({moduleId}).");
 
-    public Task StartAsync(string moduleId) => supervisor.Find(moduleId)?.StartAsync(CancellationToken.None) ?? Task.CompletedTask;
+    public Task<T> RunExclusiveAsync<T>(string moduleId, Func<PcControlCenter.Migration.IModuleRestarter, Task<T>> action)
+    {
+        var module = Find(moduleId);
+        return module.WithLifecycleAsync((stop, start) => action(new Reserved(module, stop, start)));
+    }
+
+    public Task StopAsync(string moduleId) => RunExclusiveAsync(moduleId, async r => { await r.StopAsync(moduleId).ConfigureAwait(false); return true; });
+    public Task StartAsync(string moduleId) => RunExclusiveAsync(moduleId, async r => { await r.StartAsync(moduleId).ConfigureAwait(false); return true; });
+
+    private sealed class Reserved(ShellModuleBase module, Func<Task<bool>> stop, Func<CancellationToken, Task> start) : PcControlCenter.Migration.IModuleRestarter
+    {
+        public async Task StopAsync(string moduleId)
+        {
+            if (!await stop().ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(module.Status.Summary);
+            }
+        }
+
+        public async Task StartAsync(string moduleId)
+        {
+            await start(CancellationToken.None).ConfigureAwait(false);
+            if (!module.Status.IsUsable && module.Status.State != ModuleState.Disabled)
+            {
+                throw new InvalidOperationException(module.Status.Summary);
+            }
+        }
+    }
 }

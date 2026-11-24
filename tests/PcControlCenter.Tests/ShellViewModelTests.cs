@@ -187,6 +187,12 @@ public class OperatorModuleTests
         Assert.True(module.Host.EmergencyLatched);
         Assert.Equal(ModuleState.Degraded, module.Status.State);
         Assert.Contains("긴급 중단", shell.Operator.HostText, StringComparison.Ordinal);
+        var previousHost = module.Host;
+        await module.RestartAsync(TestContext.Current.CancellationToken);
+        Assert.NotSame(previousHost, module.Host);
+        Assert.True(module.EmergencyLatched);
+        Assert.True(module.Host!.EmergencyLatched);
+        Assert.False(module.Context!.Desktop.Status.Available);
         await shell.Operator.ResumeCommand.ExecuteAsync(null);
         Assert.False(module.Host.EmergencyLatched);
         Assert.Equal(ModuleState.Running, module.Status.State);

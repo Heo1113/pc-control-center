@@ -1,6 +1,8 @@
 using Microsoft.Data.Sqlite;
 using WindowsAiOperator.Core;
 using WindowsAiOperator.Core.Automation.Mock;
+using WindowsAiOperator.Core.Automation;
+using System.Reflection;
 using WindowsAiOperator.Core.Diagnostics;
 using WindowsAiOperator.Core.Execution;
 using WindowsAiOperator.Core.Settings;
@@ -65,6 +67,37 @@ public sealed class PresentationTests : IDisposable
         catch (IOException)
         {
         }
+    }
+
+    public class PendingOverview : DispatchProxy
+    {
+        private readonly MockDesktop _desktop = MockDesktop.CreateDemo();
+        public CancellationToken? ReadToken { get; private set; }
+        public TaskCompletionSource<DesktopOverview> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override object? Invoke(MethodInfo? method, object?[]? args)
+        {
+            if (method?.Name == nameof(IDesktopAutomation.ReadOverviewAsync))
+            {
+                ReadToken = (CancellationToken)args![0]!;
+                return Result.Task.WaitAsync(ReadToken.Value);
+            }
+            return method!.Invoke(_desktop, args);
+        }
+    }
+
+    [Fact]
+    public void A_pending_desktop_overview_does_not_hold_navigation_or_emergency_stop()
+    {
+        var desktop = DispatchProxy.Create<IDesktopAutomation, PendingOverview>();
+        using var context = new OperatorContext(new AppPaths(Path.Combine(_folder, "delayed"), false), desktop,
+            new InMemorySecretStore(), new MemoryOperatorLog(), forceMockModel: true);
+        var main = new MainViewModel(context, new InlineDispatcher(), _ui, _presenter, _ui, _ui);
+        var pending = (PendingOverview)desktop;
+        Assert.NotNull(pending.ReadToken);
+        main.EmergencyStop();
+        main.Navigate(main.History.Key);
+        Assert.True(pending.ReadToken.Value.IsCancellationRequested);
+        Assert.False(pending.Result.Task.IsCompleted);
     }
 
     [Fact]

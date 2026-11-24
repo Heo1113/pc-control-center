@@ -5,6 +5,17 @@ using WindowsAiOperator.Core.Diagnostics;
 
 namespace PcControlCenter.Operator;
 
+/// <summary>Held by the module for the entire shell session, including host and module restarts.</summary>
+public sealed class OperatorEmergencyLatch
+{
+    private long _generation;
+    public long Generation => Interlocked.Read(ref _generation);
+    public bool IsSet => Generation != 0;
+    private long _sequence;
+    public void Stop() => Interlocked.Exchange(ref _generation, Interlocked.Increment(ref _sequence));
+    public bool TryResume(long generation) => Interlocked.CompareExchange(ref _generation, 0, generation) == generation;
+}
+
 public sealed record OperatorHostOptions
 {
     /// <summary>PcControlCenter.OperatorHost.exe, or its .dll (started with the dotnet host; development and tests).</summary>
@@ -41,6 +52,7 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
 {
     private readonly OperatorHostOptions _options;
     private readonly IOperatorLog _log;
+    private readonly OperatorEmergencyLatch _latch;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Lock _stateGate = new();
     private WindowsJob? _job;
@@ -53,9 +65,10 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
     private HostState _state = HostState.NotStarted;
     private string _reason = "Operator 실행 프로세스가 아직 시작되지 않았습니다.";
 
-    public OperatorHostSupervisor(OperatorHostOptions options, IOperatorLog? log = null)
+    public OperatorHostSupervisor(OperatorHostOptions options, IOperatorLog? log = null, OperatorEmergencyLatch? latch = null)
     {
         _options = options;
+        _latch = latch ?? new();
         _log = log ?? NullOperatorLog.Instance;
     }
 
@@ -70,9 +83,9 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
         }
     }
 
-    public HostConnection? Current => _connection is { IsOpen: true } c ? c : null;
+    public HostConnection? Current => State == HostState.Connected && _connection is { IsOpen: true } c ? c : null;
     public string UnavailableReason => _reason;
-    public bool EmergencyLatched { get; private set; }
+    public bool EmergencyLatched => _latch.IsSet;
     public bool ExpectMock => _options.MockDesktop;
     public int Restarts => _restarts;
     public int? ProcessId => _process is { HasExited: false } p ? p.Id : null;
@@ -125,7 +138,7 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
     /// </summary>
     public async Task EmergencyStopAsync()
     {
-        EmergencyLatched = true;
+        _latch.Stop();
         RaiseChanged();
         _log.Warn("supervisor", "emergency stop");
         var connection = Current;
@@ -147,10 +160,16 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
 
     public async Task ResumeAsync()
     {
-        EmergencyLatched = false;
-        if (Current is { } connection)
+        var generation = _latch.Generation;
+        if (Current is not { } connection || !await connection.TrySendControlAsync(HostOp.Resume, TimeSpan.FromSeconds(2)).ConfigureAwait(false))
         {
-            await connection.TrySendControlAsync(HostOp.Resume, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            return;
+        }
+
+        if (!_latch.TryResume(generation))
+        {
+            await connection.TrySendControlAsync(HostOp.EmergencyStop, TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            return;
         }
 
         _log.Info("supervisor", "resumed after emergency stop");
@@ -314,9 +333,9 @@ public sealed class OperatorHostSupervisor : IHostConnectionSource, IAsyncDispos
                 cancellationToken).ConfigureAwait(false);
             connection.Closed += reason => _log.Warn("supervisor", "connection closed: " + reason);
             _connection = connection;
-            if (EmergencyLatched)
+            if (EmergencyLatched && !await connection.TrySendControlAsync(HostOp.EmergencyStop, TimeSpan.FromSeconds(2)).ConfigureAwait(false))
             {
-                await connection.TrySendControlAsync(HostOp.EmergencyStop, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                throw new HostUnavailableException("새 호스트가 긴급 중단을 확인하지 않았습니다.");
             }
 
             var hello = connection.Hello;

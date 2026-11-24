@@ -144,6 +144,15 @@ public sealed partial class DataMigrationViewModel : ObservableObject
                     : $"{row.Program}: 리허설에서 문제가 있어 진행하지 않았습니다.";
             });
         }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _ui.Post(() =>
+            {
+                row.State = "리허설 중 오류";
+                row.Level = Level.Error;
+                StatusText = $"{row.Program} 리허설 중 오류가 발생했습니다. {ex.Message}";
+            });
+        }
         finally
         {
             _ui.Post(() => IsBusy = false);
@@ -181,7 +190,7 @@ public sealed partial class DataMigrationViewModel : ObservableObject
                 ShowChecks(result.Checks);
                 row.State = result.Applied ? "가져옴"
                     : result.RestoreFailed ? "적용 실패 · 자동 되돌리기 실패 (직접 복구 필요)"
-                    : "적용 실패 (이전 데이터로 되돌림)";
+                    : "가져오기 미완료";
                 row.Level = result.Applied ? Level.Good : Level.Error;
                 StatusText = result.Message + (result.PreviousDatabaseKeptAt is { } kept ? $" 이전 데이터: {kept}" : "")
                              + (result.RestoreFailed && result.PreviousSettingsKeptAt is { } keptSettings ? $" 이전 설정: {keptSettings}" : "");
@@ -189,6 +198,15 @@ public sealed partial class DataMigrationViewModel : ObservableObject
                 {
                     row.Rehearsal = null;
                 }
+            });
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _ui.Post(() =>
+            {
+                row.State = "적용 중 오류";
+                row.Level = Level.Error;
+                StatusText = $"{row.Program} 적용 중 오류가 발생했습니다. {ex.Message}";
             });
         }
         finally

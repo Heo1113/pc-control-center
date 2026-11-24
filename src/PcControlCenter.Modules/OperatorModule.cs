@@ -33,6 +33,8 @@ public sealed record OperatorModuleOptions
 /// </summary>
 public sealed class OperatorModule(ModuleContext context, OperatorModuleOptions options) : ShellModuleBase(ModuleIds.Operator, context.Log, context.Time)
 {
+    private readonly OperatorEmergencyLatch _emergency = new();
+    public bool EmergencyLatched => _emergency.IsSet;
     private EDataFolderLock? _lock;
     private FileOperatorLog? _log;
 
@@ -65,7 +67,7 @@ public sealed class OperatorModule(ModuleContext context, OperatorModuleOptions 
             LogDirectory = Path.Combine(paths.LogDirectory, "host"),
             MockDesktop = options.MockDesktop,
             MaxAutomaticRestarts = context.Settings.Operator.MaxAutomaticRestarts,
-        }, _log);
+        }, _log, _emergency);
         host.Changed += OnHostChanged;
         Host = host;
         await host.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -97,7 +99,11 @@ public sealed class OperatorModule(ModuleContext context, OperatorModuleOptions 
     /// Emergency stop of the desktop automation (the UI also stops E's running task and denies open approvals): the host
     /// cancels and latches, and is killed when input may be in flight. Nothing changes the screen until <see cref="ResumeAsync"/>.
     /// </summary>
-    public Task EmergencyStopAsync() => Host?.EmergencyStopAsync() ?? Task.CompletedTask;
+    public Task EmergencyStopAsync()
+    {
+        _emergency.Stop();
+        return Host?.EmergencyStopAsync() ?? Task.CompletedTask;
+    }
 
     public Task ResumeAsync() => Host?.ResumeAsync() ?? Task.CompletedTask;
 

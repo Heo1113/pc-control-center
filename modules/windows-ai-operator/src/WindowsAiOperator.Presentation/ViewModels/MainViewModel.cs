@@ -15,15 +15,17 @@ public sealed partial class DashboardViewModel : PageViewModel
     private readonly OperatorContext _context;
     private readonly TaskRunnerViewModel _runner;
     private readonly Action<string> _navigate;
+    private readonly IUiDispatcher _ui;
+    private CancellationTokenSource? _overview;
 
-    public DashboardViewModel(OperatorContext context, TaskRunnerViewModel runner, Action<string> navigate)
+    public DashboardViewModel(OperatorContext context, TaskRunnerViewModel runner, Action<string> navigate, IUiDispatcher? ui = null)
         : base("대시보드", "", "dashboard")
     {
         _context = context;
         _runner = runner;
         _navigate = navigate;
+        _ui = ui ?? new InlineDispatcher();
         Warnings = new ObservableCollection<string>(context.StartupNotes);
-        Refresh();
     }
 
     public ObservableCollection<string> Warnings { get; }
@@ -64,30 +66,9 @@ public sealed partial class DashboardViewModel : PageViewModel
     [RelayCommand]
     public void Refresh()
     {
-        var desktop = _context.Desktop;
-        DesktopText = desktop.IsMock ? "MOCK 데스크톱 — 실제 Windows 화면을 조작하지 않습니다(테스트·데모 모드)" : desktop.Status.Description;
-        DesktopTone = desktop.IsMock ? Tone.Warning : desktop.Status.Available ? Tone.Good : Tone.Bad;
-        try
-        {
-            var foreground = desktop.GetForegroundWindow();
-            if (foreground is null)
-            {
-                ForegroundText = "활성 창 없음";
-            }
-            else
-            {
-                var access = _context.Policy.CheckWindow(foreground, _context.Settings.Safety, desktop.OwnProcessId);
-                ForegroundText = $"{Redactor.OneLine(foreground.Title, 60)} ({foreground.ProcessName}.exe) — {(access.CanInteract ? "조작 가능" : access.CanRead ? "읽기 전용" : "자동화 안 함")}";
-            }
-
-            var windows = desktop.ListWindows();
-            var allowed = windows.Count(w => _context.Policy.CheckWindow(w, _context.Settings.Safety, desktop.OwnProcessId).CanRead);
-            AllowedWindowsText = $"열린 창 {windows.Count}개 중 허용 앱 창 {allowed}개";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.ExternalException)
-        {
-            ForegroundText = "창 정보를 읽지 못했습니다: " + ex.Message;
-        }
+        _overview?.Cancel();
+        _overview = new CancellationTokenSource();
+        _ = RefreshDesktopAsync(_overview);
 
         var profile = _context.Settings.ActiveProfile;
         if (profile is null)
@@ -120,6 +101,56 @@ public sealed partial class DashboardViewModel : PageViewModel
         }
     }
 
+    public override void OnNavigatedFrom()
+    {
+        _overview?.Cancel();
+        _overview = null;
+    }
+
+    private async Task RefreshDesktopAsync(CancellationTokenSource request)
+    {
+        try
+        {
+            var desktop = _context.Desktop;
+            var reading = await desktop.ReadOverviewAsync(request.Token).ConfigureAwait(false);
+            _ui.Post(() =>
+            {
+                if (_overview != request) return;
+                DesktopText = desktop.IsMock ? "MOCK 데스크톱 — 테스트·데모 모드" : reading.Status.Description;
+                DesktopTone = desktop.IsMock ? Tone.Warning : reading.Status.Available ? Tone.Good : Tone.Bad;
+                ForegroundText = "활성 창 없음";
+                if (reading.Foreground is { } window)
+                {
+                    var access = _context.Policy.CheckWindow(window, _context.Settings.Safety, desktop.OwnProcessId);
+                    ForegroundText = $"{Redactor.OneLine(window.Title, 60)} ({window.ProcessName}.exe) — {(access.CanInteract ? "조작 가능" : access.CanRead ? "읽기 전용" : "자동화 안 함")}";
+                }
+
+                var allowed = reading.Windows.Count(w => _context.Policy.CheckWindow(w, _context.Settings.Safety, desktop.OwnProcessId).CanRead);
+                AllowedWindowsText = $"열린 창 {reading.Windows.Count}개 중 허용 앱 창 {allowed}개";
+            });
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _ui.Post(() =>
+            {
+                if (_overview != request) return;
+                DesktopTone = Tone.Bad;
+                DesktopText = "데스크톱 상태 미확인";
+                ForegroundText = "창 정보를 읽지 못했습니다: " + ex.Message;
+                AllowedWindowsText = "";
+            });
+        }
+        finally
+        {
+            _ui.Post(() =>
+            {
+                if (_overview == request) _overview = null;
+                request.Dispose();
+            });
+        }
+    }
+
     [RelayCommand]
     private void Go(string key) => _navigate(key);
 }
@@ -133,7 +164,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _context = context;
         Runner = new TaskRunnerViewModel(context, ui, dialogs, presenter);
-        Dashboard = new DashboardViewModel(context, Runner, Navigate);
+        Dashboard = new DashboardViewModel(context, Runner, Navigate, ui);
         Inspector = new InspectorViewModel(context, ui, dialogs, highlighter, Runner, handle =>
         {
             Runner.SelectWindow(handle);

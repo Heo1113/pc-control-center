@@ -63,6 +63,19 @@ public sealed class RemoteDesktop(IHostConnectionSource source, int ownProcessId
     /// <summary>The shell's process id: E's policy never automates the window that shows its own approval buttons.</summary>
     public int OwnProcessId => ownProcessId;
 
+    public async Task<DesktopOverview> ReadOverviewAsync(CancellationToken ct)
+    {
+        if (source.EmergencyLatched || source.Current is not { } connection)
+        {
+            return new DesktopOverview(new DesktopStatus(false, source.EmergencyLatched ? "긴급 중단 상태" : source.UnavailableReason), null, []);
+        }
+
+        var status = await connection.CallAsync<DesktopStatus>(HostOp.Status, null, ReadTimeout, ct).ConfigureAwait(false);
+        var foreground = await connection.CallAsync<WindowInfo>(HostOp.GetForegroundWindow, null, ReadTimeout, ct).ConfigureAwait(false);
+        var windows = await connection.CallAsync<List<WindowInfo>>(HostOp.ListWindows, null, ReadTimeout, ct).ConfigureAwait(false);
+        return new DesktopOverview(status ?? connection.Hello.Status, foreground, windows ?? []);
+    }
+
     public IReadOnlyList<WindowInfo> ListWindows() => Read<List<WindowInfo>>(HostOp.ListWindows, null, ReadTimeout, default) ?? [];
 
     public WindowInfo? GetWindow(long handle) => Read<WindowInfo>(HostOp.GetWindow, new HandleArgs(handle), ReadTimeout, default);

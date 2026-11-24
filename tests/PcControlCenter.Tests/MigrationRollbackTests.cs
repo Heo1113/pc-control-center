@@ -113,19 +113,18 @@ public class MigrationRollbackTests
     }
 
     [Fact(Timeout = 120_000)]
-    public async Task A_new_database_that_cannot_be_copied_leaves_the_module_files_untouched()
+    public async Task A_rehearsed_copy_deleted_after_stop_cannot_change_the_verified_import()
     {
         using var temp = new TempDir();
         var s = PrepareOperator(temp);
-
-        // The staged copy disappears after the checks at the start (the module is stopped by then).
+        var expected = File.ReadAllBytes(s.Rehearsal.FinalDatabase!);
         var restarter = new Restarter { OnStop = () => File.Delete(s.Rehearsal.FinalDatabase!) };
         var result = await s.Migrator.ApplyAsync(s.Rehearsal, restarter, includeSettings: true);
 
-        Assert.False(result.Applied);
-        Assert.False(result.RestoreFailed, Describe(result.Checks));
-        Assert.Equal(s.Before, Snapshot(s.Target, s.Settings));
-        Assert.Empty(Leftovers(s.Directory));
+        Assert.True(result.Applied, Describe(result.Checks));
+        Assert.Equal(expected, File.ReadAllBytes(s.Target));
+        Assert.Equal("{\"imported\":true}", File.ReadAllText(s.Settings));
+        Assert.True(File.Exists(result.PreviousDatabaseKeptAt));
         Assert.Equal(1, restarter.Starts);
     }
 
@@ -249,13 +248,14 @@ public class MigrationRollbackTests
         var rehearsal = migrator.Rehearse(LegacyMigrator.FromFolder(legacy)!);
         Assert.True(rehearsal.Passed, Describe(rehearsal.Checks));
 
-        // The staged copy is damaged between the rehearsal and the apply: B's RestoreFrom refuses it (InvalidDataException).
-        var restarter = new Restarter { OnStop = () => File.WriteAllBytes(rehearsal.FinalDatabase!, [0x42, 0x41, 0x44]) };
+        File.WriteAllBytes(rehearsal.FinalDatabase!, [0x42, 0x41, 0x44]);
+        var restarter = new Restarter();
         var result = await migrator.ApplyAsync(rehearsal, restarter, includeSettings: false);
 
         Assert.False(result.Applied);
         Assert.False(result.RestoreFailed, Describe(result.Checks));
         Assert.Equal(before, Snapshot(target, settings));
-        Assert.Equal(1, restarter.Starts); // not left stopped
+        Assert.Equal(0, restarter.Stops);
+        Assert.Equal(0, restarter.Starts);
     }
 }

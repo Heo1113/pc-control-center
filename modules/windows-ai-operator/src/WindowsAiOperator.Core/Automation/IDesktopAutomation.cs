@@ -16,6 +16,16 @@ public interface IDesktopAutomation : IDisposable
 
     DesktopStatus Status { get; }
 
+    Task<DesktopOverview> ReadOverviewAsync(CancellationToken ct) => Task.Run(() =>
+    {
+        ct.ThrowIfCancellationRequested();
+        var status = Status;
+        ct.ThrowIfCancellationRequested();
+        var foreground = GetForegroundWindow();
+        ct.ThrowIfCancellationRequested();
+        return new DesktopOverview(status, foreground, ListWindows());
+    }, ct);
+
     /// <summary>This program's own process id. The executor never automates its own windows.</summary>
     int OwnProcessId { get; }
 
@@ -44,6 +54,8 @@ public interface IDesktopAutomation : IDisposable
     /// <summary>PNG of the window as currently shown on screen, downscaled to <paramref name="maxWidth"/>; null when not possible.</summary>
     ScreenImage? CaptureWindowImage(long windowHandle, int maxWidth);
 }
+
+public sealed record DesktopOverview(DesktopStatus Status, WindowInfo? Foreground, IReadOnlyList<WindowInfo> Windows);
 
 public enum PrimitiveAction
 {

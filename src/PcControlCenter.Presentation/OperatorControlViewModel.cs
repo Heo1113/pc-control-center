@@ -52,7 +52,7 @@ public sealed partial class OperatorControlViewModel : ObservableObject
     {
         var host = _module.Host;
         IsAvailable = host is not null;
-        IsLatched = host?.EmergencyLatched == true;
+        IsLatched = _module.EmergencyLatched;
         IsMock = host?.ExpectMock == true;
         HostText = host is null ? $"Operator: {_module.Status.Summary}" : "Operator: " + OperatorModule.HostText(host);
         HostLevel = host is null ? Level.Muted
@@ -63,13 +63,14 @@ public sealed partial class OperatorControlViewModel : ObservableObject
     [RelayCommand]
     private async Task EmergencyStopAsync()
     {
+        var stopped = _module.EmergencyStopAsync();
         try
         {
             StopRunningTask?.Invoke();
         }
         finally
         {
-            await _module.EmergencyStopAsync();
+            await stopped;
             Refresh();
         }
     }

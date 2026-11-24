@@ -32,7 +32,7 @@ public sealed record MigrationRehearsal(
     string? SettingsFile,
     IReadOnlyList<MigrationCheck> Checks,
     IReadOnlyDictionary<string, long> TableCounts,
-    DateTimeOffset At);
+    DateTimeOffset At, string? DatabaseSha256 = null, string? SettingsSha256 = null);
 
 /// <param name="RestoreFailed">A failed apply could not put the module's previous files back. The module was left stopped
 /// (never started on files that may not be its own); the kept paths say where the previous files are.</param>
@@ -42,6 +42,7 @@ public sealed record MigrationResult(bool Applied, string Message, string? Previ
 /// <summary>Stops and starts the integrated module whose data is being replaced (the shell's module supervisor).</summary>
 public interface IModuleRestarter
 {
+    Task<T> RunExclusiveAsync<T>(string moduleId, Func<IModuleRestarter, Task<T>> action) => action(this);
     Task StopAsync(string moduleId);
     Task StartAsync(string moduleId);
 }
@@ -105,10 +106,11 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
         var checks = new List<MigrationCheck>();
         var counts = new Dictionary<string, long>(StringComparer.Ordinal);
         var stamp = _time.GetUtcNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        var staging = Path.Combine(paths.MigrationDirectory, location.ModuleId, stamp);
+        var staging = Path.Combine(paths.MigrationDirectory, location.ModuleId, $"{stamp}-{Guid.NewGuid():N}");
         MigrationRehearsal Result(bool passed, string? final = null, string? settings = null)
         {
-            var rehearsal = new MigrationRehearsal(location.ModuleId, location.DatabasePath, passed, staging, final, settings, checks, counts, _time.GetUtcNow());
+            var rehearsal = new MigrationRehearsal(location.ModuleId, location.DatabasePath, passed, staging, final, settings, checks, counts, _time.GetUtcNow(),
+                passed && final is not null ? Sha256(final) : null, passed && settings is not null ? Sha256(settings) : null);
             TryWriteReport(staging, rehearsal);
             return rehearsal;
         }
@@ -141,7 +143,8 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
         try
         {
             // 1. Byte copy, original read with sharing so nothing is locked; hashes before and after must equal the copy.
-            var files = new[] { location.DatabasePath, location.DatabasePath + "-wal" }.Where(File.Exists).ToList();
+            var wal = location.DatabasePath + "-wal";
+            var files = new[] { location.DatabasePath, wal }.Where(File.Exists).ToList();
             var before = files.ToDictionary(f => f, Sha256);
             foreach (var file in files)
             {
@@ -150,7 +153,7 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
 
             var after = files.ToDictionary(f => f, Sha256);
             var copied = files.ToDictionary(f => f, f => Sha256(Path.Combine(raw, Path.GetFileName(f))));
-            if (files.Any(f => before[f] != after[f]))
+            if (File.Exists(wal) != files.Contains(wal) || files.Any(f => before[f] != after[f]))
             {
                 checks.Add(new MigrationCheck("원본 변경 여부", CheckState.Failed, "복사하는 동안 원본이 바뀌었습니다(다른 프로그램이 기록 중). 원래 프로그램을 종료한 뒤 다시 시도하세요."));
                 return Result(false);
@@ -182,7 +185,7 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
                 ScalarText(connection, "PRAGMA wal_checkpoint(TRUNCATE);");
                 foreach (var table in Tables(connection))
                 {
-                    counts[table] = ScalarLong(connection, $"SELECT COUNT(*) FROM \"{table}\";");
+                    counts[table] = RowCount(connection, table);
                 }
             }
 
@@ -200,7 +203,7 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
             checks.Add(new MigrationCheck("모듈 자체 검증", validation.Ok ? CheckState.Passed : CheckState.Failed, validation.Detail));
             using (var connection = OpenCopy(final, readOnly: true))
             {
-                var mismatches = counts.Where(c => ScalarLong(connection, $"SELECT COUNT(*) FROM \"{c.Key}\";") != c.Value).Select(c => c.Key).ToList();
+                var mismatches = counts.Where(c => RowCount(connection, c.Key) != c.Value).Select(c => c.Key).ToList();
                 checks.Add(new MigrationCheck("행 수 비교 (모든 테이블)", mismatches.Count == 0 ? CheckState.Passed : CheckState.Failed,
                     mismatches.Count == 0 ? $"{counts.Count}개 테이블, 합계 {counts.Values.Sum():N0}행 동일" : "다른 테이블: " + string.Join(", ", mismatches)));
                 foreach (var (name, sql) in Aggregates(location.ModuleId))
@@ -248,7 +251,10 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
     /// are put back and the module is started again with them. If they cannot all be put back, nothing is deleted, the
     /// module is not started and the result reports <see cref="MigrationResult.RestoreFailed"/>.
     /// </summary>
-    public async Task<MigrationResult> ApplyAsync(MigrationRehearsal rehearsal, IModuleRestarter modules, bool includeSettings)
+    public Task<MigrationResult> ApplyAsync(MigrationRehearsal rehearsal, IModuleRestarter modules, bool includeSettings)
+        => modules.RunExclusiveAsync(rehearsal.ModuleId, scoped => Task.Run(() => ApplyVerifiedAsync(rehearsal, scoped, includeSettings)));
+
+    private async Task<MigrationResult> ApplyVerifiedAsync(MigrationRehearsal rehearsal, IModuleRestarter modules, bool includeSettings)
     {
         var checks = new List<MigrationCheck>();
         if (!rehearsal.Passed || rehearsal.FinalDatabase is not { } final || !File.Exists(final))
@@ -261,13 +267,55 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
             return new MigrationResult(false, $"원래 프로그램이 실행 중이라 적용하지 않았습니다({string.Join(", ", running)}).", null, null, checks);
         }
 
+        var verified = Path.Combine(rehearsal.StagingDirectory, $"apply-{Guid.NewGuid():N}");
+        try
+        {
+            Directory.CreateDirectory(verified);
+            var database = Path.Combine(verified, "rehearsed.db");
+            VerifyCopy(final, database, rehearsal.DatabaseSha256);
+            string? settings = null;
+            if (includeSettings && rehearsal.SettingsFile is { } stagedSettings)
+            {
+                settings = Path.Combine(verified, "settings.json");
+                VerifyCopy(stagedSettings, settings, rehearsal.SettingsSha256);
+            }
+
+            await modules.StopAsync(rehearsal.ModuleId).ConfigureAwait(false);
+            return await ReplaceStoppedAsync(rehearsal, modules, database, settings, checks).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            checks.Add(new MigrationCheck("적용 준비", CheckState.Failed, ex.Message));
+            var failure = new MigrationResult(false, $"적용하지 못했습니다: {ex.Message}", null, null, checks);
+            TryWriteReport(rehearsal.StagingDirectory, failure, "apply-report.json");
+            return failure;
+        }
+        finally
+        {
+            try { if (Directory.Exists(verified)) Directory.Delete(verified, true); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+    }
+
+    private static void VerifyCopy(string source, string destination, string? expected)
+    {
+        File.Copy(source, destination);
+        if (expected is null || !string.Equals(Sha256(destination), expected, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("리허설 이후 파일이 달라졌습니다. 리허설을 다시 진행하세요.");
+        }
+    }
+
+    private async Task<MigrationResult> ReplaceStoppedAsync(MigrationRehearsal rehearsal, IModuleRestarter modules,
+        string final, string? settings, List<MigrationCheck> checks)
+    {
         var target = paths.ModuleDatabasePath(rehearsal.ModuleId);
         var targetSettings = Path.Combine(paths.ModuleDirectory(rehearsal.ModuleId), "settings.json");
         var stamp = _time.GetUtcNow().ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         var replace = new ReplaceProgress();
         string? keptSettings = null;
         var settingsPlaced = false;
-        await modules.StopAsync(rehearsal.ModuleId).ConfigureAwait(false);
+        var restartAttempted = false;
 
         // What the module left once it closed its database: a rollback must bring back exactly these files.
         SqliteConnection.ClearAllPools();
@@ -277,7 +325,7 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
         {
             Replace(rehearsal.ModuleId, final, target, stamp, replace);
             checks.Add(new MigrationCheck("데이터베이스 교체", CheckState.Passed, replace.Kept is null ? "새로 놓음 (이전 파일 없음)" : $"이전 파일 보관: {Path.GetFileName(replace.Kept)}"));
-            if (includeSettings && rehearsal.SettingsFile is { } settings && File.Exists(settings))
+            if (settings is not null)
             {
                 if (hadSettings)
                 {
@@ -286,23 +334,26 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
                     keptSettings = aside;
                 }
 
-                File.Copy(settings, targetSettings);
                 settingsPlaced = true;
+                File.Copy(settings, targetSettings);
                 checks.Add(new MigrationCheck("설정 교체", CheckState.Passed, keptSettings is null ? "새로 놓음" : $"이전 설정 보관: {Path.GetFileName(keptSettings)}"));
             }
 
             using (var connection = OpenCopy(target, readOnly: true))
             {
-                var lower = rehearsal.TableCounts.Where(c => TableExists(connection, c.Key) && ScalarLong(connection, $"SELECT COUNT(*) FROM \"{c.Key}\";") < c.Value).Select(c => c.Key).ToList();
-                checks.Add(new MigrationCheck("적용 후 행 수", lower.Count == 0 ? CheckState.Passed : CheckState.Failed,
-                    lower.Count == 0 ? "모든 테이블이 리허설 이상" : "줄어든 테이블: " + string.Join(", ", lower)));
-                if (lower.Count > 0)
+                var actual = Tables(connection).ToDictionary(t => t, t => RowCount(connection, t), StringComparer.Ordinal);
+                var match = actual.Count == rehearsal.TableCounts.Count &&
+                    rehearsal.TableCounts.All(c => actual.TryGetValue(c.Key, out var count) && count == c.Value);
+                checks.Add(new MigrationCheck("적용 후 행 수", match ? CheckState.Passed : CheckState.Failed,
+                    match ? "모든 테이블과 행 수가 리허설과 동일" : "테이블 목록 또는 행 수 불일치"));
+                if (!match)
                 {
                     throw new InvalidOperationException("적용 후 확인에서 행 수가 맞지 않았습니다.");
                 }
             }
 
             SqliteConnection.ClearAllPools();
+            restartAttempted = true;
             await modules.StartAsync(rehearsal.ModuleId).ConfigureAwait(false);
             var result = new MigrationResult(true, $"{ModuleIds.DisplayName(rehearsal.ModuleId)} 데이터를 가져왔습니다. 원본은 그대로이고, 통합 앱의 이전 데이터는 보관했습니다.",
                 replace.Kept, keptSettings, checks);
@@ -311,6 +362,19 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            if (restartAttempted)
+            {
+                try { await modules.StopAsync(rehearsal.ModuleId).ConfigureAwait(false); }
+                catch (Exception stopError) when (stopError is not OutOfMemoryException)
+                {
+                    checks.Add(new MigrationCheck("복원 전 모듈 정지", CheckState.Failed, stopError.Message));
+                    var blocked = new MigrationResult(false, "모듈 정지를 확인할 수 없어 복원을 보류했습니다. 이전 파일을 보관했습니다.",
+                        replace.Kept, keptSettings, checks, RestoreFailed: true);
+                    TryWriteReport(rehearsal.StagingDirectory, blocked, "apply-report.json");
+                    return blocked;
+                }
+            }
+
             // Any failure (including InvalidDataException from a module's own restore): put the previous files back.
             SqliteConnection.ClearAllPools();
             var failures = RestoreDatabase(target, before, replace);
@@ -620,7 +684,7 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
     private static IEnumerable<string> Tables(SqliteConnection c)
     {
         using var command = c.CreateCommand();
-        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name;";
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*' ORDER BY name;";
         using var reader = command.ExecuteReader();
         var list = new List<string>();
         while (reader.Read())
@@ -630,6 +694,8 @@ public sealed class LegacyMigrator(ShellPaths paths, Func<string, IReadOnlyList<
 
         return list;
     }
+
+    private static long RowCount(SqliteConnection c, string table) => ScalarLong(c, "SELECT COUNT(*) FROM \"" + table.Replace("\"", "\"\"", StringComparison.Ordinal) + "\";");
 
     private static bool TableExists(SqliteConnection c, string table)
     {
