@@ -109,6 +109,15 @@ jobs:
           foreach ($e in $report.bindingErrors) { "  binding: $e" }
           if ($p.ExitCode -ne 0) { throw "live smoke exit code $($p.ExitCode)" }
 
+      - name: Crash details (only when a step above failed)
+        if: ${{ failure() }}
+        shell: pwsh
+        run: |
+          Get-ChildItem dist/stage1 -Recurse -Filter crash.txt -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName }
+          Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = (Get-Date).AddMinutes(-30) } -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in '.NET Runtime', 'Application Error', 'Windows Error Reporting' } |
+            Select-Object -First 6 | ForEach-Object { "== $($_.ProviderName) $($_.Id)"; $_.Message }
+
       - name: Upload Iron.App.exe
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

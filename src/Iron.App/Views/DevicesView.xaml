@@ -71,7 +71,7 @@
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,8,0,0"
                            Text="iUnity(iUnityService)가 실행 중이면 IRON은 iUnity를 종료하지 않고 송신을 보류합니다. iUnity를 직접 끈 뒤 다시 확인하세요." />
                 <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.IUnityRunning}" Margin="0,6,0,0">
-                  <TextBlock Text="iUnity 실행 중으로 시뮬레이션 (모의)" />
+                  <TextBlock Text="iUnity 실행 중으로 시뮬레이션 (모의)" TextWrapping="Wrap" />
                 </CheckBox>
               </StackPanel>
             </Expander>
@@ -162,7 +162,7 @@
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0"
                            Text="자동 종료 Y케이블: 연결 안 됨 · COM 포트는 한 프로그램만 열 수 있어 공식 앱을 쓸 때는 RELEASE USB" />
                 <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.WireViewPortBusy}" Margin="0,6,0,0">
-                  <TextBlock Text="재개할 때 포트 사용 중으로 시뮬레이션 (모의)" />
+                  <TextBlock Text="재개할 때 포트 사용 중으로 시뮬레이션 (모의)" TextWrapping="Wrap" />
                 </CheckBox>
               </StackPanel>
             </Expander>

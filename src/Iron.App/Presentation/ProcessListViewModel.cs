@@ -52,6 +52,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
     public static readonly IReadOnlyList<string> Filters = [All, "RTX 5080", "RTX 5060 Ti"];
 
     private readonly Dictionary<int, History> _histories = [];
+    private readonly Dictionary<int, ProcessRowViewModel> _rows = [];
     private IReadOnlyList<ProcessReading> _latest = [];
 
     public ObservableCollection<ProcessRowViewModel> OverviewRows { get; } = [];
@@ -62,8 +63,24 @@ public sealed partial class ProcessListViewModel : ObservableObject
     [ObservableProperty] public partial bool ShowSoftwareAdapter { get; set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasSelection))]
+    [NotifyPropertyChangedFor(nameof(HasSelection), nameof(ListSelection))]
     public partial ProcessRowViewModel? Selected { get; set; }
+
+    /// <summary>
+    /// What the two lists (overview top rows, full table) bind their selection to. A list that does not contain the
+    /// selected process reports "nothing selected"; that is ignored, so one list never clears the other's selection.
+    /// </summary>
+    public ProcessRowViewModel? ListSelection
+    {
+        get => Selected;
+        set
+        {
+            if (value is not null)
+            {
+                Selected = value;
+            }
+        }
+    }
 
     [ObservableProperty] public partial double?[] SelectedHistory { get; private set; } = [];
     [ObservableProperty] public partial string EmptyText { get; private set; } = "";
@@ -92,6 +109,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
         foreach (var gone in _histories.Keys.Where(pid => !alive.Contains(pid)).ToList())
         {
             _histories.Remove(gone);
+            _rows.Remove(gone);
         }
 
         EmptyText = phase switch
@@ -140,8 +158,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
             .ToList();
 
         var selectedPid = Selected?.Pid;
-        Sync(OverviewRows, overview);
-        Sync(Rows, full);
+        Sync(OverviewRows, overview, _rows);
+        Sync(Rows, full, _rows);
         var selected = Rows.FirstOrDefault(r => r.Pid == selectedPid) ?? OverviewRows.FirstOrDefault(r => r.Pid == selectedPid)
                        ?? Rows.FirstOrDefault();
         Selected = selected;
@@ -160,7 +178,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
     }
 
     /// <summary>Keeps row objects (and so selection and scroll position) when the same processes stay in the same order.</summary>
-    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted)
+    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted, Dictionary<int, ProcessRowViewModel> shared)
     {
         var same = rows.Count == wanted.Count && rows.Select(r => r.Pid).SequenceEqual(wanted.Select(p => p.Pid));
         if (same)
@@ -173,17 +191,17 @@ public sealed partial class ProcessListViewModel : ObservableObject
             return;
         }
 
-        var existing = rows.ToDictionary(r => r.Pid);
+        // One row object per process, shared by both lists, so a selection made in one is found in the other.
         rows.Clear();
         foreach (var p in wanted)
         {
-            if (existing.TryGetValue(p.Pid, out var row))
+            if (shared.TryGetValue(p.Pid, out var row))
             {
                 row.Update(p);
             }
             else
             {
-                row = new ProcessRowViewModel(p);
+                shared[p.Pid] = row = new ProcessRowViewModel(p);
             }
 
             rows.Add(row);

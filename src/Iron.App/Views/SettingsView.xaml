@@ -12,11 +12,11 @@
         <StackPanel>
           <TextBlock Text="백그라운드 · 시스템 트레이" Style="{StaticResource Iron.Text.BezelTitle}" Foreground="#F29F67" Margin="0,0,0,8" />
           <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding CloseToTray}">
-            <TextBlock Text="창 닫기(✕) 시 시스템 트레이로 최소화 — 창을 숨기고 화면 갱신을 멈추며, 트레이 팝업과 FLUX PRO 표시는 유지" />
+            <TextBlock Text="창 닫기(✕) 시 시스템 트레이로 최소화 — 창을 숨기고 화면 갱신을 멈추며, 트레이 팝업과 FLUX PRO 표시는 유지" TextWrapping="Wrap" />
           </CheckBox>
           <Rectangle Style="{StaticResource Iron.Divider}" />
           <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding AutoStartMock}">
-            <TextBlock Text="Windows 로그인 시 트레이로 자동 실행 (모의)" />
+            <TextBlock Text="Windows 로그인 시 트레이로 자동 실행 (모의)" TextWrapping="Wrap" />
           </CheckBox>
           <TextBlock Text="{Binding AutoStartNote}" Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" />
           <Rectangle Style="{StaticResource Iron.Divider}" Margin="0,12" />

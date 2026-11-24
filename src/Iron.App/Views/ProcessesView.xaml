@@ -75,7 +75,7 @@
                      Text="출처: Windows WDDM 성능 카운터(PDH) · GPU 카드의 NVML VRAM과 합산하지 않음 · Stage 1 모의 데이터" />
           <TextBlock DockPanel.Dock="Top" Text="{Binding Processes.EmptyText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="10,12,0,0"
                      Visibility="{Binding Processes.EmptyText, Converter={StaticResource VisibleWhen}}" />
-          <ListBox ItemsSource="{Binding Processes.Rows}" SelectedItem="{Binding Processes.Selected, Mode=TwoWay}"
+          <ListBox ItemsSource="{Binding Processes.Rows}" SelectedItem="{Binding Processes.ListSelection, Mode=TwoWay}"
                    ItemTemplate="{StaticResource Iron.ProcessRowFull}" ItemContainerStyle="{StaticResource Iron.ProcessRow}"
                    Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    ScrollViewer.VerticalScrollBarVisibility="Auto">

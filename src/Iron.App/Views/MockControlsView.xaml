@@ -18,22 +18,22 @@
     </c:GapGrid>
     <TextBlock Text="개별 조건 (서로 독립)" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,12,0,0" />
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.GpuOverheat}" Padding="0,5">
-      <TextBlock Text="RTX 5080 과열 · 고부하 (76°C)" />
+      <TextBlock Text="RTX 5080 과열 · 고부하 (76°C)" TextWrapping="Wrap" />
     </CheckBox>
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.PinImbalance}" Padding="0,5">
-      <TextBlock Text="WireView 핀 불균형 (P3 7.94 A)" />
+      <TextBlock Text="WireView 핀 불균형 (P3 7.94 A)" TextWrapping="Wrap" />
     </CheckBox>
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.Gpu1PowerMissing}" Padding="0,5">
-      <TextBlock Text="RTX 5060 Ti 전력 값 없음 (합계 일부 미확인)" />
+      <TextBlock Text="RTX 5060 Ti 전력 값 없음 (합계 일부 미확인)" TextWrapping="Wrap" />
     </CheckBox>
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.FluxDisconnected}" Padding="0,5">
-      <TextBlock Text="FLUX PRO 미연결" />
+      <TextBlock Text="FLUX PRO 미연결" TextWrapping="Wrap" />
     </CheckBox>
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.IUnityRunning}" Padding="0,5">
-      <TextBlock Text="iUnity 실행 중 (FLUX PRO 송신 보류)" />
+      <TextBlock Text="iUnity 실행 중 (FLUX PRO 송신 보류)" TextWrapping="Wrap" />
     </CheckBox>
     <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.WireViewPortBusy}" Padding="0,5">
-      <TextBlock Text="WireView 재개 시 포트 사용 중" />
+      <TextBlock Text="WireView 재개 시 포트 사용 중" TextWrapping="Wrap" />
     </CheckBox>
     <TextBlock Text="최근 동작" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,10,0,4"
                Visibility="{Binding RecentActions.Count, Converter={StaticResource VisibleWhen}}" />

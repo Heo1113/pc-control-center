@@ -24,7 +24,7 @@ public sealed partial class ShellViewModel : ObservableObject
     {
         _mock = mock;
         _scheduler = scheduler;
-        Gpus = [new GpuCardViewModel(0), new GpuCardViewModel(1)];
+        Gpus = new[] { new GpuCardViewModel(0), new GpuCardViewModel(1) }; // an array: XAML binds Gpus[0], Gpus[1]
         Cpu = new SystemTileViewModel("CPU (9800X3D)");
         Ram = new SystemTileViewModel("시스템 RAM");
         Ssd = new SystemTileViewModel("NVMe SSD");

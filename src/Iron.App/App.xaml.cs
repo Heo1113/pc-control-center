@@ -22,6 +22,41 @@ public partial class App : Application
     private MainWindow? _window;
     private DispatcherTimer? _timer;
 
+    public App()
+    {
+        // Stage 1 writes no files; only the CI modes (--render-screens / --smoke-test DIR) leave crash.txt in their folder.
+        DispatcherUnhandledException += (_, e) =>
+        {
+            Report(e.Exception);
+            e.Handled = true;
+            Shutdown(5);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Report(e.ExceptionObject as Exception);
+    }
+
+    private static void Report(Exception? ex)
+    {
+        var text = $"{DateTimeOffset.Now:O}{Environment.NewLine}{ex}";
+        var args = Environment.GetCommandLineArgs();
+        var at = Array.FindIndex(args, a => a is "--render-screens" or "--smoke-test");
+        if (at >= 0 && at + 1 < args.Length)
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(args[at + 1]);
+                System.IO.File.WriteAllText(System.IO.Path.Combine(args[at + 1], "crash.txt"), text);
+            }
+            catch (Exception io) when (io is System.IO.IOException or UnauthorizedAccessException)
+            {
+            }
+
+            return;
+        }
+
+        MessageBox.Show("IRON을 계속 실행할 수 없는 오류가 발생했습니다." + Environment.NewLine + Environment.NewLine + ex?.GetType().Name + ": " + ex?.Message,
+            "IRON", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -36,7 +71,16 @@ public partial class App : Application
 
         if (options.RenderScreensTo is not null)
         {
-            Shutdown(ScreenRenderer.Run(options));
+            try
+            {
+                Shutdown(ScreenRenderer.Run(options));
+            }
+            catch (Exception ex)
+            {
+                Report(ex);
+                Shutdown(5);
+            }
+
             return;
         }
 
