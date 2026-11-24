@@ -90,8 +90,8 @@ internal static class ScreenRenderer
         var vm = new ShellViewModel(mock, clock) { Tab = scenario.Tab };
         vm.Mock.Apply(scenario.Preset);
         scenario.Extra?.Invoke(vm);
-        // Readings at 1 Hz until steady (the pin warning needs three readings in a row).
-        for (var i = 0; i < 4; i++)
+        // One minute of readings at 1 Hz: the trend and sparkline are full, the pin warning (three in a row) is settled.
+        for (var i = 0; i < 60; i++)
         {
             clock.Advance(TimeSpan.FromSeconds(1));
             vm.Tick();

@@ -78,7 +78,8 @@ public sealed partial class ShellViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GpuColumns), nameof(SystemColumns), nameof(WorkSideBySide), nameof(WorkFirstShare), nameof(PanelsSideBySide),
-        nameof(IsFull), nameof(IsCompact), nameof(IsNarrow), nameof(PanelColumns))]
+        nameof(IsFull), nameof(IsCompact), nameof(IsNarrow), nameof(PanelColumns), nameof(PowerTabLabel), nameof(DevicesTabLabel), nameof(MockButtonLabel),
+        nameof(StatusDisplayText))]
     public partial LayoutMode Layout { get; set; } = LayoutMode.Full;
 
     public int GpuColumns => LayoutRules.GpuColumns(Layout);
@@ -87,6 +88,14 @@ public sealed partial class ShellViewModel : ObservableObject
     public double WorkFirstShare => LayoutRules.WorkAreaFirstShare(Layout);
     public bool PanelsSideBySide => LayoutRules.PanelsSideBySide(Layout);
     public int PanelColumns => PanelsSideBySide ? 2 : 1;
+
+    // Below 960 DIP the title bar keeps every switch by shortening the longest labels.
+    public string PowerTabLabel => IsNarrow ? "전력" : "전력 · WireView";
+    public string DevicesTabLabel => IsNarrow ? "장치" : "외부 장치";
+    public string MockButtonLabel => IsNarrow ? "모의" : "모의 데이터";
+    public string StatusDisplayText => IsNarrow ? _statusShort : StatusText;
+
+    private string _statusShort = StatusRules.LoadingText;
     public bool IsFull => Layout == LayoutMode.Full;
     public bool IsCompact => Layout == LayoutMode.Compact;
     public bool IsNarrow => Layout == LayoutMode.Narrow;
@@ -253,7 +262,9 @@ public sealed partial class ShellViewModel : ObservableObject
 
         var status = StatusRules.For(frame.Phase, _alerts.AnyGpuHot, WireView.PinAlert);
         Status = status.Kind;
+        _statusShort = status.ShortText;
         StatusText = status.Text;
+        OnPropertyChanged(nameof(StatusDisplayText));
 
         // System modules.
         Cpu.Set(Fmt.Percent2(frame.Cpu.LoadPercent), Fmt.Celsius(frame.Cpu.TctlC), frame.Cpu.LoadPercent / 100.0);

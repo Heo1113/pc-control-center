@@ -157,6 +157,11 @@ internal static class LayoutAudit
                 return false;
             }
 
+            if (e is FrameworkElement slot && LayoutInformation.GetLayoutClip(slot) is { } clip && (clip.IsEmpty() || clip.Bounds.Width < 0.5 || clip.Bounds.Height < 0.5))
+            {
+                return false;
+            }
+
             if (e == root)
             {
                 return true;

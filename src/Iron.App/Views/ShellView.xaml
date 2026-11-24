@@ -33,9 +33,9 @@
                        IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Overview}" />
           <RadioButton Style="{StaticResource Iron.Tab}" Content="프로세스" ToolTip="Ctrl+2"
                        IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Processes}" />
-          <RadioButton Style="{StaticResource Iron.Tab}" Content="전력 · WireView" ToolTip="Ctrl+3"
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="{Binding PowerTabLabel}" ToolTip="전력 · WireView (Ctrl+3)"
                        IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Power}" />
-          <RadioButton Style="{StaticResource Iron.Tab}" Content="외부 장치" ToolTip="Ctrl+4"
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="{Binding DevicesTabLabel}" ToolTip="외부 장치 (Ctrl+4)"
                        IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Devices}" />
           <RadioButton Style="{StaticResource Iron.Tab}" Content="설정" ToolTip="Ctrl+5"
                        IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Settings}" />
@@ -46,7 +46,7 @@
                       Padding="9,3" BorderBrush="{StaticResource IronAccentAmber}" WindowChrome.IsHitTestVisibleInChrome="True"
                       ToolTip="모의 데이터 (Stage 1) — 상태 전환: F5 정상 · F6 오류/불균형 · F7 미연결 · F8 로딩 · F9 USB 해제/재개 · Shift+F9 1.5초 플래시">
           <StackPanel Orientation="Horizontal">
-            <TextBlock Text="모의 데이터" Foreground="{StaticResource IronAccentAmber}" FontFamily="{StaticResource IronDisplayFont}" FontSize="{DynamicResource Iron.FontSmall}" />
+            <TextBlock Text="{Binding MockButtonLabel}" Foreground="{StaticResource IronAccentAmber}" FontFamily="{StaticResource IronDisplayFont}" FontSize="{DynamicResource Iron.FontSmall}" />
             <TextBlock Text=" ▾" Foreground="{StaticResource IronAccentAmber}" FontSize="{DynamicResource Iron.FontSmall}" />
           </StackPanel>
         </ToggleButton>
@@ -60,7 +60,7 @@
 
         <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
           <Ellipse Width="10" Height="10" Fill="{Binding Status, Converter={StaticResource StatusBrush}}" VerticalAlignment="Center" Margin="0,0,8,0" />
-          <TextBlock x:Name="StatusLabel" Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource StatusInk}}"
+          <TextBlock x:Name="StatusLabel" Text="{Binding StatusDisplayText}" ToolTip="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource StatusInk}}"
                      FontSize="{DynamicResource Iron.FontStatus}" FontWeight="SemiBold" VerticalAlignment="Center" />
         </StackPanel>
         <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">

@@ -1,4 +1,4 @@
-<!-- IRON layout metrics: Compact (see Presentation/Rules.cs LayoutRules). Same keys in Metrics.Full.xaml and Metrics.Compact.xaml. -->
+<!-- IRON layout metrics: Compact (Presentation/Rules.cs LayoutRules). Same keys in Metrics.Full/Compact/Narrow.xaml. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
@@ -23,8 +23,8 @@
   <sys:Double x:Key="Iron.FontTable">13</sys:Double>
   <sys:Double x:Key="Iron.FontTableHead">12</sys:Double>
   <sys:Double x:Key="Iron.FontPanelTitle">14</sys:Double>
-  <sys:Double x:Key="Iron.FontHero">34</sys:Double>
-  <sys:Double x:Key="Iron.FontHeroUnit">15</sys:Double>
+  <sys:Double x:Key="Iron.FontHero">40</sys:Double>
+  <sys:Double x:Key="Iron.FontHeroUnit">16</sys:Double>
   <sys:Double x:Key="Iron.FontValue">17</sys:Double>
   <sys:Double x:Key="Iron.FontTab">12.5</sys:Double>
   <sys:Double x:Key="Iron.FontWordmark">20</sys:Double>
@@ -39,11 +39,11 @@
   <GridLength x:Key="Iron.ColShr">86</GridLength>
   <GridLength x:Key="Iron.ColUtil">60</GridLength>
   <GridLength x:Key="Iron.ColPid">64</GridLength>
-  <GridLength x:Key="Iron.ColEngine">96</GridLength>
+  <GridLength x:Key="Iron.ColEngine">110</GridLength>
   <sys:Double x:Key="Iron.MeterWidth">52</sys:Double>
   <sys:Double x:Key="Iron.PinMaxWidth">42</sys:Double>
   <Thickness x:Key="Iron.TabPad">10,0,10,0</Thickness>
   <sys:Double x:Key="Iron.OverviewMinHeight">620</sys:Double>
   <sys:Double x:Key="Iron.InspectorMin">340</sys:Double>
-  <Thickness x:Key="Iron.ColGapRight">0,0,10,0</Thickness>
+  <sys:Double x:Key="Iron.SearchWidth">230</sys:Double>
 </ResourceDictionary>

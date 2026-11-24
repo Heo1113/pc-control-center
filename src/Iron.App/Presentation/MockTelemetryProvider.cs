@@ -194,6 +194,12 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
             new(13776, "explorer.exe", gpu0, 0.06, 0.01, U(0, 1), "3D", @"C:\Windows\explorer.exe"),
             new(5532, "ShellExperienceHost.exe", gpu0, 0.05, 0.01, U(0, 1), "3D",
                 @"C:\Windows\SystemApps\ShellExperienceHost_cw5n1h2txyewy\ShellExperienceHost.exe"),
+            new(8840, "steamwebhelper.exe", gpu1, 0.04, 0.02, U(0, 1), "3D", @"C:\Program Files (x86)\Steam\bin\cef\cef.win64\steamwebhelper.exe --type=gpu-process"),
+            new(11204, "Discord.exe", gpu1, 0.04, 0.01, U(0, 1), "3D", @"%LOCALAPPDATA%\Discord\app\Discord.exe --type=gpu-process"),
+            new(6408, "SearchHost.exe", gpu0, 0.03, 0.01, U(0, 1), "3D", @"C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\SearchHost.exe"),
+            new(7312, "TextInputHost.exe", gpu0, 0.02, 0.01, U(0, 1), "3D", @"C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe"),
+            new(9020, "OneDrive.exe", gpu0, 0.02, 0.00, U(0, 1), "3D", @"%LOCALAPPDATA%\Microsoft\OneDrive\OneDrive.exe"),
+            new(3964, "PhoneExperienceHost.exe", gpu0, 0.01, 0.00, U(0, 1), "3D", @"C:\Program Files\WindowsApps\Microsoft.YourPhone\PhoneExperienceHost.exe"),
             new(4, "Basic Render Driver", "Microsoft Basic Render Driver", 0.00, 0.02, 0, "3D", "(소프트웨어 어댑터 — 실제 GPU 아님)", IsSoftwareAdapter: true),
         ];
     }

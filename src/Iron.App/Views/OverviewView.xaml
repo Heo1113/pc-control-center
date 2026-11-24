@@ -85,7 +85,7 @@
               </Border>
               <TextBlock DockPanel.Dock="Top" Text="{Binding Processes.EmptyText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="10,12,0,0"
                          Visibility="{Binding Processes.EmptyText, Converter={StaticResource VisibleWhen}}" />
-              <ListBox ItemsSource="{Binding Processes.OverviewRows}" SelectedItem="{Binding Processes.ListSelection, Mode=TwoWay}"
+              <ListBox x:Name="OverviewList" ItemsSource="{Binding Processes.OverviewRows}" SelectedItem="{Binding Processes.ListSelection, Mode=TwoWay}"
                        ItemTemplate="{StaticResource Iron.ProcessRow}" ItemContainerStyle="{StaticResource Iron.ProcessRowItem}"
                        Background="Transparent" BorderThickness="0" Focusable="False">
                 <ListBox.Template>
@@ -93,11 +93,6 @@
                     <ItemsPresenter />
                   </ControlTemplate>
                 </ListBox.Template>
-                <ListBox.ItemsPanel>
-                  <ItemsPanelTemplate>
-                    <c:FitStackPanel />
-                  </ItemsPanelTemplate>
-                </ListBox.ItemsPanel>
               </ListBox>
             </DockPanel>
           </Border>
@@ -139,7 +134,7 @@
                       </Grid.RowDefinitions>
                       <c:PinMeter MaxWidth="{DynamicResource Iron.PinMaxWidth}" MinHeight="60" Value="{Binding CurrentA}" Maximum="9.5"
                                   Threshold="{Binding DataContext.PinCurrentLimit.Value, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Fill="{Binding Level, Converter={StaticResource PinBrush}}" Track="#3B3E3A" ThresholdBrush="{StaticResource IronThresholdLine}" />
+                                  Fill="{Binding Level, Converter={StaticResource PinBrush}}" Track="#3B3E3A" ThresholdBrush="{StaticResource IronThresholdLine}" ScaleBrush="#5A5E58" />
                       <TextBlock Grid.Row="1" Text="{Binding ShortText}" Style="{StaticResource Iron.PinValue}" Margin="0,7,0,0" />
                       <TextBlock Grid.Row="2" Text="{Binding Label}" Style="{StaticResource Iron.Text.BezelMono}" HorizontalAlignment="Center" Margin="0,2,0,0" />
                     </Grid>
@@ -152,17 +147,17 @@
 
         <!-- 4. Antec FLUX PRO bar -->
         <Border Grid.Row="3" Background="{StaticResource IronChassisSurface}" BorderBrush="{StaticResource IronChassisBevel}" BorderThickness="1" Padding="14,7">
-          <DockPanel>
+          <DockPanel LastChildFill="True">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
               <Button Style="{StaticResource Iron.Button.Secondary}" Content="{Binding WireView.QuickText}" Command="{Binding ToggleUsbCommand}" Margin="0,0,8,0"
                       MinWidth="118" ToolTip="WireView Pro II COM 포트를 공식 앱에 양보 / 다시 사용 (Stage 1: 모의)" />
               <Button Style="{StaticResource Iron.Button.Secondary}" Content="장치 설정" Command="{Binding SelectTabCommand}" CommandParameter="devices" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-              <Ellipse Width="10" Height="10" Fill="{Binding Flux.State, Converter={StaticResource FluxBrush}}" VerticalAlignment="Center" Margin="0,0,10,0" />
+            <DockPanel VerticalAlignment="Center" Margin="0,0,12,0">
+              <Ellipse DockPanel.Dock="Left" Width="10" Height="10" Fill="{Binding Flux.State, Converter={StaticResource FluxBrush}}" VerticalAlignment="Center" Margin="0,0,10,0" />
               <TextBlock Text="{Binding Flux.BarText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}" FontWeight="Bold"
-                         Foreground="{StaticResource IronInkChassis}" VerticalAlignment="Center" />
-            </StackPanel>
+                         Foreground="{StaticResource IronInkChassis}" VerticalAlignment="Center" TextWrapping="Wrap" />
+            </DockPanel>
           </DockPanel>
         </Border>
       </Grid>

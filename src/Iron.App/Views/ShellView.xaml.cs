@@ -46,7 +46,12 @@ public partial class ShellView : UserControl
         }
 
         _mode = mode;
-        var source = mode == LayoutMode.Full ? "Theme/Metrics.Full.xaml" : "Theme/Metrics.Compact.xaml";
+        var source = mode switch
+        {
+            LayoutMode.Full => "Theme/Metrics.Full.xaml",
+            LayoutMode.Compact => "Theme/Metrics.Compact.xaml",
+            _ => "Theme/Metrics.Narrow.xaml",
+        };
         var metrics = new ResourceDictionary { Source = new Uri($"pack://application:,,,/Iron.App;component/{source}", UriKind.Absolute) };
         if (_metrics is not null)
         {

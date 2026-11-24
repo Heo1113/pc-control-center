@@ -104,7 +104,8 @@ public enum StatusKind
     Loading,
 }
 
-public sealed record StatusInfo(StatusKind Kind, string Text);
+/// <param name="ShortText">The same state in fewer words, for windows narrower than 960 DIP.</param>
+public sealed record StatusInfo(StatusKind Kind, string Text, string ShortText);
 
 public static class StatusRules
 {
@@ -118,11 +119,11 @@ public static class StatusRules
     /// <summary>The LED: loading, then disconnected, then any warning, then online.</summary>
     public static StatusInfo For(SensorPhase phase, bool anyGpuHot, bool pinAlert) => phase switch
     {
-        SensorPhase.Initializing => new(StatusKind.Loading, LoadingText),
-        SensorPhase.NoDevice => new(StatusKind.Disconnected, DisconnectedText),
-        _ when pinAlert && anyGpuHot => new(StatusKind.Alert, BothText),
-        _ when pinAlert => new(StatusKind.Alert, PinText),
-        _ when anyGpuHot => new(StatusKind.Alert, GpuText),
-        _ => new(StatusKind.Online, OnlineText),
+        SensorPhase.Initializing => new(StatusKind.Loading, LoadingText, "초기화 중..."),
+        SensorPhase.NoDevice => new(StatusKind.Disconnected, DisconnectedText, DisconnectedText),
+        _ when pinAlert && anyGpuHot => new(StatusKind.Alert, BothText, "핀 · 온도 주의"),
+        _ when pinAlert => new(StatusKind.Alert, PinText, "핀 주의"),
+        _ when anyGpuHot => new(StatusKind.Alert, GpuText, "온도 주의"),
+        _ => new(StatusKind.Online, OnlineText, OnlineText),
     };
 }

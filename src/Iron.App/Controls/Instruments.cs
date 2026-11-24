@@ -100,6 +100,8 @@ public sealed class PinMeter : FrameworkElement
     public static readonly DependencyProperty FillProperty = Reg(nameof(Fill), typeof(Brush), Brushes.OrangeRed);
     public static readonly DependencyProperty TrackProperty = Reg(nameof(Track), typeof(Brush), Brushes.DimGray);
     public static readonly DependencyProperty ThresholdBrushProperty = Reg(nameof(ThresholdBrush), typeof(Brush), Brushes.Goldenrod);
+    public static readonly DependencyProperty ScaleStepProperty = Reg(nameof(ScaleStep), typeof(double), 2.0);
+    public static readonly DependencyProperty ScaleBrushProperty = Reg(nameof(ScaleBrush), typeof(Brush), Brushes.Gray);
 
     public double? Value { get => (double?)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
     public double Maximum { get => (double)GetValue(MaximumProperty); set => SetValue(MaximumProperty, value); }
@@ -107,6 +109,10 @@ public sealed class PinMeter : FrameworkElement
     public Brush Fill { get => (Brush)GetValue(FillProperty); set => SetValue(FillProperty, value); }
     public Brush Track { get => (Brush)GetValue(TrackProperty); set => SetValue(TrackProperty, value); }
     public Brush ThresholdBrush { get => (Brush)GetValue(ThresholdBrushProperty); set => SetValue(ThresholdBrushProperty, value); }
+
+    /// <summary>Engraved scale lines on the track every this many amperes (0 = none).</summary>
+    public double ScaleStep { get => (double)GetValue(ScaleStepProperty); set => SetValue(ScaleStepProperty, value); }
+    public Brush ScaleBrush { get => (Brush)GetValue(ScaleBrushProperty); set => SetValue(ScaleBrushProperty, value); }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -119,6 +125,14 @@ public sealed class PinMeter : FrameworkElement
 
         var scale = Snap.Scale(this);
         dc.DrawRectangle(Track, null, Snap.Rect(0, 0, w, h, scale));
+        if (ScaleStep > 0 && Maximum > ScaleStep)
+        {
+            for (var a = ScaleStep; a < Maximum; a += ScaleStep)
+            {
+                dc.DrawRectangle(ScaleBrush, null, Snap.Rect(0, h - h * a / Maximum, w * 0.18, 1 / scale, scale));
+            }
+        }
+
         if (Value is double v && double.IsFinite(v) && v > 0 && Maximum > 0)
         {
             var fill = h * Math.Clamp(v / Maximum, 0, 1);

@@ -107,13 +107,13 @@ public static class Fmt
     public const string Missing = "—";
     private static readonly CultureInfo C = CultureInfo.InvariantCulture;
 
-    public static string Int(double? value) => value is double v ? v.ToString("0", C) : Missing;
+    public static string Int(double? value) => value is double v ? (Math.Round(v) + 0.0).ToString("0", C) : Missing; // + 0.0: no "-0"
     public static string One(double? value) => value is double v ? v.ToString("0.0", C) : Missing;
     public static string Two(double? value) => value is double v ? v.ToString("0.00", C) : Missing;
     public static string Celsius(double? value) => value is double v ? v.ToString("0", C) + "°C" : Missing;
     public static string Watts(double? value) => value is double v ? v.ToString("0", C) + "W" : "N/A";
     public static string Mhz(double? value) => value is double v ? v.ToString("0", C) + " MHz" : Missing;
-    public static string Percent2(double? value) => value is double v ? v.ToString("00", C) + "%" : Missing;
+    public static string Percent2(double? value) => value is double v ? (Math.Round(v) + 0.0).ToString("00", C) + "%" : Missing;
     public static string Gb(double value) => value.ToString("0.00", C) + " GB";
     public static string Krw(decimal value) => value.ToString("#,0", C);
 }

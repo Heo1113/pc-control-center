@@ -1,37 +1,37 @@
-<!-- IRON layout metrics: Full (see Presentation/Rules.cs LayoutRules). Same keys in Metrics.Full.xaml and Metrics.Compact.xaml. -->
+<!-- IRON layout metrics: Full (Presentation/Rules.cs LayoutRules). Same keys in Metrics.Full/Compact/Narrow.xaml. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
   <Thickness x:Key="Iron.BodyPad">20,16,20,18</Thickness>
   <Thickness x:Key="Iron.RowGap">0,0,0,14</Thickness>
   <sys:Double x:Key="Iron.ColGap">14</sys:Double>
-  <Thickness x:Key="Iron.CardPad">20,14,20,16</Thickness>
+  <Thickness x:Key="Iron.CardPad">22,16,22,18</Thickness>
   <Thickness x:Key="Iron.TilePad">16,12,16,12</Thickness>
   <Thickness x:Key="Iron.PanelPad">18,14,18,14</Thickness>
-  <sys:Double x:Key="Iron.FontGpuName">24</sys:Double>
+  <sys:Double x:Key="Iron.FontGpuName">26</sys:Double>
   <sys:Double x:Key="Iron.FontGpuIndex">13</sys:Double>
   <sys:Double x:Key="Iron.FontMetaLabel">14</sys:Double>
-  <sys:Double x:Key="Iron.FontMetaValue">18</sys:Double>
+  <sys:Double x:Key="Iron.FontMetaValue">19</sys:Double>
   <sys:Double x:Key="Iron.FontMetaSmall">14</sys:Double>
-  <sys:Double x:Key="Iron.FontKpi">36</sys:Double>
-  <sys:Double x:Key="Iron.FontKpiUnit">15</sys:Double>
+  <sys:Double x:Key="Iron.FontKpi">42</sys:Double>
+  <sys:Double x:Key="Iron.FontKpiUnit">16</sys:Double>
   <sys:Double x:Key="Iron.FontLabel">15</sys:Double>
   <sys:Double x:Key="Iron.FontSmall">12.5</sys:Double>
   <sys:Double x:Key="Iron.FontTileLabel">14</sys:Double>
-  <sys:Double x:Key="Iron.FontTileValue">25</sys:Double>
-  <sys:Double x:Key="Iron.FontTileSub">13.5</sys:Double>
+  <sys:Double x:Key="Iron.FontTileValue">27</sys:Double>
+  <sys:Double x:Key="Iron.FontTileSub">14</sys:Double>
   <sys:Double x:Key="Iron.FontTable">14.5</sys:Double>
   <sys:Double x:Key="Iron.FontTableHead">13</sys:Double>
   <sys:Double x:Key="Iron.FontPanelTitle">16</sys:Double>
-  <sys:Double x:Key="Iron.FontHero">48</sys:Double>
-  <sys:Double x:Key="Iron.FontHeroUnit">18</sys:Double>
-  <sys:Double x:Key="Iron.FontValue">21</sys:Double>
+  <sys:Double x:Key="Iron.FontHero">64</sys:Double>
+  <sys:Double x:Key="Iron.FontHeroUnit">22</sys:Double>
+  <sys:Double x:Key="Iron.FontValue">22</sys:Double>
   <sys:Double x:Key="Iron.FontTab">14</sys:Double>
   <sys:Double x:Key="Iron.FontWordmark">22</sys:Double>
   <sys:Double x:Key="Iron.FontStatus">13.5</sys:Double>
-  <sys:Double x:Key="Iron.FontLcd">40</sys:Double>
+  <sys:Double x:Key="Iron.FontLcd">44</sys:Double>
   <sys:Double x:Key="Iron.FontPin">15</sys:Double>
-  <sys:Double x:Key="Iron.SegHeight">22</sys:Double>
+  <sys:Double x:Key="Iron.SegHeight">26</sys:Double>
   <sys:Double x:Key="Iron.SegGap">4</sys:Double>
   <sys:Double x:Key="Iron.RowHeight">36</sys:Double>
   <GridLength x:Key="Iron.ColGpu">110</GridLength>
@@ -39,11 +39,11 @@
   <GridLength x:Key="Iron.ColShr">110</GridLength>
   <GridLength x:Key="Iron.ColUtil">80</GridLength>
   <GridLength x:Key="Iron.ColPid">80</GridLength>
-  <GridLength x:Key="Iron.ColEngine">120</GridLength>
-  <sys:Double x:Key="Iron.MeterWidth">72</sys:Double>
-  <sys:Double x:Key="Iron.PinMaxWidth">48</sys:Double>
+  <GridLength x:Key="Iron.ColEngine">130</GridLength>
+  <sys:Double x:Key="Iron.MeterWidth">76</sys:Double>
+  <sys:Double x:Key="Iron.PinMaxWidth">52</sys:Double>
   <Thickness x:Key="Iron.TabPad">14,0,14,0</Thickness>
-  <sys:Double x:Key="Iron.OverviewMinHeight">640</sys:Double>
+  <sys:Double x:Key="Iron.OverviewMinHeight">660</sys:Double>
   <sys:Double x:Key="Iron.InspectorMin">320</sys:Double>
-  <Thickness x:Key="Iron.ColGapRight">0,0,14,0</Thickness>
+  <sys:Double x:Key="Iron.SearchWidth">280</sys:Double>
 </ResourceDictionary>

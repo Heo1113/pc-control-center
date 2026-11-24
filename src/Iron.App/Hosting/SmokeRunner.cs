@@ -124,7 +124,7 @@ internal sealed class SmokeRunner
 
         List<LayoutIssue> issues = [];
         string? file = null;
-        if (capture && _window.IsVisible && _window.Content is FrameworkElement content)
+        if (capture && _window.IsVisible && _window.Content is FrameworkElement content && content.ActualWidth > 0)
         {
             file = $"live-{name}.png";
             Save(content, Path.Combine(_dir, file));

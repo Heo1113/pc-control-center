@@ -71,18 +71,23 @@
                   </StackPanel>
                 </c:GapGrid>
               </Border>
-              <Grid Margin="0,6,0,10">
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="*" />
-                  <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <StackPanel Margin="0,8,0,10">
+                <StackPanel Orientation="Horizontal">
                   <TextBlock Text="{Binding WireView.PowerText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontHero}" FontWeight="Bold"
                              Foreground="{StaticResource IronInkBezelStrong}" VerticalAlignment="Bottom" />
                   <TextBlock Text="W" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontHeroUnit}" Foreground="{StaticResource IronInkOrangeOnBezel}"
                              VerticalAlignment="Bottom" Margin="8,0,0,8" />
                 </StackPanel>
-                <c:GapGrid Grid.Row="1" Columns="3" ColumnGap="12" RowGap="8">
+                <Grid Margin="0,10,0,16">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <c:SegmentBar Ratio="{Binding WireView.RatingRatio}" Segments="24" Height="{DynamicResource Iron.SegHeight}" Gap="{DynamicResource Iron.SegGap}"
+                                OnBrush="{StaticResource IronAccentOrange}" OffBrush="{StaticResource IronSegmentOff}" VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding WireView.RatingText}" Style="{StaticResource Iron.Text.BezelMono}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                </Grid>
+                <c:GapGrid Columns="3" ColumnGap="12" RowGap="8">
                   <StackPanel>
                     <TextBlock Text="전압" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" />
                     <TextBlock Text="{Binding WireView.VoltageText}" Style="{StaticResource Iron.Text.BezelValue}" Margin="0,3,0,0" />
@@ -97,7 +102,7 @@
                     <TextBlock Text="{Binding WireView.FanText}" Style="{StaticResource Iron.Text.BezelValue}" Margin="0,3,0,0" />
                   </StackPanel>
                 </c:GapGrid>
-              </Grid>
+              </StackPanel>
             </DockPanel>
           </Border>
 
@@ -138,7 +143,7 @@
                       <TextBlock Text="{Binding Label}" Style="{StaticResource Iron.Text.BezelMono}" HorizontalAlignment="Center" Margin="0,0,0,6" />
                       <c:PinMeter Grid.Row="1" MaxWidth="58" MinHeight="80" Value="{Binding CurrentA}" Maximum="9.5"
                                   Threshold="{Binding DataContext.PinCurrentLimit.Value, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                  Fill="{Binding Level, Converter={StaticResource PinBrush}}" Track="#3B3E3A" ThresholdBrush="{StaticResource IronThresholdLine}" />
+                                  Fill="{Binding Level, Converter={StaticResource PinBrush}}" Track="#3B3E3A" ThresholdBrush="{StaticResource IronThresholdLine}" ScaleBrush="#5A5E58" />
                       <TextBlock Grid.Row="2" Text="{Binding Text}" Style="{StaticResource Iron.PinValue}" Margin="0,8,0,0" />
                     </Grid>
                   </DataTemplate>

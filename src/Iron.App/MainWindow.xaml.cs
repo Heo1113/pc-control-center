@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using Iron.App.Hosting;
 using Iron.App.Presentation;
@@ -35,6 +37,10 @@ public partial class MainWindow : Window
             HwndSource.FromHwnd(Handle)?.AddHook(WndProc);
             ApplyLayout();
         };
+        StateChanged += (_, _) => FitContentToWorkArea();
+        SizeChanged += (_, _) => FitContentToWorkArea();
+        LocationChanged += (_, _) => FitContentToWorkArea();
+        DpiChanged += (_, _) => FitContentToWorkArea();
     }
 
     /// <summary>Raised when the window is hidden to the tray (the app may show a hint once).</summary>
@@ -125,9 +131,43 @@ public partial class MainWindow : Window
 
         WindowState = WindowState.Normal;
         var work = monitor.WorkArea;
-        var half = work.Width / 2;
-        var x = _halfOnRight ? work.Left + work.Width - half : work.Left;
-        Native.Move(Handle, x, work.Top, half, work.Height);
+        // Half of the work area, but never narrower than the window's minimum and never past the work area.
+        var minPx = (int)Math.Ceiling(MinWidth * VisualTreeHelper.GetDpi(this).DpiScaleX);
+        var width = Math.Min(work.Width, Math.Max(work.Width / 2, minPx));
+        var x = _halfOnRight ? work.Right - width : work.Left;
+        Native.Move(Handle, x, work.Top, width, work.Height);
+    }
+
+    /// <summary>
+    /// Windows places a maximized window a few pixels past the monitor's edges (its resize frame). With the custom title
+    /// bar those pixels would cut the content, so the content is inset by exactly what lies outside the work area.
+    /// </summary>
+    private void FitContentToWorkArea()
+    {
+        var chrome = WindowChrome.GetWindowChrome(this);
+        if (Handle == 0 || WindowState != WindowState.Maximized || Native.ForWindow(Handle) is not { } m || Native.WindowRect(Handle) is not { } r)
+        {
+            Shell.Margin = new Thickness(0);
+            if (chrome is not null)
+            {
+                chrome.CaptionHeight = 44;
+            }
+
+            return;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var w = m.WorkArea;
+        var inset = new Thickness(
+            Math.Max(0, w.Left - r.Left) / dpi.DpiScaleX,
+            Math.Max(0, w.Top - r.Top) / dpi.DpiScaleY,
+            Math.Max(0, r.Right - w.Right) / dpi.DpiScaleX,
+            Math.Max(0, r.Bottom - w.Bottom) / dpi.DpiScaleY);
+        Shell.Margin = inset;
+        if (chrome is not null)
+        {
+            chrome.CaptionHeight = 44 + inset.Top;
+        }
     }
 
     private nint WndProc(nint hwnd, int msg, nint wParam, nint lParam, ref bool handled)

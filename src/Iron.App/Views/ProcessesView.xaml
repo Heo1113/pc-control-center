@@ -29,7 +29,7 @@
                   ToolTip="Microsoft Basic Render Driver(소프트웨어 어댑터)는 실제 GPU가 아니어서 기본으로 숨깁니다.">
           <TextBlock Text="소프트웨어 어댑터 표시" TextWrapping="NoWrap" />
         </CheckBox>
-        <Grid Grid.Column="3" Width="260" VerticalAlignment="Center">
+        <Grid Grid.Column="3" Width="{DynamicResource Iron.SearchWidth}" VerticalAlignment="Center">
           <TextBox x:Name="Search" Style="{StaticResource Iron.TextBox}" Text="{Binding Processes.Search, UpdateSourceTrigger=PropertyChanged}" />
           <TextBlock Text="프로세스 이름 또는 PID 검색" IsHitTestVisible="False" Margin="9,0,0,0" VerticalAlignment="Center"
                      FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}"
@@ -63,12 +63,12 @@
                 <ColumnDefinition Width="{DynamicResource Iron.ColEngine}" />
               </Grid.ColumnDefinitions>
               <TextBlock Text="프로세스" Style="{StaticResource Iron.HeadCell}" />
-              <TextBlock Grid.Column="1" Text="PID" Style="{StaticResource Iron.HeadCell}" />
+              <TextBlock Grid.Column="1" Text="PID" Style="{StaticResource Iron.HeadCell}" Visibility="{Binding DataContext.IsNarrow, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
               <TextBlock Grid.Column="2" Text="어댑터" Style="{StaticResource Iron.HeadCell}" />
               <TextBlock Grid.Column="3" Text="전용 VRAM" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
               <TextBlock Grid.Column="4" Text="공유" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
               <TextBlock Grid.Column="5" Text="GPU %" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
-              <TextBlock Grid.Column="6" Text="엔진" Style="{StaticResource Iron.HeadCell}" Margin="16,0,0,0" />
+              <TextBlock Grid.Column="6" Text="엔진" Style="{StaticResource Iron.HeadCell}" Margin="16,0,0,0" Visibility="{Binding DataContext.IsNarrow, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
             </Grid>
           </Border>
           <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Iron.Text.BezelMono}" Margin="0,10,0,0" TextWrapping="Wrap"

@@ -76,6 +76,11 @@ public sealed partial class WireViewViewModel : ObservableObject
     [ObservableProperty] public partial double? PowerW { get; private set; }
     [ObservableProperty] public partial string ThresholdText { get; private set; } = "";
 
+    /// <summary>Connector power against the cable rating the device reports (600 W): a measured ratio, not an estimate.</summary>
+    [ObservableProperty] public partial double? RatingRatio { get; private set; }
+
+    [ObservableProperty] public partial string RatingText { get; private set; } = Fmt.Missing;
+
     public bool IsReleasedOrBusy => Port is PortState.Released or PortState.Busy or PortState.Resuming;
     public bool IsHandoverBusy => Port is PortState.Releasing or PortState.Resuming;
 
@@ -171,6 +176,8 @@ public sealed partial class WireViewViewModel : ObservableObject
 
         var pins = IsReading ? reading.PinCurrentsA : [];
         PowerW = IsReading ? reading.PowerW : null;
+        RatingRatio = IsReading && reading.PowerW is double pw && reading.CableRatingW is int rating && rating > 0 ? pw / rating : null;
+        RatingText = RatingRatio is double ratio ? $"정격 {reading.CableRatingW} W의 {Fmt.Int(ratio * 100)}%" : "정격 대비 —";
         PowerText = IsReading ? Fmt.One(reading.PowerW) : Fmt.Missing;
         VoltageText = IsReading && reading.VoltageV is double v ? v.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " V" : Fmt.Missing;
         ConnectorText = IsReading ? $"{Fmt.Int(reading.ConnectorInC)}/{Fmt.Int(reading.ConnectorOutC)}°C" : Fmt.Missing;

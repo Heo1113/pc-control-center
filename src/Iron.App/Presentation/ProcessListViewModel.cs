@@ -88,8 +88,18 @@ public sealed partial class ProcessListViewModel : ObservableObject
 
     public bool HasSelection => Selected is not null;
 
-    /// <summary>How many rows the overview offers (its panel shows as many as fit).</summary>
-    public int OverviewLimit { get; set; } = 14;
+    /// <summary>How many rows the overview shows: as many as its panel can hold (set by the view), at least one.</summary>
+    public int OverviewLimit { get; private set; } = 4;
+
+    public void SetOverviewLimit(int rows)
+    {
+        rows = Math.Clamp(rows, 1, 50);
+        if (rows != OverviewLimit)
+        {
+            OverviewLimit = rows;
+            Refresh();
+        }
+    }
 
     public void Apply(IReadOnlyList<ProcessReading> processes, SensorPhase phase)
     {
