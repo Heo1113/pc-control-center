@@ -410,3 +410,62 @@ public class DeviceTests
         Assert.Equal([(2194.0, 1186.0), (1097.0, 1186.0)], AppOptions.Parse(["--render-screens", "x"]).RenderSizes);
     }
 }
+
+public class NarrowAndOverviewTests
+{
+    [Fact]
+    public void Narrow_windows_shorten_labels_but_keep_the_full_status_in_the_tooltip_text()
+    {
+        var rig = Rig.Create(MockPreset.Alert);
+        rig.Readings(3);
+
+        rig.Vm.Layout = LayoutMode.Narrow;
+        Assert.Equal("전력", rig.Vm.PowerTabLabel);
+        Assert.Equal("장치", rig.Vm.DevicesTabLabel);
+        Assert.Equal("핀 · 온도 주의", rig.Vm.StatusDisplayText);
+        Assert.Equal(StatusRules.BothText, rig.Vm.StatusText);
+
+        rig.Vm.Layout = LayoutMode.Compact;
+        Assert.Equal("전력 · WireView", rig.Vm.PowerTabLabel);
+        Assert.Equal(StatusRules.BothText, rig.Vm.StatusDisplayText);
+    }
+
+    [Fact]
+    public void The_overview_table_holds_exactly_the_rows_that_fit()
+    {
+        var rig = Rig.Create();
+        rig.Readings(1);
+        var p = rig.Vm.Processes;
+
+        p.SetOverviewLimit(4);
+        Assert.Equal(4, p.OverviewRows.Count);
+        p.SetOverviewLimit(12);
+        Assert.Equal(12, p.OverviewRows.Count);
+        p.SetOverviewLimit(0);
+        Assert.Single(p.OverviewRows);
+        Assert.DoesNotContain(p.OverviewRows, r => r.IsSoftwareAdapter);
+    }
+
+    [Fact]
+    public void Selection_made_in_one_list_survives_the_other_list_reporting_nothing_selected()
+    {
+        var rig = Rig.Create();
+        rig.Readings(1);
+        var p = rig.Vm.Processes;
+        p.SetOverviewLimit(3);
+        var low = p.Rows.Last();
+
+        p.ListSelection = low;      // chosen in the full table
+        p.ListSelection = null;     // the overview list does not contain it and reports "nothing"
+
+        Assert.Same(low, p.Selected);
+        Assert.Contains(low, p.Rows);
+    }
+
+    [Fact]
+    public void Percentages_never_show_minus_zero()
+    {
+        Assert.Equal("0", Fmt.Int(-0.4));
+        Assert.Equal("00%", Fmt.Percent2(-0.2));
+    }
+}
