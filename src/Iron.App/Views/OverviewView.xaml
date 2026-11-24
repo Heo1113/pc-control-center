@@ -1,0 +1,171 @@
+<!-- 개요: the confirmed four-tier A+B layout (docs/04 §1).
+     1 dual GPU slim graphite bezels · 2 CPU / RAM / NVMe / GPU board power (4 or 2×2) · 3 VRAM processes (WDDM) | WireView 6 pins
+     · 4 Antec FLUX PRO bar. Fills the window's height; scrolls vertically only when the window is shorter than the minimum. -->
+<UserControl x:Class="Iron.App.Views.OverviewView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Iron.App.Controls">
+  <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <Border Padding="{DynamicResource Iron.BodyPad}" Height="{Binding ViewportHeight, ElementName=Scroller}">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Setter Property="MinHeight" Value="{DynamicResource Iron.OverviewMinHeight}" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding IsNarrow}" Value="True">
+              <Setter Property="MinHeight" Value="1180" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 1. dual GPU -->
+        <ItemsControl ItemsSource="{Binding Gpus}" ItemTemplate="{StaticResource Iron.GpuCard}" Margin="{DynamicResource Iron.RowGap}" Focusable="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <c:GapGrid Columns="{Binding GpuColumns}" ColumnGap="{DynamicResource Iron.ColGap}" RowGap="{DynamicResource Iron.ColGap}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <!-- 2. system modules: four in one row, or an even 2×2 -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding SystemTiles}" ItemTemplate="{StaticResource Iron.Tile}" Margin="{DynamicResource Iron.RowGap}" Focusable="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <c:GapGrid Columns="{Binding SystemColumns}" ColumnGap="{DynamicResource Iron.ColGap}" RowGap="{DynamicResource Iron.ColGap}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <!-- 3. VRAM processes (WDDM PDH) | WireView Pro II six pins -->
+        <c:RatioSplitPanel Grid.Row="2" Margin="{DynamicResource Iron.RowGap}" SideBySide="{Binding WorkSideBySide}" FirstShare="{Binding WorkFirstShare}"
+                           Gap="{DynamicResource Iron.ColGap}" SecondMinHeight="260">
+          <Border Style="{StaticResource Iron.Bezel}">
+            <DockPanel>
+              <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="VRAM 점유 프로세스" Style="{StaticResource Iron.Text.BezelTitle}" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="WDDM PDH" Style="{StaticResource Iron.Text.BezelMono}" VerticalAlignment="Center" Margin="10,2,0,0"
+                           ToolTip="Windows GPU 성능 카운터의 프로세스별 전용·공유 메모리입니다. GPU 카드의 NVML VRAM과 합산하거나 대체하지 않습니다." />
+                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                  <RadioButton Style="{StaticResource Iron.Filter}" Content="전체" IsChecked="{Binding Processes.Filter, Converter={StaticResource Equals}, ConverterParameter=전체}" />
+                  <RadioButton Style="{StaticResource Iron.Filter}" Content="5080" IsChecked="{Binding Processes.Filter, Converter={StaticResource Equals}, ConverterParameter='RTX 5080'}" />
+                  <RadioButton Style="{StaticResource Iron.Filter}" Content="5060 Ti" IsChecked="{Binding Processes.Filter, Converter={StaticResource Equals}, ConverterParameter='RTX 5060 Ti'}" />
+                </StackPanel>
+                <Button Grid.Column="4" Style="{StaticResource Iron.Button.Link}" Content="상세 →" Margin="6,0,0,0" VerticalAlignment="Center"
+                        Command="{Binding SelectTabCommand}" CommandParameter="processes" />
+              </Grid>
+              <Border DockPanel.Dock="Top" Background="{StaticResource IronBezelElevated}" Height="30">
+                <Grid Margin="10,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="{DynamicResource Iron.ColGpu}" />
+                    <ColumnDefinition Width="{DynamicResource Iron.ColDed}" />
+                    <ColumnDefinition Width="{DynamicResource Iron.ColShr}" />
+                    <ColumnDefinition Width="{DynamicResource Iron.ColUtil}" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Text="프로세스" Style="{StaticResource Iron.HeadCell}" />
+                  <TextBlock Grid.Column="1" Text="GPU" Style="{StaticResource Iron.HeadCell}" />
+                  <TextBlock Grid.Column="2" Text="전용 VRAM" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
+                  <TextBlock Grid.Column="3" Text="공유" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
+                  <TextBlock Grid.Column="4" Text="사용률" Style="{StaticResource Iron.HeadCell}" HorizontalAlignment="Right" />
+                </Grid>
+              </Border>
+              <TextBlock DockPanel.Dock="Top" Text="{Binding Processes.EmptyText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="10,12,0,0"
+                         Visibility="{Binding Processes.EmptyText, Converter={StaticResource VisibleWhen}}" />
+              <ListBox ItemsSource="{Binding Processes.OverviewRows}" SelectedItem="{Binding Processes.Selected, Mode=TwoWay}"
+                       ItemTemplate="{StaticResource Iron.ProcessRow}" ItemContainerStyle="{StaticResource Iron.ProcessRow}"
+                       Background="Transparent" BorderThickness="0" Focusable="False">
+                <ListBox.Template>
+                  <ControlTemplate TargetType="ListBox">
+                    <ItemsPresenter />
+                  </ControlTemplate>
+                </ListBox.Template>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <c:FitStackPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+              </ListBox>
+            </DockPanel>
+          </Border>
+
+          <Border Style="{StaticResource Iron.Bezel}">
+            <DockPanel>
+              <Grid DockPanel.Dock="Top">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="WireView Pro II · 6핀 전류" Style="{StaticResource Iron.Text.BezelTitle}" VerticalAlignment="Center" />
+                <Button Grid.Column="1" Style="{StaticResource Iron.Button.Link}" Content="상세 →" VerticalAlignment="Center"
+                        Command="{Binding SelectTabCommand}" CommandParameter="power" />
+                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding WireView.SummaryText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="0,4,0,0"
+                           Foreground="{Binding WireView.PinAlert, Converter={StaticResource BoolBrush}, ConverterParameter=IronInkErrorOnBezel|IronInkBezelMuted}" />
+                <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding WireView.ConfirmText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="0,3,0,0"
+                           Foreground="{StaticResource IronInkAmberOnBezel}" Visibility="{Binding WireView.ConfirmText, Converter={StaticResource VisibleWhen}}" />
+              </Grid>
+              <TextBlock DockPanel.Dock="Bottom" Text="{Binding WireView.ThresholdText}" Style="{StaticResource Iron.Text.BezelMono}" HorizontalAlignment="Center" Margin="0,10,0,0" />
+              <ItemsControl ItemsSource="{Binding WireView.Pins}" Margin="0,14,0,0" Focusable="False">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <c:GapGrid Columns="6" ColumnGap="8" RowGap="0" StretchRows="True" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+                      <c:PinMeter MaxWidth="{DynamicResource Iron.PinMaxWidth}" MinHeight="60" Value="{Binding CurrentA}" Maximum="9.5"
+                                  Threshold="{Binding DataContext.PinCurrentLimit.Value, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                  Fill="{Binding Level, Converter={StaticResource PinBrush}}" Track="#3B3E3A" ThresholdBrush="{StaticResource IronThresholdLine}" />
+                      <TextBlock Grid.Row="1" Text="{Binding ShortText}" Style="{StaticResource Iron.PinValue}" Margin="0,7,0,0" />
+                      <TextBlock Grid.Row="2" Text="{Binding Label}" Style="{StaticResource Iron.Text.BezelMono}" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </DockPanel>
+          </Border>
+        </c:RatioSplitPanel>
+
+        <!-- 4. Antec FLUX PRO bar -->
+        <Border Grid.Row="3" Background="{StaticResource IronChassisSurface}" BorderBrush="{StaticResource IronChassisBevel}" BorderThickness="1" Padding="14,7">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button Style="{StaticResource Iron.Button.Secondary}" Content="{Binding WireView.QuickText}" Command="{Binding ToggleUsbCommand}" Margin="0,0,8,0"
+                      MinWidth="118" ToolTip="WireView Pro II COM 포트를 공식 앱에 양보 / 다시 사용 (Stage 1: 모의)" />
+              <Button Style="{StaticResource Iron.Button.Secondary}" Content="장치 설정" Command="{Binding SelectTabCommand}" CommandParameter="devices" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse Width="10" Height="10" Fill="{Binding Flux.State, Converter={StaticResource FluxBrush}}" VerticalAlignment="Center" Margin="0,0,10,0" />
+              <TextBlock Text="{Binding Flux.BarText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}" FontWeight="Bold"
+                         Foreground="{StaticResource IronInkChassis}" VerticalAlignment="Center" />
+            </StackPanel>
+          </DockPanel>
+        </Border>
+      </Grid>
+    </Border>
+  </ScrollViewer>
+</UserControl>

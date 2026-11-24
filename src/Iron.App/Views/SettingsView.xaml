@@ -1,0 +1,75 @@
+<!-- 설정 (docs/04 §2.5): tray and auto start (Stage 1: mock), UI warning thresholds with range validation (separate from the
+     devices' own protection), tariff and interval, storage paths (used from Stage 2), mock state, sensor summary. -->
+<UserControl x:Class="Iron.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Iron.App.Controls"
+             xmlns:v="clr-namespace:Iron.App.Views">
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <c:GapGrid Margin="{DynamicResource Iron.BodyPad}" Columns="{Binding PanelColumns}" ColumnGap="{DynamicResource Iron.ColGap}" RowGap="{DynamicResource Iron.ColGap}">
+      <!-- background and tray -->
+      <Border Style="{StaticResource Iron.Bezel}" Padding="20,16">
+        <StackPanel>
+          <TextBlock Text="백그라운드 · 시스템 트레이" Style="{StaticResource Iron.Text.BezelTitle}" Foreground="#F29F67" Margin="0,0,0,8" />
+          <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding CloseToTray}">
+            <TextBlock Text="창 닫기(✕) 시 시스템 트레이로 최소화 — 창을 숨기고 화면 갱신을 멈추며, 트레이 팝업과 FLUX PRO 표시는 유지" />
+          </CheckBox>
+          <Rectangle Style="{StaticResource Iron.Divider}" />
+          <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding AutoStartMock}">
+            <TextBlock Text="Windows 로그인 시 트레이로 자동 실행 (모의)" />
+          </CheckBox>
+          <TextBlock Text="{Binding AutoStartNote}" Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" />
+          <Rectangle Style="{StaticResource Iron.Divider}" Margin="0,12" />
+          <TextBlock Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkAmberOnBezel}"
+                     Text="실기 검증을 마치기 전까지 기존 Antec iUnity와 WireView 공식 앱을 삭제하거나 자동 시작을 끄지 마세요." />
+        </StackPanel>
+      </Border>
+
+      <!-- UI warning thresholds -->
+      <Border Style="{StaticResource Iron.Bezel}" Padding="20,16">
+        <StackPanel>
+          <TextBlock Text="UI 주의 표시 기준" Style="{StaticResource Iron.Text.BezelTitle}" Foreground="#F29F67" />
+          <TextBlock Text="공식 하드웨어 보호 기준과 별개 · 입력하는 즉시 화면에 반영" Style="{StaticResource Iron.Text.BezelMono}" Margin="0,2,0,12" />
+          <v:NumericField DataContext="{Binding GpuTemperatureLimit}" />
+          <TextBlock Text="해당 GPU의 온도와 사용률 막대, 상태 LED만 적색으로 바뀝니다. WireView USB 해제와 관계없습니다." Style="{StaticResource Iron.Text.Body}"
+                     FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" Margin="0,4,0,14" />
+          <v:NumericField DataContext="{Binding PinCurrentLimit}" />
+          <TextBlock Text="기준 이상인 핀 막대는 바로 적색으로, '핀 불균형 주의' LED는 3회(1초 간격이면 3초) 연속일 때만 켜집니다. USB를 해제하면 핀 경고만 즉시 지워집니다."
+                     Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" Margin="0,4,0,12" />
+          <StackPanel Orientation="Horizontal">
+            <Button Style="{StaticResource Iron.Button.Bezel}" Content="온도 기본값 72°C" Command="{Binding GpuTemperatureLimit.ResetToDefaultCommand}" Margin="0,0,8,0" />
+            <Button Style="{StaticResource Iron.Button.Bezel}" Content="핀 기본값 7.0 A" Command="{Binding PinCurrentLimit.ResetToDefaultCommand}" />
+          </StackPanel>
+          <Rectangle Style="{StaticResource Iron.Divider}" Margin="0,14,0,10" />
+          <TextBlock Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}"
+                     Text="위 기준은 IRON 화면 내 시각 강조용이며, WireView Pro II 장치 자체의 공식 하드웨어 보호 임계값이나 동작을 변경하지 않습니다." />
+        </StackPanel>
+      </Border>
+
+      <!-- tariff, interval, storage -->
+      <Border Style="{StaticResource Iron.Bezel}" Padding="20,16">
+        <StackPanel>
+          <TextBlock Text="전기요금 · 수집 주기 · 저장 위치" Style="{StaticResource Iron.Text.BezelTitle}" Foreground="#F29F67" Margin="0,0,0,12" />
+          <c:GapGrid Columns="2" ColumnGap="14" RowGap="12">
+            <v:NumericField DataContext="{Binding Tariff}" />
+            <v:NumericField DataContext="{Binding IntervalMs}" />
+          </c:GapGrid>
+          <TextBlock Text="저장 위치 (Stage 2부터 사용 · Stage 1은 아무것도 저장하지 않음)" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,16,0,4" />
+          <TextBlock Text="data/iron/iron-settings.json" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkBezel}" />
+          <TextBlock Text="data/iron/iron-telemetry.db" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkBezel}" Margin="0,2,0,0" />
+          <TextBlock Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" Margin="0,8,0,0"
+                     Text="기존 PC Control Center의 모듈 DB(lapc.db·gpc.db·wdl.db·wao.db)와 분리된 IRON 전용 파일입니다." />
+        </StackPanel>
+      </Border>
+
+      <!-- mock -->
+      <Border Style="{StaticResource Iron.Bezel}" Padding="20,16" BorderBrush="{StaticResource IronAccentAmber}">
+        <StackPanel>
+          <v:MockControlsView />
+          <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" Margin="0,10,0,0" LineHeight="19"
+                     Text="단축키: Ctrl+1~5 화면 · F5 정상 · F6 오류/불균형 · F7 미연결 · F8 로딩 · F9 USB 해제/재개 · Shift+F9 1.5초 플래시" />
+        </StackPanel>
+      </Border>
+    </c:GapGrid>
+  </ScrollViewer>
+</UserControl>

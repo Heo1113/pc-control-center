@@ -1,0 +1,23 @@
+<!-- One validated number (DataContext = NumericSetting): label, input, unit, allowed range, and why an input is refused.
+     An invalid input is never applied; the last valid value stays in effect. -->
+<UserControl x:Class="Iron.App.Views.NumericField"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root">
+  <StackPanel>
+    <TextBlock Text="{Binding Label}" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" TextWrapping="Wrap" />
+    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+      <TextBox x:Name="Input" Style="{StaticResource Iron.TextBox}" Width="92" Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+               AutomationProperties.Name="{Binding Label}">
+        <TextBox.BorderBrush>
+          <Binding Path="HasError" Converter="{StaticResource BoolBrush}" ConverterParameter="IronStatusError|IronInputBorder" />
+        </TextBox.BorderBrush>
+      </TextBox>
+      <TextBlock Text="{Binding Unit}" Style="{StaticResource Iron.Text.BezelMono}" VerticalAlignment="Center" Margin="8,0,0,0" />
+      <TextBlock Text="{Binding RangeText, StringFormat='허용 {0}'}" Style="{StaticResource Iron.Text.BezelMono}" VerticalAlignment="Center" Margin="12,0,0,0"
+                 Visibility="{Binding ShowRange, ElementName=Root, Converter={StaticResource VisibleWhen}}" />
+    </StackPanel>
+    <TextBlock Text="{Binding Error}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkErrorOnBezel}" TextWrapping="Wrap" Margin="0,4,0,0"
+               Visibility="{Binding HasError, Converter={StaticResource VisibleWhen}}" />
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,8 @@
+<Solution>
+  <!-- IRON Stage 1: the WPF program (mock data only) and the tests of its screen logic. Independent of the
+       PC Control Center projects (PcControlCenter.slnx), which this branch does not change. -->
+  <Folder Name="/iron/">
+    <Project Path="src/Iron.App/Iron.App.csproj" />
+    <Project Path="tests/Iron.App.Tests/Iron.App.Tests.csproj" />
+  </Folder>
+</Solution>

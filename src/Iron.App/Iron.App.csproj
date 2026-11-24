@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- IRON (product 1 of the split) — Stage 1: the real WPF window with mock data only. No reference to the existing
+       backend (PcControlCenter.*, modules), no sensor, no USB device, no registry or Run key: every device action,
+       USB release and auto start is simulated. See docs/IRON_STAGE1.md. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Only for the notification area icon (System.Windows.Forms.NotifyIcon); the windows themselves are WPF. -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Iron.App</RootNamespace>
+    <AssemblyName>Iron.App</AssemblyName>
+    <Product>IRON</Product>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\iron.ico</ApplicationIcon>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WFO0003 asks Windows Forms apps to set DPI in code; this is a WPF app (PerMonitorV2 in app.manifest) that uses
+         Windows Forms only for the notification area icon. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WPF and Windows Forms both define Application, Brush, Color, Point ...: keep the WPF names unqualified. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\iron.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Iron.App.Tests" />
+  </ItemGroup>
+</Project>

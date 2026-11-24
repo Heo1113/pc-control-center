@@ -1,0 +1,176 @@
+<!-- 외부 장치: product names first; VID/PID, protocol and Y-cable details folded into expanders.
+     Antec FLUX PRO = one-way USB HID temperature output; Thermal Grizzly WireView Pro II = read-only telemetry.
+     Stage 1 opens neither device: every state and button here is simulated. -->
+<UserControl x:Class="Iron.App.Views.DevicesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Iron.App.Controls"
+             xmlns:p="clr-namespace:Iron.App.Presentation">
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+    <StackPanel Margin="{DynamicResource Iron.BodyPad}">
+      <c:GapGrid Columns="{Binding PanelColumns}" ColumnGap="{DynamicResource Iron.ColGap}" RowGap="{DynamicResource Iron.ColGap}">
+        <!-- Antec FLUX PRO -->
+        <Border Style="{StaticResource Iron.Bezel}" Padding="22,18">
+          <StackPanel>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="케이스 디스플레이 · Antec FLUX PRO" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" />
+                <TextBlock Text="Vortex View Side-Panel LCD" FontSize="{DynamicResource Iron.FontGpuName}" FontWeight="Bold" Foreground="#F3F1EA" Margin="0,4,0,0" />
+              </StackPanel>
+              <Border Grid.Column="1" Style="{StaticResource Iron.Badge}" VerticalAlignment="Top" BorderBrush="{Binding Flux.State, Converter={StaticResource FluxBrush}}">
+                <TextBlock Text="{Binding Flux.BadgeText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}"
+                           Foreground="{Binding Flux.State, Converter={StaticResource FluxBrush}}" />
+              </Border>
+            </Grid>
+            <!-- LCD preview -->
+            <Border Background="{StaticResource IronLcdBg}" BorderBrush="{StaticResource IronLcdBorder}" BorderThickness="2" Padding="16,14" Margin="0,16,0,16">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="1" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel HorizontalAlignment="Center">
+                  <TextBlock Text="{Binding Flux.CpuCaption}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="#7B8078" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding Flux.CpuText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontLcd}" FontWeight="Bold" Foreground="{StaticResource IronInkBezel}" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Rectangle Grid.Column="1" Fill="#2C2F2B" Margin="0,6" />
+                <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                  <TextBlock Text="{Binding Flux.GpuCaption}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="#7B8078" HorizontalAlignment="Center" />
+                  <TextBlock Text="{Binding Flux.GpuText}" FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontLcd}" FontWeight="Bold" Foreground="{StaticResource IronAccentOrange}" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <c:GapGrid Columns="2" ColumnGap="12" RowGap="10">
+              <StackPanel>
+                <TextBlock Text="CPU 센서" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,0,0,5" />
+                <ComboBox Style="{StaticResource Iron.ComboBox}" ItemsSource="{x:Static p:FluxViewModel.CpuSensors}" SelectedItem="{Binding Flux.CpuSensor}" />
+              </StackPanel>
+              <StackPanel>
+                <TextBlock Text="GPU 표시 대상" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,0,0,5" />
+                <ComboBox Style="{StaticResource Iron.ComboBox}" ItemsSource="{x:Static p:FluxViewModel.GpuTargets}" SelectedItem="{Binding Flux.GpuTarget}" />
+              </StackPanel>
+            </c:GapGrid>
+            <TextBlock Text="{Binding Flux.StateText}" Style="{StaticResource Iron.Text.Body}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,14,0,0"
+                       Foreground="{Binding Flux.State, Converter={StaticResource FluxBrush}}" />
+            <Rectangle Style="{StaticResource Iron.Divider}" Margin="0,14,0,12" />
+            <Expander Style="{StaticResource Iron.Expander}" Header="HW 프로토콜 · 충돌 진단">
+              <StackPanel>
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20"
+                           Text="USB HID · VID 0x2022 / PID 0x0522 · 12바이트 표시 송신 · 1Hz (단방향, 장치 설정·펌웨어 변경 없음)" />
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0"
+                           Text="온도는 IRON의 공통 센서 값을 그대로 씁니다 (별도 폴링 없음). 팬 제어는 ASRock BIOS가 맡고 IRON은 하지 않습니다." />
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                  <TextBlock Text="송신 예정 패킷 (모의, 실제 송신 없음): " Style="{StaticResource Iron.Text.BezelMono}" />
+                  <TextBlock Text="{Binding Flux.PacketText}" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkBezel}" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,8,0,0"
+                           Text="iUnity(iUnityService)가 실행 중이면 IRON은 iUnity를 종료하지 않고 송신을 보류합니다. iUnity를 직접 끈 뒤 다시 확인하세요." />
+                <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.IUnityRunning}" Margin="0,6,0,0">
+                  <TextBlock Text="iUnity 실행 중으로 시뮬레이션 (모의)" />
+                </CheckBox>
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </Border>
+
+        <!-- Thermal Grizzly WireView Pro II -->
+        <Border Style="{StaticResource Iron.Bezel}" Padding="22,18">
+          <StackPanel>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel>
+                <TextBlock Text="전력 계측기 · 12V-2x6" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" />
+                <TextBlock Text="Thermal Grizzly WireView Pro II" FontSize="{DynamicResource Iron.FontGpuName}" FontWeight="Bold" Foreground="#F3F1EA" Margin="0,4,0,0" />
+              </StackPanel>
+              <Border Grid.Column="1" Style="{StaticResource Iron.Badge}" VerticalAlignment="Top" BorderBrush="{StaticResource IronAccentOrange}">
+                <TextBlock FontFamily="{StaticResource IronMonoFont}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkOrangeOnBezel}">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                      <Setter Property="Text" Value="읽기 전용" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding WireView.IsReleasedOrBusy}" Value="True">
+                          <Setter Property="Text" Value="USB 해제됨" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+              </Border>
+            </Grid>
+            <Grid Margin="0,16,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Grid.Resources>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource Iron.Text.BezelMono}">
+                  <Setter Property="Margin" Value="0,0,16,9" />
+                  <Setter Property="FontSize" Value="{DynamicResource Iron.FontLabel}" />
+                </Style>
+              </Grid.Resources>
+              <TextBlock Text="대상 GPU" />
+              <TextBlock Grid.Column="1" Text="ZOTAC RTX 5080 SOLID OC" Foreground="{StaticResource IronInkBezelStrong}" FontWeight="Bold" />
+              <TextBlock Grid.Row="1" Text="펌웨어" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="v05 · 읽기 전용 조회" Foreground="{StaticResource IronInkBezelStrong}" FontWeight="Bold" />
+              <TextBlock Grid.Row="2" Text="하드웨어 보호" />
+              <TextBlock Grid.Row="2" Grid.Column="1" Text="장치 펌웨어에서 독립 동작 (IRON은 차단을 대신하지 않음)" Foreground="{StaticResource IronInkOkOnBezel}" FontWeight="Bold" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="3" Text="포트 소유" />
+              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding WireView.PortOwnerText}" FontWeight="Bold" TextWrapping="Wrap"
+                         Foreground="{Binding WireView.IsReleasedOrBusy, Converter={StaticResource BoolBrush}, ConverterParameter=IronInkAmberOnBezel|IronInkOkOnBezel}" />
+              <TextBlock Grid.Row="4" Text="현재 상태" />
+              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding WireView.StateText}" Foreground="{StaticResource IronInkBezelStrong}" TextWrapping="Wrap" />
+            </Grid>
+            <WrapPanel Margin="0,8,0,0">
+              <Button Content="{Binding WireView.HandoverButtonText}" Command="{Binding ToggleUsbCommand}" Margin="0,0,10,10" Padding="16,9" MinWidth="180"
+                      IsEnabled="{Binding WireView.IsHandoverBusy, Converter={StaticResource Not}}" ToolTip="Stage 1: 모의 동작 (실제 COM 포트를 열거나 닫지 않음)">
+                <Button.Style>
+                  <Style TargetType="Button" BasedOn="{StaticResource Iron.Button.Secondary}">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding WireView.IsReleasedOrBusy}" Value="True">
+                        <Setter Property="Background" Value="{StaticResource IronAccentOrange}" />
+                        <Setter Property="BorderBrush" Value="#A84A16" />
+                        <Setter Property="Foreground" Value="#1A1B19" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
+              <Button Style="{StaticResource Iron.Button.Secondary}" Content="6핀 상세 →" Command="{Binding SelectTabCommand}" CommandParameter="power" Margin="0,0,10,10" Padding="16,9" />
+            </WrapPanel>
+            <Rectangle Style="{StaticResource Iron.Divider}" Margin="0,6,0,12" />
+            <Expander Style="{StaticResource Iron.Expander}" Header="USB CDC · Y케이블 상세">
+              <StackPanel>
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20"
+                           Text="STM32 USB CDC 가상 COM 포트 · VID 0x0483 / PID 0x5740 · 장치 ID EF05 (Noctua Edition EF06)" />
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0"
+                           Text="명령: 0x01 장치 식별, 0x04 센서 읽기만 사용 (설정 쓰기·임계값 변경·펌웨어 명령 없음)" />
+                <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0"
+                           Text="자동 종료 Y케이블: 연결 안 됨 · COM 포트는 한 프로그램만 열 수 있어 공식 앱을 쓸 때는 RELEASE USB" />
+                <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.WireViewPortBusy}" Margin="0,6,0,0">
+                  <TextBlock Text="재개할 때 포트 사용 중으로 시뮬레이션 (모의)" />
+                </CheckBox>
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </Border>
+      </c:GapGrid>
+      <TextBlock Text="Stage 1: 실제 USB 장치(Antec FLUX PRO, WireView Pro II)에 접근하지 않습니다. 기존 iUnity·WireView 공식 앱은 삭제하거나 자동 시작을 끄지 마세요."
+                 Style="{StaticResource Iron.Text.ChassisBody}" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkChassisMuted}" Margin="2,14,0,0" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -1,0 +1,130 @@
+name: IRON Stage 1
+
+# IRON Stage 1 only (Iron.slnx): the WPF program with mock data and the tests of its screen logic. The existing
+# PC Control Center workflow (ci.yml) and projects are not changed by this branch.
+on:
+  push:
+    branches:
+      - "feat/iron-ui-stage1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iron-stage1-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  linux:
+    name: Linux - build (WPF compile), screen logic tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        id: build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Screen logic tests (warnings, thresholds, power total, devices, layout rules)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet test --project tests/Iron.App.Tests -c Release --no-build
+
+  windows:
+    name: Windows - build, tests, Iron.App.exe, screens at 175 %, live window
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        id: build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Screen logic tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet test --project tests/Iron.App.Tests -c Release --no-build
+
+      - name: Publish Iron.App.exe (self-contained single file, no .NET install needed)
+        id: publish
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: ./scripts/iron-publish.ps1 -OutputDir dist
+
+      - name: Screens at 4K 175 % - 2194x1186 and 1097x1186 DIP, with layout check
+        id: screens
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--render-screens', 'dist/stage1/screens' -Wait -PassThru
+          $report = Get-Content dist/stage1/screens/layout-report.json -Raw | ConvertFrom-Json
+          "screens: $($report.screens.Count) · layout issues: $($report.totalIssues) · binding errors: $($report.bindingErrors.Count)"
+          foreach ($s in $report.screens) { foreach ($i in $s.issues) { "  [$($s.file)] $($i.Kind): '$($i.Text)' need $($i.Need) have $($i.Have) at $($i.Where)" } }
+          foreach ($e in $report.bindingErrors) { "  binding: $e" }
+          if ($p.ExitCode -ne 0) { throw "render/check exit code $($p.ExitCode)" }
+
+      - name: Live window on the runner desktop (tabs, states, USB handover, half width, tray, close to tray)
+        id: live
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          New-Item -ItemType Directory -Force -Path dist/stage1/live | Out-Null
+          $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--smoke-test', 'dist/stage1/live' -PassThru
+          foreach ($t in 6, 26) {
+            Start-Sleep -Seconds $t
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("dist/stage1/live/desktop-after-$($t)s.png")
+            $g.Dispose(); $bmp.Dispose()
+          }
+          if (-not $p.WaitForExit(150000)) { $p.Kill(); throw 'live smoke test did not finish in time' }
+          $report = Get-Content dist/stage1/live/smoke-report.json -Raw | ConvertFrom-Json
+          "steps: $($report.steps.Count) · issues: $($report.issues) · binding errors: $($report.bindingErrors.Count)"
+          foreach ($s in $report.steps) {
+            "  $($s.step): visible=$($s.windowVisible) state=$($s.windowState) layout=$($s.layout) dpi=$($s.pixelsPerDip) window=$($s.windowPx.Width)x$($s.windowPx.Height) work=$($s.workAreaPx.Width)x$($s.workAreaPx.Height) status=$($s.status)"
+            foreach ($i in $s.issues) { "    $($i.Kind): '$($i.Text)' need $($i.Need) have $($i.Have) at $($i.Where)" }
+            if ($s.error) { "    ERROR $($s.error)" }
+          }
+          foreach ($e in $report.bindingErrors) { "  binding: $e" }
+          if ($p.ExitCode -ne 0) { throw "live smoke exit code $($p.ExitCode)" }
+
+      - name: Upload Iron.App.exe
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Iron.App-win-x64
+          path: |
+            dist/Iron.App-win-x64.zip
+            dist/Iron.App-win-x64.zip.sha256
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload screens and reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-stage1-screens
+          path: dist/stage1
+          if-no-files-found: warn
+          retention-days: 30

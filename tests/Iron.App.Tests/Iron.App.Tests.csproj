@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of IRON's screen logic. Iron.App is a Windows (WPF) program, so its WPF-free Presentation folder (mock data,
+       warnings, validation, view models) is compiled into this project directly and tested on Linux and Windows. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iron.App.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Iron.App\Presentation\**\*.cs" Link="Presentation\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

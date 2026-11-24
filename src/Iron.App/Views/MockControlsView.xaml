@@ -1,0 +1,48 @@
+<!-- Stage 1 mock state switches (title bar "모의 데이터" and 설정). Presets set the independent conditions below. -->
+<UserControl x:Class="Iron.App.Views.MockControlsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Iron.App.Controls">
+  <StackPanel>
+    <TextBlock Text="모의 상태 전환 (Stage 1 · 실센서 미연결)" Style="{StaticResource Iron.Text.BezelTitle}" />
+    <TextBlock Text="{Binding MockSummary}" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkAmberOnBezel}" Margin="0,4,0,10" />
+    <c:GapGrid Columns="4" ColumnGap="6" RowGap="6">
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="정상" Command="{Binding ApplyPresetCommand}" CommandParameter="normal" ToolTip="F5" />
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="오류/불균형" Command="{Binding ApplyPresetCommand}" CommandParameter="alert" ToolTip="F6" />
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="미연결" Command="{Binding ApplyPresetCommand}" CommandParameter="disconnected" ToolTip="F7" />
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="로딩" Command="{Binding ApplyPresetCommand}" CommandParameter="loading" ToolTip="F8" />
+    </c:GapGrid>
+    <c:GapGrid Columns="2" ColumnGap="6" RowGap="6" Margin="0,6,0,0">
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="{Binding WireView.HandoverButtonText}" Command="{Binding ToggleUsbCommand}" ToolTip="F9 · WireView USB 해제 / 재개 (모의)" />
+      <Button Style="{StaticResource Iron.Button.Bezel}" Content="1.5초 불균형 플래시" Command="{Binding FlashImbalanceCommand}" ToolTip="Shift+F9 · P3 7.6 A를 1.5초만 (3회 연속이 아니므로 LED 경고 없음)" />
+    </c:GapGrid>
+    <TextBlock Text="개별 조건 (서로 독립)" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,12,0,0" />
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.GpuOverheat}" Padding="0,5">
+      <TextBlock Text="RTX 5080 과열 · 고부하 (76°C)" />
+    </CheckBox>
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.PinImbalance}" Padding="0,5">
+      <TextBlock Text="WireView 핀 불균형 (P3 7.94 A)" />
+    </CheckBox>
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.Gpu1PowerMissing}" Padding="0,5">
+      <TextBlock Text="RTX 5060 Ti 전력 값 없음 (합계 일부 미확인)" />
+    </CheckBox>
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.FluxDisconnected}" Padding="0,5">
+      <TextBlock Text="FLUX PRO 미연결" />
+    </CheckBox>
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.IUnityRunning}" Padding="0,5">
+      <TextBlock Text="iUnity 실행 중 (FLUX PRO 송신 보류)" />
+    </CheckBox>
+    <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.WireViewPortBusy}" Padding="0,5">
+      <TextBlock Text="WireView 재개 시 포트 사용 중" />
+    </CheckBox>
+    <TextBlock Text="최근 동작" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" Margin="0,10,0,4"
+               Visibility="{Binding RecentActions.Count, Converter={StaticResource VisibleWhen}}" />
+    <ItemsControl ItemsSource="{Binding RecentActions}" Focusable="False">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <TextBlock Text="{Binding}" Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" Margin="0,1" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+</UserControl>

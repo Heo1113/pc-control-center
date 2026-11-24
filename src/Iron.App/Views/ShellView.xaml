@@ -1,0 +1,96 @@
+<!-- The whole IRON window content: 44 DIP title bar (wordmark, five switches, mock state, status LED, tray / half / close)
+     and the five screens. The same element is used by the real window and by the offscreen renderer. -->
+<UserControl x:Class="Iron.App.Views.ShellView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:Iron.App.Controls"
+             xmlns:v="clr-namespace:Iron.App.Views"
+             UseLayoutRounding="True" SnapsToDevicePixels="True"
+             TextOptions.TextFormattingMode="Display"
+             Typography.NumeralAlignment="Tabular"
+             Background="{StaticResource IronChassisBg}"
+             FontFamily="{StaticResource IronDisplayFont}">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="44" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- ===== title bar ===== -->
+    <Border x:Name="TitleBar" Background="{StaticResource IronBezelBg}" BorderBrush="{StaticResource IronTitleEdge}" BorderThickness="0,0,0,2">
+      <Grid Margin="18,0,8,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <c:LetterSpacedText Text="IRON" FontSize="{DynamicResource Iron.FontWordmark}" Foreground="#F3F1EA" VerticalAlignment="Center" Margin="0,0,22,0" />
+        <StackPanel x:Name="Tabs" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="개요" ToolTip="Ctrl+1"
+                       IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Overview}" />
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="프로세스" ToolTip="Ctrl+2"
+                       IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Processes}" />
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="전력 · WireView" ToolTip="Ctrl+3"
+                       IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Power}" />
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="외부 장치" ToolTip="Ctrl+4"
+                       IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Devices}" />
+          <RadioButton Style="{StaticResource Iron.Tab}" Content="설정" ToolTip="Ctrl+5"
+                       IsChecked="{Binding Tab, Converter={StaticResource Equals}, ConverterParameter=Settings}" />
+        </StackPanel>
+
+        <!-- Stage 1: every value is simulated; this switch opens the mock state panel (also in 설정). -->
+        <ToggleButton x:Name="MockButton" Grid.Column="3" Style="{StaticResource Iron.Button.Bezel}" Margin="0,0,16,0" VerticalAlignment="Center"
+                      Padding="9,3" BorderBrush="{StaticResource IronAccentAmber}" WindowChrome.IsHitTestVisibleInChrome="True"
+                      ToolTip="모의 데이터 (Stage 1) — 상태 전환: F5 정상 · F6 오류/불균형 · F7 미연결 · F8 로딩 · F9 USB 해제/재개 · Shift+F9 1.5초 플래시">
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="모의 데이터" Foreground="{StaticResource IronAccentAmber}" FontFamily="{StaticResource IronDisplayFont}" FontSize="{DynamicResource Iron.FontSmall}" />
+            <TextBlock Text=" ▾" Foreground="{StaticResource IronAccentAmber}" FontSize="{DynamicResource Iron.FontSmall}" />
+          </StackPanel>
+        </ToggleButton>
+        <Popup Grid.Column="3" PlacementTarget="{Binding ElementName=MockButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="False"
+               IsOpen="{Binding IsChecked, ElementName=MockButton, Mode=TwoWay}" PopupAnimation="None" HorizontalOffset="-260">
+          <Border Style="{StaticResource Iron.Bezel}" Width="430" BorderBrush="{StaticResource IronAccentAmber}"
+                  Typography.NumeralAlignment="Tabular" TextOptions.TextFormattingMode="Display">
+            <v:MockControlsView />
+          </Border>
+        </Popup>
+
+        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,14,0">
+          <Ellipse Width="10" Height="10" Fill="{Binding Status, Converter={StaticResource StatusBrush}}" VerticalAlignment="Center" Margin="0,0,8,0" />
+          <TextBlock x:Name="StatusLabel" Text="{Binding StatusText}" Foreground="{Binding Status, Converter={StaticResource StatusInk}}"
+                     FontSize="{DynamicResource Iron.FontStatus}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+        <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
+          <Button x:Name="TrayButton" Style="{StaticResource Iron.Button.Window}" Content="—" ToolTip="트레이로 최소화" />
+          <Button x:Name="LayoutButton" Style="{StaticResource Iron.Button.Window}" ToolTip="작업 영역 전체 / 절반 전환 (제목 표시줄 두 번 클릭)">
+            <TextBlock>
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Setter Property="Text" Value="◧" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsHalfWidth}" Value="True">
+                      <Setter Property="Text" Value="□" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </Button>
+          <Button x:Name="CloseButton" Style="{StaticResource Iron.Button.Window}" Content="✕" ToolTip="닫기 (설정에 따라 트레이로 최소화)" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ===== screens ===== -->
+    <Grid Grid.Row="1">
+      <v:OverviewView Visibility="{Binding IsOverview, Converter={StaticResource VisibleWhen}}" />
+      <v:ProcessesView Visibility="{Binding IsProcesses, Converter={StaticResource VisibleWhen}}" />
+      <v:PowerView Visibility="{Binding IsPower, Converter={StaticResource VisibleWhen}}" />
+      <v:DevicesView Visibility="{Binding IsDevices, Converter={StaticResource VisibleWhen}}" />
+      <v:SettingsView Visibility="{Binding IsSettings, Converter={StaticResource VisibleWhen}}" />
+    </Grid>
+  </Grid>
+</UserControl>

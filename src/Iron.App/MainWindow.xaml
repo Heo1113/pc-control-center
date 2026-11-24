@@ -1,0 +1,27 @@
+<Window x:Class="Iron.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:v="clr-namespace:Iron.App.Views"
+        Title="IRON" Icon="pack://application:,,,/Iron.App;component/Assets/iron.ico"
+        MinWidth="720" MinHeight="560" Width="1200" Height="800"
+        WindowStyle="SingleBorderWindow" ResizeMode="CanResize"
+        Background="{StaticResource IronBezelBg}"
+        UseLayoutRounding="True" SnapsToDevicePixels="True">
+  <WindowChrome.WindowChrome>
+    <WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+  </WindowChrome.WindowChrome>
+  <Window.InputBindings>
+    <KeyBinding Modifiers="Control" Key="D1" Command="{Binding SelectTabCommand}" CommandParameter="overview" />
+    <KeyBinding Modifiers="Control" Key="D2" Command="{Binding SelectTabCommand}" CommandParameter="processes" />
+    <KeyBinding Modifiers="Control" Key="D3" Command="{Binding SelectTabCommand}" CommandParameter="power" />
+    <KeyBinding Modifiers="Control" Key="D4" Command="{Binding SelectTabCommand}" CommandParameter="devices" />
+    <KeyBinding Modifiers="Control" Key="D5" Command="{Binding SelectTabCommand}" CommandParameter="settings" />
+    <KeyBinding Key="F5" Command="{Binding ApplyPresetCommand}" CommandParameter="normal" />
+    <KeyBinding Key="F6" Command="{Binding ApplyPresetCommand}" CommandParameter="alert" />
+    <KeyBinding Key="F7" Command="{Binding ApplyPresetCommand}" CommandParameter="disconnected" />
+    <KeyBinding Key="F8" Command="{Binding ApplyPresetCommand}" CommandParameter="loading" />
+    <KeyBinding Key="F9" Command="{Binding ToggleUsbCommand}" />
+    <KeyBinding Modifiers="Shift" Key="F9" Command="{Binding FlashImbalanceCommand}" />
+  </Window.InputBindings>
+  <v:ShellView x:Name="Shell" />
+</Window>
