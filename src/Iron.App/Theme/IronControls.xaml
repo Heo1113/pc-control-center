@@ -484,7 +484,7 @@
   </Style>
 
   <!-- process table rows (ListBox) -->
-  <Style x:Key="Iron.ProcessRow" TargetType="ListBoxItem">
+  <Style x:Key="Iron.ProcessRowItem" TargetType="ListBoxItem">
     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     <Setter Property="Foreground" Value="{StaticResource IronInkBezel}" />
     <Setter Property="Cursor" Value="Hand" />

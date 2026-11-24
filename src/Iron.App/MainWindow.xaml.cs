@@ -93,7 +93,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (!_exiting && _vm.CloseToTray)
+        if (!_exiting && _vm?.CloseToTray == true)
         {
             e.Cancel = true;
             HideToTray();

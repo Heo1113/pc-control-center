@@ -44,6 +44,6 @@
   <sys:Double x:Key="Iron.PinMaxWidth">42</sys:Double>
   <Thickness x:Key="Iron.TabPad">10,0,10,0</Thickness>
   <sys:Double x:Key="Iron.OverviewMinHeight">620</sys:Double>
-  <sys:Double x:Key="Iron.InspectorMin">260</sys:Double>
+  <sys:Double x:Key="Iron.InspectorMin">340</sys:Double>
   <Thickness x:Key="Iron.ColGapRight">0,0,10,0</Thickness>
 </ResourceDictionary>

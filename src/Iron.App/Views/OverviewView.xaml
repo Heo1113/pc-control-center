@@ -86,7 +86,7 @@
               <TextBlock DockPanel.Dock="Top" Text="{Binding Processes.EmptyText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="10,12,0,0"
                          Visibility="{Binding Processes.EmptyText, Converter={StaticResource VisibleWhen}}" />
               <ListBox ItemsSource="{Binding Processes.OverviewRows}" SelectedItem="{Binding Processes.ListSelection, Mode=TwoWay}"
-                       ItemTemplate="{StaticResource Iron.ProcessRow}" ItemContainerStyle="{StaticResource Iron.ProcessRow}"
+                       ItemTemplate="{StaticResource Iron.ProcessRow}" ItemContainerStyle="{StaticResource Iron.ProcessRowItem}"
                        Background="Transparent" BorderThickness="0" Focusable="False">
                 <ListBox.Template>
                   <ControlTemplate TargetType="ListBox">

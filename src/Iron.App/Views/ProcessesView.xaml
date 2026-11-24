@@ -76,7 +76,7 @@
           <TextBlock DockPanel.Dock="Top" Text="{Binding Processes.EmptyText}" Style="{StaticResource Iron.Text.BezelMono}" Margin="10,12,0,0"
                      Visibility="{Binding Processes.EmptyText, Converter={StaticResource VisibleWhen}}" />
           <ListBox ItemsSource="{Binding Processes.Rows}" SelectedItem="{Binding Processes.ListSelection, Mode=TwoWay}"
-                   ItemTemplate="{StaticResource Iron.ProcessRowFull}" ItemContainerStyle="{StaticResource Iron.ProcessRow}"
+                   ItemTemplate="{StaticResource Iron.ProcessRowFull}" ItemContainerStyle="{StaticResource Iron.ProcessRowItem}"
                    Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListBox.Template>

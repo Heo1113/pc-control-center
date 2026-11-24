@@ -64,10 +64,8 @@
                            Text="USB HID · VID 0x2022 / PID 0x0522 · 12바이트 표시 송신 · 1Hz (단방향, 장치 설정·펌웨어 변경 없음)" />
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,4,0,0"
                            Text="온도는 IRON의 공통 센서 값을 그대로 씁니다 (별도 폴링 없음). 팬 제어는 ASRock BIOS가 맡고 IRON은 하지 않습니다." />
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                  <TextBlock Text="송신 예정 패킷 (모의, 실제 송신 없음): " Style="{StaticResource Iron.Text.BezelMono}" />
-                  <TextBlock Text="{Binding Flux.PacketText}" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkBezel}" />
-                </StackPanel>
+                <TextBlock Text="송신 예정 12바이트 (모의, 실제 송신 없음)" Style="{StaticResource Iron.Text.BezelMono}" Margin="0,8,0,2" />
+                <TextBlock Text="{Binding Flux.PacketText}" Style="{StaticResource Iron.Text.BezelMono}" Foreground="{StaticResource IronInkBezel}" />
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" TextWrapping="Wrap" LineHeight="20" Margin="0,8,0,0"
                            Text="iUnity(iUnityService)가 실행 중이면 IRON은 iUnity를 종료하지 않고 송신을 보류합니다. iUnity를 직접 끈 뒤 다시 확인하세요." />
                 <CheckBox Style="{StaticResource Iron.Switch}" IsChecked="{Binding Mock.IUnityRunning}" Margin="0,6,0,0">

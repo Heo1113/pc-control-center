@@ -65,7 +65,8 @@
                     <TextBlock Text="{Binding NvmlBoardText}" Style="{StaticResource Iron.Text.BezelValue}" Foreground="{StaticResource IronInkNvml}" Margin="0,3,0,0" />
                   </StackPanel>
                   <StackPanel>
-                    <TextBlock Text="Δ (PCIe 슬롯 + 오차) = NVML − WireView" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}" />
+                    <TextBlock Text="Δ PCIe 슬롯 + 오차" Style="{StaticResource Iron.Text.BezelLabel}" FontSize="{DynamicResource Iron.FontSmall}"
+                               ToolTip="NVML 보드 전력 − WireView 12V-2x6 실측. WireView는 커넥터로 들어오는 전력만 재므로 PCIe 슬롯 전력(약 15~75 W)과 오차가 차이로 남습니다." />
                     <TextBlock Text="{Binding SlotDeltaText}" Style="{StaticResource Iron.Text.BezelValue}" Margin="0,3,0,0" />
                   </StackPanel>
                 </c:GapGrid>
