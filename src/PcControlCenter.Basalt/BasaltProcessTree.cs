@@ -140,6 +140,9 @@ public static class BasaltProcessTree
             }
         }
 
+        bool IsOwned(BasaltProcess process)
+            => process.StartTime is not null && !protectedIds.Contains(process.Id) && previouslyOwned?.Invoke(process) == true;
+
         var launcher = launch is not null && byId.TryGetValue(launch.ProcessId, out var l0) && launch.StartTime is not null && l0.StartTime == launch.StartTime
             ? l0
             : null;
@@ -185,11 +188,13 @@ public static class BasaltProcessTree
 
             Add(owner, TreeRole.Listener, 0, $"{owner.Label}: 포트 {port}에서 수신 대기 (TCP 목록)");
 
-            // basalt* processes right above the listener (the wrapper), each verified to have started before its child.
+            // basalt* wrappers or previously owned parents (such as a Windows Python venv stub) right above the listener,
+            // each verified to have started before its child.
             var wrappers = new List<BasaltProcess>();
             for (var (child, steps) = (owner, 0); steps < MaxDepth; steps++)
             {
-                if (!byId.TryGetValue(child.ParentId, out var parent) || parent.Id == child.Id || !IsBasaltName(parent.Name)
+                if (!byId.TryGetValue(child.ParentId, out var parent) || parent.Id == child.Id
+                    || (!IsBasaltName(parent.Name) && !IsOwned(parent))
                     || (launcher is not null && parent.Id == launcher.Id) || protectedIds.Contains(parent.Id))
                 {
                     break;
@@ -201,7 +206,11 @@ public static class BasaltProcessTree
                     break;
                 }
 
-                Add(parent, TreeRole.Wrapper, -(steps + 1), $"{parent.Label}: {child.Label}의 부모 (basalt 래퍼, 시작 시각 확인)");
+                var isWrapperName = IsBasaltName(parent.Name);
+                Add(parent, isWrapperName ? TreeRole.Wrapper : TreeRole.LauncherDescendant, -(steps + 1),
+                    isWrapperName
+                        ? $"{parent.Label}: {child.Label}의 부모 (basalt 래퍼, 시작 시각 확인)"
+                        : $"{parent.Label}: {child.Label}의 소유 부모 프로세스 (기록된 PID와 시작 시각 확인)");
                 wrappers.Add(parent);
                 child = parent;
             }
@@ -220,7 +229,25 @@ public static class BasaltProcessTree
             }
 
             var named = members.Any(m => IsBasaltName(m.Process.Name));
-            var isBasalt = named || underLauncher || previouslyOwned?.Invoke(owner) == true;
+            var ownedTree = underLauncher || members.Any(m => IsOwned(m.Process));
+            if (ownedTree)
+            {
+                foreach (var process in processes.Where(IsOwned))
+                {
+                    if (launcher is not null && process.Id == launcher.Id)
+                    {
+                        AddDescendants(launcher, TreeRole.LauncherDescendant);
+                        Add(launcher, TreeRole.Launcher, -MaxDepth - 1, $"{launcher.Label}: 이 프로그램이 Basalt 시작 스크립트를 실행한 창");
+                    }
+                    else
+                    {
+                        Add(process, TreeRole.LauncherDescendant, 0, $"{process.Label}: 기록된 PID와 시작 시각이 일치합니다.");
+                        AddDescendants(process, TreeRole.Descendant);
+                    }
+                }
+            }
+
+            var isBasalt = named || ownedTree;
             return new BasaltTree
             {
                 Port = port,
@@ -243,7 +270,7 @@ public static class BasaltProcessTree
             AddDescendants(launcher, TreeRole.LauncherDescendant);
         }
 
-        foreach (var process in processes.Where(p => previouslyOwned?.Invoke(p) == true))
+        foreach (var process in processes.Where(IsOwned))
         {
             Add(process, TreeRole.LauncherDescendant, 0, $"{process.Label}: 기록된 PID와 시작 시각이 일치합니다.");
             AddDescendants(process, TreeRole.Descendant);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using LocalAiPerf.Core.Hardware;
+using PcControlCenter.Basalt;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
 using PcControlCenter.Presentation;
@@ -80,5 +81,109 @@ public class AuditBoundaryTests
         Assert.Equal("basalt_config.json", saved.ConfigFor(BasaltSettings.QualityMode));
         Assert.Equal("basalt_config.fast.json", saved.ConfigFor(BasaltSettings.FastMode));
         Assert.False(saved.EmbeddedDashboard);
+    }
+
+    [Fact]
+    public void Owned_venv_parent_is_included_after_launcher_exit_while_reused_protected_and_unrelated_processes_stay_out()
+    {
+        var t0 = new DateTimeOffset(2026, 11, 24, 8, 0, 0, TimeSpan.Zero);
+        const int stubId = 515;
+        const int listenerId = 520;
+        const int bystanderId = 701;
+        const int protectedChildId = 702;
+        var stub = new BasaltProcess(stubId, FakeBasaltSystem.Launcher, "python.exe", t0.AddSeconds(1));
+        var listener = new BasaltProcess(listenerId, stubId, "python.exe", t0.AddSeconds(2));
+        var bystander = new BasaltProcess(bystanderId, FakeBasaltSystem.Explorer, "python.exe", t0.AddSeconds(2));
+        var protectedChild = new BasaltProcess(protectedChildId, FakeBasaltSystem.Explorer, "other-app.exe", t0.AddSeconds(3));
+        BasaltProcess[] baseProcesses =
+        [
+            new(FakeBasaltSystem.Explorer, 4, "explorer.exe", t0.AddHours(-1)),
+            new(FakeBasaltSystem.Self, FakeBasaltSystem.Explorer, "testhost.exe", t0.AddMinutes(-10)),
+            stub,
+            listener,
+            bystander,
+            protectedChild,
+        ];
+        BasaltListener[] listeners = [new(8080, listenerId)];
+        var ownedSet = new HashSet<(int Id, long Ticks)>
+        {
+            (stub.Id, stub.StartTime!.Value.UtcTicks),
+            (listener.Id, listener.StartTime!.Value.UtcTicks),
+        };
+        bool Owns(BasaltProcess p) => p.StartTime is { } s && ownedSet.Contains((p.Id, s.UtcTicks));
+
+        // 1. Launcher already gone: listener + owned venv stub both included (listener ended first), bystander excluded.
+        var tree = BasaltProcessTree.Identify(8080, baseProcesses, listeners, launch: null, FakeBasaltSystem.Self, Owns);
+        Assert.True(tree.IsBasalt);
+        Assert.Equal([listenerId, stubId], tree.Members.Select(m => m.Process.Id));
+        Assert.Equal(listenerId, tree.ConsoleCandidates[0].Id);
+        Assert.Contains(tree.ConsoleCandidates, p => p.Id == stubId);
+        Assert.DoesNotContain(tree.Members, m => m.Process.Id is bystanderId or protectedChildId or FakeBasaltSystem.Explorer or FakeBasaltSystem.Self);
+
+        // 2. PID reuse on the stub parent (newer start time) or unknown StartTime: stub must NOT be included.
+        var reusedStub = stub with { Name = "unrelated.exe", StartTime = t0.AddSeconds(10) };
+        var treeReused = BasaltProcessTree.Identify(8080, [baseProcesses[0], baseProcesses[1], reusedStub, listener, bystander], listeners, null, FakeBasaltSystem.Self, Owns);
+        Assert.True(treeReused.IsBasalt);
+        Assert.Equal([listenerId], treeReused.Members.Select(m => m.Process.Id));
+
+        var unreadableStub = stub with { StartTime = null };
+        var treeUnreadable = BasaltProcessTree.Identify(8080, [baseProcesses[0], baseProcesses[1], unreadableStub, listener], listeners, null, FakeBasaltSystem.Self, _ => true);
+        Assert.Equal([listenerId], treeUnreadable.Members.Select(m => m.Process.Id));
+
+        // 3. Even if a loose predicate claims a protected ancestor is owned, neither it nor its unrelated children enter Members.
+        var treeLoose = BasaltProcessTree.Identify(8080, baseProcesses, listeners, null, FakeBasaltSystem.Self,
+            p => p.Id is listenerId or FakeBasaltSystem.Explorer or FakeBasaltSystem.Self);
+        Assert.Equal([listenerId], treeLoose.Members.Select(m => m.Process.Id));
+
+        // 4. External Basalt on the port (named basalt.exe, not owned) must NOT absorb a stale previouslyOwned process.
+        var extWrapper = new BasaltProcess(810, FakeBasaltSystem.Explorer, "basalt.exe", t0.AddMinutes(1));
+        var extListener = new BasaltProcess(820, 810, "python.exe", t0.AddMinutes(1).AddSeconds(1));
+        var treeExternal = BasaltProcessTree.Identify(8080, [baseProcesses[0], baseProcesses[1], stub, extWrapper, extListener],
+            [new BasaltListener(8080, extListener.Id)], null, FakeBasaltSystem.Self, Owns);
+        Assert.True(treeExternal.IsBasalt);
+        Assert.Equal([extListener.Id, extWrapper.Id], treeExternal.Members.Select(m => m.Process.Id));
+        Assert.DoesNotContain(treeExternal.Members, m => m.Process.Id == stubId);
+    }
+
+    [Fact(Timeout = 30_000)]
+    public async Task Owned_venv_server_sends_both_stub_and_listener_to_console_signal_after_launcher_exit_and_restart()
+    {
+        using var temp = new TempDir();
+        var ownershipFile = temp.Sub("basalt-owned.json");
+        var system = new FakeBasaltSystem { StartCreatesTree = false };
+        const int stubId = 515;
+        const int listenerId = 520;
+        const int bystanderId = 701;
+
+        await using (var first = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.Fast, selfId: FakeBasaltSystem.Self, ownershipFile: ownershipFile))
+        {
+            Assert.Null(await first.StartServerAsync(BasaltSettings.QualityMode, TestContext.Current.CancellationToken));
+            var t = DateTimeOffset.UtcNow.AddMilliseconds(50);
+            system.Add(new BasaltProcess(stubId, FakeBasaltSystem.Launcher, "python.exe", t));
+            system.Add(new BasaltProcess(listenerId, stubId, "python.exe", t.AddMilliseconds(50)));
+            system.Add(new BasaltProcess(bystanderId, FakeBasaltSystem.Explorer, "python.exe", t.AddMilliseconds(50)));
+            system.Listen(listenerId);
+
+            var running = await BasaltTest.WaitFor(first, s => s.State == BasaltState.Running && s.StartedHere);
+            Assert.Contains(running.Tree!.Members, m => m.Process.Id == stubId);
+            Assert.Contains(running.Tree!.Members, m => m.Process.Id == listenerId);
+        }
+
+        // Launcher window exits while venv stub + python listener remain running.
+        system.Remove(FakeBasaltSystem.Launcher);
+
+        await using var second = new BasaltController(system, new BasaltSettings(), timings: BasaltTest.Fast, selfId: FakeBasaltSystem.Self, ownershipFile: ownershipFile);
+        var restored = await BasaltTest.WaitFor(second, s => s.State == BasaltState.Running && s.StartedHere);
+        Assert.Equal([listenerId, stubId], restored.Tree!.Members.Select(m => m.Process.Id));
+
+        var report = await second.StopServerAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(report);
+        Assert.True(report.Graceful, report.Signal);
+        Assert.True(report.Clean, report.Summary);
+        var passedOwned = Assert.Single(system.SignalOwned);
+        Assert.Equal([listenerId, stubId], passedOwned.Select(p => p.Id));
+        Assert.True(system.Has(bystanderId));
+        Assert.False(File.Exists(ownershipFile));
     }
 }

@@ -34,6 +34,7 @@ internal sealed class FakeBasaltSystem : IBasaltSystem
     private readonly List<BasaltProcess> _processes = [];
     private readonly List<BasaltListener> _listeners = [];
     private readonly List<int> _signals = [];
+    private readonly List<IReadOnlyList<BasaltProcess>> _signalOwned = [];
     private readonly List<int> _terminated = [];
     private readonly List<BasaltStartRequest> _starts = [];
 
@@ -72,6 +73,17 @@ internal sealed class FakeBasaltSystem : IBasaltSystem
             lock (_gate)
             {
                 return [.. _signals];
+            }
+        }
+    }
+
+    public IReadOnlyList<IReadOnlyList<BasaltProcess>> SignalOwned
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return [.. _signalOwned];
             }
         }
     }
@@ -194,6 +206,7 @@ internal sealed class FakeBasaltSystem : IBasaltSystem
         lock (_gate)
         {
             _signals.Add(processId);
+            _signalOwned.Add([.. owned]);
         }
 
         switch (Signal)
@@ -206,6 +219,10 @@ internal sealed class FakeBasaltSystem : IBasaltSystem
                 _ = Task.Run(async () =>
                 {
                     await Task.Delay(SignalDelay);
+                    foreach (var member in owned)
+                    {
+                        Remove(member.Id);
+                    }
                     foreach (var id in new[] { Launcher, ConsoleHost, Wrapper, Server, Engine })
                     {
                         Remove(id);
