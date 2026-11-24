@@ -1,6 +1,6 @@
 using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Telemetry;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 
 namespace PcControlCenter.Tests;
 

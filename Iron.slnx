@@ -1,0 +1,17 @@
+<Solution>
+  <!-- IRON alone: the product and the suite libraries it uses (PC Control Center's projects are not part of it). -->
+  <Folder Name="/suite/">
+    <Project Path="src/Suite.Core.Hardware/Suite.Core.Hardware.csproj" />
+    <Project Path="src/Suite.Core.Storage/Suite.Core.Storage.csproj" />
+    <Project Path="tests/Suite.Tests/Suite.Tests.csproj" />
+  </Folder>
+  <Folder Name="/iron/">
+    <Project Path="src/Iron.Core/Iron.Core.csproj" />
+    <Project Path="tests/Iron.Tests/Iron.Tests.csproj" />
+  </Folder>
+  <Folder Name="/modules/local-ai-performance-center/">
+    <!-- Project A's single sensor copy (NVML, Windows CPU/RAM), read by the shared hub. -->
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Core/LocalAiPerf.Core.csproj" />
+    <Project Path="modules/local-ai-performance-center/src/LocalAiPerf.Telemetry/LocalAiPerf.Telemetry.csproj" />
+  </Folder>
+</Solution>

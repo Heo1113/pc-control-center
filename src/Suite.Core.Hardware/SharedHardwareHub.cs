@@ -4,7 +4,7 @@ using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Core.Settings;
 using LocalAiPerf.Telemetry;
 
-namespace PcControlCenter.Hardware;
+namespace Suite.Core.Hardware;
 
 public enum HubState
 {
@@ -36,7 +36,7 @@ public sealed record HubHealth
 }
 
 /// <summary>
-/// The single hardware reader of PC Control Center. It owns project A's <see cref="HardwareMonitor"/> (NVML GPU, Windows
+/// The single hardware reader of a suite product (PC Control Center, IRON: one hub per process). It owns project A's <see cref="HardwareMonitor"/> (NVML GPU, Windows
 /// CPU/RAM, or the mock providers) and reads it on one loop. Modules get a <see cref="HardwareMonitor"/> view from
 /// <see cref="CreateConsumer"/>: their own recorders keep their own interval, storage and gap rules, but every value
 /// they store is one of these readings with its original timestamp and issues. No module opens NVML itself.

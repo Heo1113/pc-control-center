@@ -27,7 +27,7 @@ PcControlCenter.OperatorHost.exe (창 없음, 일반 사용자, Windows 작업 �
 | 프로젝트 | 내용 |
 |---|---|
 | `modules/<원본 저장소>/` | A·B·C·E 소스(고정 커밋). 바뀐 파일은 [REUSE.md](REUSE.md) |
-| `src/PcControlCenter.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태 |
+| `src/Suite.Core.Hardware` | `SharedHardwareHub`: 센서 한 번 읽기, 모듈별 소비 뷰(`HardwareMonitor.Shared`), 원래 측정 시각 유지, 상태. 제품 분리 때 `src/PcControlCenter.Hardware`에서 코드 변경 없이 옮김(이름공간 `Suite.Core.Hardware`). 제품 공통 규칙 `GpuPowerTotal`·`MetricSource`·`GpuDeviceKey` ([PRODUCT_SPLIT.md](PRODUCT_SPLIT.md)) |
 | `src/PcControlCenter.GpuMemory` | `GpuMemoryMonitor`: 프로세스별·어댑터별 GPU 메모리(PDH `GPU Process Memory`·`GPU Adapter Memory`, DXGI 이름, 프로세스 시작 시각, 지정 포트의 TCP 소유자), `ServerProcessLinker`(Strata 포트 → 엔진 프로세스), 화면을 볼 때만 PDH `GPU Engine`·`BackgroundInspection`→`ProcessInspector`(불러온 DLL·매핑 파일)·`GgufHeader`·로컬 AI 서버 수신 포트, `ProcessKinds`·`LlmMemoryEstimate`, `RuntimeReportPoller`(Strata `/metrics`·Ollama `/api/ps`·llama.cpp `/props`·`/models`, 루프백 GET), MOCK 공급자 |
 | `src/PcControlCenter.Basalt` | `BasaltController`(상태·켜기·끄기·확인), `BasaltProcessTree`(포트 소유자·하위·`basalt*` 래퍼·이 앱이 띄운 창, 종료 순서), `WindowsBasaltSystem`(Toolhelp·시작 시각·TCP 목록은 GpuMemory의 같은 질의, ShellExecute, `TerminateProcess` 전 시작 시각 재확인), MOCK 시스템과 루프백 페이지 |
 | `src/PcControlCenter.ConsoleSignal` | `PcControlCenter.ConsoleSignal.exe <pid>`: 그 프로세스의 콘솔에 붙어 Ctrl+C (kernel32만, 패키지에는 트리밍해서 넣음) |

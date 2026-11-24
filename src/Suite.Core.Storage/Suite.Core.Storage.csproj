@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Suite core: where each product keeps its own data (data\<product>\), its settings file (atomic save, damaged file
+       kept aside, unknown and nested fields preserved: the ShellSettingsStore pattern), its own SQLite database (WAL,
+       additive migrations, a newer database is never opened) and its single-instance lock. Products never share a
+       settings file or a database with each other or with the PC Control Center modules. Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Suite.Core.Storage</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Suite.Tests" />
+  </ItemGroup>
+</Project>

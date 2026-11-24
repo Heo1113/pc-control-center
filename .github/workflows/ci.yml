@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - "claude/**"
+      - "feat/**"
   pull_request:
   workflow_dispatch:
 
@@ -74,6 +75,14 @@ jobs:
         timeout-minutes: 10
         run: dotnet test --project tests/PcControlCenter.Basalt.Tests -c Release --no-build
 
+      - name: Suite core tests (shared hub rules, power totals, sources, settings, databases, data folders)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet test --project tests/Suite.Tests -c Release --no-build
+
+      - name: IRON tests (data folder, settings, telemetry database, independence from PC Control Center)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet test --project tests/Iron.Tests -c Release --no-build
+
   windows:
     name: Windows x64 - build, all tests, real UIA tests, portable package, GUI smoke tests
     runs-on: windows-latest
@@ -129,6 +138,16 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 10
         run: dotnet test --project tests/PcControlCenter.Basalt.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
+
+      - name: Suite core tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 10
+        run: dotnet test --project tests/Suite.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
+
+      - name: IRON tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 10
+        run: dotnet test --project tests/Iron.Tests -c Release --no-build --report-xunit-trx --results-directory TestResults
 
       - name: Publish portable package (self-contained single-file EXE)
         id: publish

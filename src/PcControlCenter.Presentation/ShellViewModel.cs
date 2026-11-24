@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using LocalAiPerf.Core.Diagnostics;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 using PcControlCenter.Modules;
 
 namespace PcControlCenter.Presentation;

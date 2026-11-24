@@ -1,6 +1,6 @@
 using LocalAiPerf.Core.Diagnostics;
 using PcControlCenter.Core;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 
 namespace PcControlCenter.Modules;
 

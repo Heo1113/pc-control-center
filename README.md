@@ -80,7 +80,9 @@ dotnet test --project tests/PcControlCenter.Tests -c Release
 | 경로 | 내용 |
 |---|---|
 | `modules/<원본 저장소 이름>/` | A·B·C·E의 소스(고정 커밋에서 가져옴). 변경 내역은 `python3 scripts/module-manifest.py verify`와 [docs/REUSE.md](docs/REUSE.md) |
-| `src/PcControlCenter.Hardware` | 공통 센서 리더 |
+| `src/Suite.Core.Hardware` | 공통 센서 리더(`SharedHardwareHub`, 이전 `src/PcControlCenter.Hardware`에서 이름만 옮김)와 제품 공통 규칙(전체 GPU 전력 PARTIAL, 측정 출처 분리) — [docs/PRODUCT_SPLIT.md](docs/PRODUCT_SPLIT.md) |
+| `src/Suite.Core.Storage` | 제품별 데이터 폴더(`data\<제품>\`)·설정 파일(미지 필드 보존)·SQLite DB(신버전 거부)·단일 실행 잠금 |
+| `src/Iron.Core` | IRON(제품 1순위)의 설정 `data\iron\iron-settings.json`과 DB `data\iron\iron-telemetry.db` (모듈 DB와 분리) |
 | `src/PcControlCenter.Basalt` | Basalt 서버 제어: 포트 소유자·하위·basalt 래퍼로 서버 프로세스 판정, 시작 스크립트로 켜기, Ctrl+C 정상 종료 → 대기 → 그 프로세스만 정리 → 남은 것 확인 ([docs/BASALT.md](docs/BASALT.md)) |
 | `src/PcControlCenter.ConsoleSignal` | `PcControlCenter.ConsoleSignal.exe`: Basalt 콘솔에 Ctrl+C를 보내는 도우미 |
 | `src/PcControlCenter.GpuMemory` | 프로세스별·어댑터별 GPU 메모리 리더(Windows PDH·DXGI, 별도 스레드, NVML 미사용), Strata 프로세스 연결, 화면을 볼 때만 엔진 사용률·불러온 DLL·매핑된 모델 파일·GGUF 헤더(별도 작업), 로컬 런타임 보고(루프백 GET) |
@@ -92,5 +94,6 @@ dotnet test --project tests/PcControlCenter.Tests -c Release
 | `src/PcControlCenter.Presentation` | 셸 뷰모델(메뉴, 통합 대시보드, 공통 센서, 통합 기록, 데이터·이전, Operator 제어) — WPF 비의존, Linux에서 테스트 |
 | `src/PcControlCenter.App` | `PcControlCenter.exe` (WPF) |
 | `tests/PcControlCenter.Tests` | 통합 테스트 |
+| `tests/Suite.Tests`, `tests/Iron.Tests` | 제품 공통 라이브러리·IRON 테스트 (`Iron.slnx`로 IRON만 따로 빌드 가능) |
 
-문서: [구조](docs/ARCHITECTURE.md) · [Basalt 서버 제어](docs/BASALT.md) · [GPU 메모리 분석](docs/GPU_MEMORY.md) · [재사용과 변경 기록](docs/REUSE.md) · [데이터 가져오기](docs/MIGRATION.md) · [검증 상태](docs/VERIFICATION.md)
+문서: [제품 분리(IRON)](docs/PRODUCT_SPLIT.md) · [구조](docs/ARCHITECTURE.md) · [Basalt 서버 제어](docs/BASALT.md) · [GPU 메모리 분석](docs/GPU_MEMORY.md) · [재사용과 변경 기록](docs/REUSE.md) · [데이터 가져오기](docs/MIGRATION.md) · [검증 상태](docs/VERIFICATION.md)

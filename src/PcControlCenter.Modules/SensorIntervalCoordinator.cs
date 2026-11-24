@@ -1,4 +1,4 @@
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 
 namespace PcControlCenter.Modules;
 

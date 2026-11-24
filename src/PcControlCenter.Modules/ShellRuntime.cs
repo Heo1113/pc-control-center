@@ -4,7 +4,7 @@ using PcControlCenter.Basalt.Mock;
 using PcControlCenter.Basalt.Windows;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 
 namespace PcControlCenter.Modules;
 

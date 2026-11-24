@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using LocalAiPerf.Core.Hardware;
 using PcControlCenter.Core;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 using PcControlCenter.Modules;
 
 namespace PcControlCenter.Presentation;

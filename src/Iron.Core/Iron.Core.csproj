@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- IRON (product 1 of the suite): its own data folder (data\iron\), settings (iron-settings.json) and telemetry
+       database (iron-telemetry.db), separate from PC Control Center's module databases. Reads hardware only through the
+       suite's shared hub. No WPF types; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iron.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Suite.Core.Hardware\Suite.Core.Hardware.csproj" />
+    <ProjectReference Include="..\Suite.Core.Storage\Suite.Core.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Iron.Tests" />
+  </ItemGroup>
+</Project>

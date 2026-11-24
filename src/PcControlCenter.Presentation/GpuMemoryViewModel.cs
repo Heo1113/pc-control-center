@@ -7,7 +7,7 @@ using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Presentation.Charts;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 
 namespace PcControlCenter.Presentation;
 

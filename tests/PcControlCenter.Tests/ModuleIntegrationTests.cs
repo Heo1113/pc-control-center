@@ -2,7 +2,7 @@ using LocalAiPerf.Core.Diagnostics;
 using LocalAiPerf.Telemetry;
 using Microsoft.Data.Sqlite;
 using PcControlCenter.Core;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 using PcControlCenter.Modules;
 
 namespace PcControlCenter.Tests;

@@ -14,7 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\PcControlCenter.Core\PcControlCenter.Core.csproj" />
-    <ProjectReference Include="..\..\src\PcControlCenter.Hardware\PcControlCenter.Hardware.csproj" />
+    <ProjectReference Include="..\..\src\Suite.Core.Hardware\Suite.Core.Hardware.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.GpuMemory\PcControlCenter.GpuMemory.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Basalt\PcControlCenter.Basalt.csproj" />
     <ProjectReference Include="..\..\src\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />

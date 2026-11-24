@@ -8,10 +8,18 @@
     <Project Path="src/PcControlCenter.Basalt/PcControlCenter.Basalt.csproj" />
     <Project Path="src/PcControlCenter.ConsoleSignal/PcControlCenter.ConsoleSignal.csproj" />
     <Project Path="src/PcControlCenter.Core/PcControlCenter.Core.csproj" />
-    <Project Path="src/PcControlCenter.Hardware/PcControlCenter.Hardware.csproj" />
     <Project Path="src/PcControlCenter.GpuMemory/PcControlCenter.GpuMemory.csproj" />
     <Project Path="src/PcControlCenter.Modules/PcControlCenter.Modules.csproj" />
     <Project Path="src/PcControlCenter.Presentation/PcControlCenter.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/suite/">
+    <Project Path="src/Suite.Core.Hardware/Suite.Core.Hardware.csproj" />
+    <Project Path="src/Suite.Core.Storage/Suite.Core.Storage.csproj" />
+    <Project Path="tests/Suite.Tests/Suite.Tests.csproj" />
+  </Folder>
+  <Folder Name="/iron/">
+    <Project Path="src/Iron.Core/Iron.Core.csproj" />
+    <Project Path="tests/Iron.Tests/Iron.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PcControlCenter.Basalt.Tests/PcControlCenter.Basalt.Tests.csproj" />

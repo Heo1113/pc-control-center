@@ -4,7 +4,7 @@ using LocalAiPerf.Telemetry;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
 using PcControlCenter.GpuMemory.Mock;
-using PcControlCenter.Hardware;
+using Suite.Core.Hardware;
 using PcControlCenter.Modules;
 using PcControlCenter.Presentation;
 

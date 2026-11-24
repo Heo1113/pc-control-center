@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Suite core: the one hardware sensor reader (SharedHardwareHub: NVML GPU, Windows CPU/RAM) shared by every product of
+       the suite (PC Control Center, IRON, ...), and the rules every product applies to its readings (power totals that are
+       never summed from an incomplete set, measurement sources that are never mixed, stable GPU identities).
+       Moved from src/PcControlCenter.Hardware (same code); still reads through project A's single sensor copy.
+       Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Suite.Core.Hardware</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Telemetry\LocalAiPerf.Telemetry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+    <InternalsVisibleTo Include="Suite.Tests" />
+  </ItemGroup>
+</Project>
