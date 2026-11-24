@@ -74,7 +74,18 @@ internal static class LayoutAudit
                     TextAlignment.Center => origin.X + (tb.ActualWidth - inkWidth) / 2,
                     _ => origin.X,
                 };
-                texts.Add((tb, new Rect(x, origin.Y, inkWidth, tb.ActualHeight)));
+                var ink = new Rect(x, origin.Y, inkWidth, tb.ActualHeight);
+                // Rows scrolled out of a list are clipped by its viewport: only the visible part can overlap anything.
+                if (Viewport(tb, root) is { } viewport)
+                {
+                    ink.Intersect(viewport);
+                    if (ink.IsEmpty || ink.Height < 1)
+                    {
+                        continue;
+                    }
+                }
+
+                texts.Add((tb, ink));
             }
 
             if (element is FrameworkElement fe && fe != root && fe.ActualWidth > 0 && !InsideScrollContent(fe, root) && !InsidePopupOrTooltip(fe))
@@ -103,6 +114,20 @@ internal static class LayoutAudit
         }
 
         return issues;
+    }
+
+    /// <summary>The visible area (root coordinates) of the scroll viewer the element is inside, if any.</summary>
+    private static Rect? Viewport(DependencyObject element, FrameworkElement root)
+    {
+        for (var e = VisualTreeHelper.GetParent(element); e is not null && e != root; e = VisualTreeHelper.GetParent(e))
+        {
+            if (e is ScrollContentPresenter presenter)
+            {
+                return presenter.TransformToAncestor(root).TransformBounds(new Rect(0, 0, presenter.ActualWidth, presenter.ActualHeight));
+            }
+        }
+
+        return null;
     }
 
     private static FormattedText Format(TextBlock tb, string text, double scale)

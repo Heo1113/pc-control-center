@@ -327,6 +327,8 @@
 
   <Style x:Key="Iron.ComboBoxItem" TargetType="ComboBoxItem">
     <Setter Property="Foreground" Value="{StaticResource IronInkBezel}" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,6" />
     <Setter Property="Template">
       <Setter.Value>
@@ -484,8 +486,19 @@
   </Style>
 
   <!-- process table rows (ListBox) -->
+  <!-- Fixed content alignment: the theme's ListBoxItem style binds these to the parent list, which fails (and is
+       reported) for an instant whenever rows are re-created. -->
+  <Style TargetType="ListBoxItem">
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style TargetType="ComboBoxItem">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
   <Style x:Key="Iron.ProcessRowItem" TargetType="ListBoxItem">
     <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Foreground" Value="{StaticResource IronInkBezel}" />
     <Setter Property="Cursor" Value="Hand" />
     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
