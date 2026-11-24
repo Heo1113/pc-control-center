@@ -1,0 +1,23 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Microsoft-Windows-WER-SystemErrorReporting" Guid="{ABCE23E7-DE45-4366-8631-84FA6C525952}" EventSourceName="BugCheck" />
+    <EventID Qualifiers="16384">1001</EventID>
+    <Version>0</Version>
+    <Level>2</Level>
+    <Task>0</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x80000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-30T13:44:52.1180000Z" />
+    <EventRecordID>48230</EventRecordID>
+    <Correlation />
+    <Execution ProcessID="0" ThreadID="0" />
+    <Channel>System</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security />
+  </System>
+  <EventData>
+    <Data Name="param1">0x00000124 (0x0000000000000000, 0xffffb08c2a6e9028, 0x00000000be000000, 0x0000000000800400)</Data>
+    <Data Name="param2">C:\WINDOWS\Minidump\103026-11109-01.dmp</Data>
+    <Data Name="param3">5f0b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d</Data>
+  </EventData>
+</Event>

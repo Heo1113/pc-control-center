@@ -1,0 +1,381 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using PcControlCenter.Basalt;
+using PcControlCenter.Core;
+
+namespace PcControlCenter.Presentation;
+
+/// <summary>
+/// 로컬 AI › Basalt: the server's state, quality/fast mode, start/stop, the last stop's result, and Basalt's own dashboard
+/// (shown by the view in WebView2 only while Basalt answers). Works whether the local AI module runs or not.
+/// </summary>
+public sealed partial class BasaltViewModel : ObservableObject, IDisposable
+{
+    private readonly BasaltController _controller;
+    private readonly ShellSettingsStore _store;
+    private readonly ShellSettings _settings;
+    private readonly IShellDialogs _dialogs;
+    private readonly IShellDispatcher _ui;
+    private readonly Action<string>? _navigate;
+    private readonly BasaltApiReader _api;
+    private readonly TimeProvider _time;
+    private DateTimeOffset _apiReadAt = DateTimeOffset.MinValue;
+    private CancellationTokenSource? _apiRequest;
+    private (int Port, int? Pid, DateTimeOffset? Start) _apiOwner;
+    private bool _disposed;
+    private bool _visible;
+    private string _shownKey = "";
+
+    public BasaltViewModel(BasaltController controller, ShellSettingsStore store, ShellSettings settings, IShellDialogs dialogs, IShellDispatcher ui,
+        string webViewDataFolder, Action<string>? navigate = null, BasaltApiReader? api = null, TimeProvider? time = null)
+    {
+        _api = api ?? new BasaltApiReader();
+        _time = time ?? TimeProvider.System;
+        _controller = controller;
+        _store = store;
+        _settings = settings;
+        _dialogs = dialogs;
+        _ui = ui;
+        _navigate = navigate;
+        WebViewDataFolder = webViewDataFolder;
+        IsMock = controller.IsMock;
+        _selectedMode = settings.Basalt.Mode;
+        EmbeddedDashboard = settings.Basalt.EmbeddedDashboard;
+        Apply(controller.Status);
+        controller.Changed += OnControllerChanged;
+    }
+
+    public bool IsMock { get; }
+
+    /// <summary>WebView2's profile folder (under the app's data folder: cookies and storage of the dashboard stay there).</summary>
+    public string WebViewDataFolder { get; }
+
+    [ObservableProperty] public partial BasaltState State { get; private set; }
+    [ObservableProperty] public partial string StateText { get; private set; } = "";
+    [ObservableProperty] public partial Level StateLevel { get; private set; }
+    [ObservableProperty] public partial string Detail { get; private set; } = "";
+    [ObservableProperty] public partial string ModeLine { get; private set; } = "";
+    [ObservableProperty] public partial string? Notice { get; private set; }
+    [ObservableProperty] public partial bool IsBusy { get; private set; }
+    [ObservableProperty] public partial bool ShowDashboard { get; private set; }
+    [ObservableProperty] public partial string DashboardUrl { get; private set; } = "";
+    [ObservableProperty] public partial string GuidanceTitle { get; private set; } = "";
+    [ObservableProperty] public partial string GuidanceText { get; private set; } = "";
+    [ObservableProperty] public partial string? LastStopSummary { get; private set; }
+    [ObservableProperty] public partial Level LastStopLevel { get; private set; }
+
+    /// <summary>Why the dashboard cannot be shown inside the app (no WebView2 runtime, ...); set by the view.</summary>
+    [ObservableProperty] public partial string? WebViewProblem { get; set; }
+
+    private string _selectedMode;
+    public bool IsFast { get => _selectedMode == BasaltSettings.FastMode; set { if (value) SelectMode(BasaltSettings.FastMode); } }
+    public bool IsDual { get => _selectedMode == BasaltSettings.DualMode; set { if (value) SelectMode(BasaltSettings.DualMode); } }
+    [ObservableProperty] public partial bool EmbeddedDashboard { get; set; }
+    public string SelectedConfig => _settings.Basalt.ConfigFor(_selectedMode);
+
+    /// <summary>The processes of the server and how each was recognised (tooltip and details).</summary>
+    public ObservableCollection<string> Processes { get; } = [];
+
+    public ObservableCollection<string> LastStopLines { get; } = [];
+
+    /// <summary>What Basalt reports through Strata's read-only addresses; "미지원" where no address reports a value.</summary>
+    public ObservableCollection<BasaltField> ApiFields { get; } = [];
+
+    [ObservableProperty] public partial string ApiNote { get; private set; } = "";
+
+    /// <summary>Called every second by the shell while the page is visible: re-reads the API every 5 seconds while Basalt runs.</summary>
+    public void Tick()
+    {
+        if (!_visible || State != BasaltState.Running || _apiRequest is not null || _time.GetUtcNow() - _apiReadAt < TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        _apiReadAt = _time.GetUtcNow();
+        _apiRequest = new CancellationTokenSource();
+        _ = ReadApiAsync(_controller.Port, _apiRequest);
+    }
+
+    private async Task ReadApiAsync(int port, CancellationTokenSource request)
+    {
+        BasaltApiReport? report = null;
+        string? error = null;
+        try
+        {
+            report = await _api.ReadAsync(port, request.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (request.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            _ui.Post(() =>
+            {
+                if (ReferenceEquals(_apiRequest, request))
+                {
+                    _apiRequest = null;
+                    if (!_disposed && _visible && State == BasaltState.Running && _controller.Port == port)
+                    {
+                        if (report is not null) ApplyApi(report);
+                        else if (error is not null) ApiNote = "Basalt API를 읽지 못했습니다: " + error;
+                    }
+                }
+                request.Dispose();
+            });
+        }
+    }
+
+    private void CancelApi()
+    {
+        var previous = _apiRequest;
+        _apiRequest = null;
+        previous?.Cancel();
+        _apiReadAt = DateTimeOffset.MinValue;
+        ApiFields.Clear();
+        ApiNote = "";
+    }
+
+    private void OnControllerChanged(BasaltStatus status) => _ui.Post(() => { if (!_disposed) Apply(status); });
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _controller.Changed -= OnControllerChanged;
+        CancelApi();
+        _api.Dispose();
+    }
+
+    private void ApplyApi(BasaltApiReport report)
+    {
+        if (!ApiFields.Select(f => (f.Label, f.Text, f.Source)).SequenceEqual(report.Fields.Select(f => (f.Label, f.Text, f.Source))))
+        {
+            ApiFields.Clear();
+            foreach (var field in report.Fields)
+            {
+                ApiFields.Add(field);
+            }
+        }
+
+        ApiNote = $"{report.ReadAt.ToLocalTime():HH:mm:ss}에 읽음 · " + string.Join(" · ", report.Endpoints.Select(e =>
+            $"{e.Path} {(e.Status is int code ? code.ToString(CultureInfo.InvariantCulture) : e.Error)}"));
+    }
+
+    public bool IsQuality
+    {
+        get => _selectedMode == BasaltSettings.QualityMode;
+        set { if (value) SelectMode(BasaltSettings.QualityMode); }
+    }
+
+    public string PathsLine => $"{_settings.Basalt.Resolve(_settings.Basalt.StartScript)} · 품질용 {_settings.Basalt.Resolve(_settings.Basalt.QualityConfig)} · "
+                               + $"빠른 모드 {_settings.Basalt.Resolve(_settings.Basalt.FastConfig)}";
+
+    /// <summary>The page is on screen: the controller reads the process tree at every check.</summary>
+    public bool IsVisible
+    {
+        get => _visible;
+        set
+        {
+            if (_disposed || _visible == value)
+            {
+                return;
+            }
+
+            _visible = value;
+            _controller.Detailed = value;
+            if (!value) CancelApi();
+            if (value)
+            {
+                _ = _controller.RefreshAsync();
+            }
+        }
+    }
+
+    private void SelectMode(string mode)
+    {
+        if (_selectedMode == mode) return;
+        _selectedMode = mode;
+        _settings.Basalt.Mode = mode;
+        OnPropertyChanged(nameof(IsFast));
+        OnPropertyChanged(nameof(IsQuality));
+        OnPropertyChanged(nameof(IsDual));
+        OnPropertyChanged(nameof(SelectedConfig));
+        SavePreference();
+        StartCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnEmbeddedDashboardChanged(bool value)
+    {
+        if (_settings.Basalt.EmbeddedDashboard == value) return;
+        _settings.Basalt.EmbeddedDashboard = value;
+        SavePreference();
+    }
+
+    private void SavePreference()
+    {
+        try { _store.Save(_settings); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Notice = "Basalt 설정을 저장하지 못했습니다: " + ex.Message;
+        }
+    }
+
+    private bool CanStart() => !IsBusy && State is BasaltState.Off or BasaltState.Unknown or BasaltState.Failed;
+
+    /// <summary>Only a Basalt this app started can be stopped here (its window and what runs under it).</summary>
+    private bool CanStop() => !IsBusy && StartedHere && State is BasaltState.Running or BasaltState.Starting or BasaltState.Leftover or BasaltState.Failed;
+
+    [ObservableProperty] public partial bool StartedHere { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private async Task StartAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var refusal = await _controller.StartServerAsync(_selectedMode);
+            Notice = refusal?.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+            _ui.Post(() => Apply(_controller.Status));
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStop))]
+    private async Task StopAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            await _controller.StopServerAsync();
+        }
+        finally
+        {
+            IsBusy = false;
+            _ui.Post(() => Apply(_controller.Status));
+        }
+    }
+
+    [RelayCommand]
+    private void OpenInBrowser() => _dialogs.OpenUrl(LocalUrl);
+
+    [RelayCommand]
+    private void OpenSettings() => _navigate?.Invoke("settings/common");
+
+    [RelayCommand]
+    private Task Refresh() => _controller.RefreshAsync();
+
+    /// <summary>The view asks before WebView2 follows a link: only Basalt's own address stays in the app.</summary>
+    public bool IsDashboardAddress(Uri uri)
+        => uri.IsAbsoluteUri && uri.Scheme == Uri.UriSchemeHttp && uri.IdnHost == "127.0.0.1" && uri.UserInfo.Length == 0 && uri.Port == _controller.Port;
+
+    /// <summary>A link outside Basalt's address: http(s) goes to the default browser, anything else is ignored.</summary>
+    public void OpenOutside(Uri uri)
+    {
+        if (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+        {
+            _dialogs.OpenUrl(uri.AbsoluteUri);
+        }
+    }
+
+    private string LocalUrl => $"http://127.0.0.1:{_controller.Port.ToString(CultureInfo.InvariantCulture)}/";
+
+    private void Apply(BasaltStatus status)
+    {
+        var owner = (status.Port, status.Tree?.Owner?.Id, status.Tree?.Owner?.StartTime);
+        if (_apiOwner != owner || (State == BasaltState.Running && status.State != BasaltState.Running)) CancelApi();
+        _apiOwner = owner;
+        State = status.State;
+        StartedHere = status.StartedHere;
+        (StateText, StateLevel) = status.State switch
+        {
+            BasaltState.Running => ("실행 중", Level.Good),
+            BasaltState.Starting => ("켜는 중", Level.Warning),
+            BasaltState.Stopping => ("끄는 중", Level.Warning),
+            BasaltState.PortBusy => ($"포트 {status.Port} 사용 중 (다른 프로그램)", Level.Error),
+            BasaltState.Leftover => ("Basalt 프로세스가 남아 있음", Level.Error),
+            BasaltState.Failed => ("문제 있음", Level.Error),
+            BasaltState.Unavailable => ("사용할 수 없음", Level.Muted),
+            BasaltState.Unknown => ("확인 중", Level.Muted),
+            _ => ("꺼짐", Level.Muted),
+        };
+        if (status.IsMock)
+        {
+            StateText = "MOCK · " + StateText;
+        }
+
+        Detail = status.State is BasaltState.Off or BasaltState.Unknown && status.Detail is "꺼짐" or "상태를 확인하는 중" ? "" : status.Detail;
+        var mode = status.StartedHere ? BasaltController.ModeText(status.Mode)
+            : status.State is BasaltState.Running or BasaltState.Starting ? "알 수 없음 (이 프로그램이 켜지 않음)"
+            : null;
+        ModeLine = $"127.0.0.1:{status.Port}" + (mode is null ? "" : $" · 모드 {mode}") + (status.IsMock ? " · MOCK 서버 (실제 Basalt 아님)" : "");
+        Notice = status.Notice;
+        DashboardUrl = LocalUrl;
+        if (status.State != BasaltState.Running)
+        {
+            WebViewProblem = null; // the next start tries WebView2 again
+            if (ApiFields.Count > 0)
+            {
+                ApiFields.Clear();
+                ApiNote = "";
+            }
+        }
+
+        ShowDashboard = status.State == BasaltState.Running;
+        (GuidanceTitle, GuidanceText) = status.State switch
+        {
+            BasaltState.Running => ("Basalt 실행 중", "대시보드는 [브라우저에서 열기]로도 볼 수 있습니다."),
+            BasaltState.Starting => ("Basalt를 켜는 중입니다", "모델을 올리는 동안 몇 분 걸릴 수 있습니다. 응답하면 여기에 Basalt 대시보드가 나타납니다. 진행 상황은 Basalt 창에서 볼 수 있습니다."),
+            BasaltState.Stopping => ("Basalt를 끄는 중입니다", "Ctrl+C로 정상 종료를 기다린 뒤, 남은 프로세스가 있으면 정리하고 결과를 확인합니다."),
+            BasaltState.PortBusy => ($"포트 {status.Port}를 다른 프로그램이 쓰고 있습니다",
+                "그 프로그램은 Basalt로 확인되지 않아 켜지도 끄지도 않습니다. 그 프로그램을 끄거나 설정 › 공통 › Basalt에서 포트를 바꾸세요."),
+            BasaltState.Leftover => ("Basalt 프로세스가 남아 있습니다", "포트를 쓰지 않는 Basalt 프로세스가 있습니다. [끄기]를 누르면 정리하고 남은 것이 없는지 확인합니다."),
+            BasaltState.Unavailable => ("Basalt 상태를 읽을 수 없습니다", status.Detail),
+            _ => ("Basalt가 꺼져 있습니다",
+                "실행 프로필을 고르고 [켜기]를 누르면 Basalt의 시작 스크립트를 새 창에서 실행합니다. 프로필들은 같은 포트를 써서 동시에 켤 수 없습니다. "
+                + "PC Control Center를 닫아도 Basalt는 계속 실행됩니다."),
+        };
+        var lines = status.Tree?.Members.Select(m => $"{m.Process.Label} · {BasaltController.RoleText(m.Role)}").ToList() ?? [];
+        if (status.Tree?.Unverified is { Count: > 0 } unverified)
+        {
+            lines.AddRange(unverified.Select(u => "확인 못 함: " + u));
+        }
+
+        var key = string.Join("|", lines);
+        if (key != _shownKey)
+        {
+            _shownKey = key;
+            Processes.Clear();
+            foreach (var line in lines)
+            {
+                Processes.Add(line);
+            }
+        }
+
+        if (status.LastStop is { } stop)
+        {
+            LastStopSummary = $"마지막 끄기 {stop.At.ToLocalTime():HH:mm:ss} · {stop.Summary} · {BasaltProcessTree.Seconds(stop.Took)}초";
+            LastStopLevel = stop.Clean ? Level.Good : Level.Error;
+            var stopLines = new List<string> { stop.Signal };
+            stopLines.AddRange(stop.Ended.Select(e => "종료: " + e));
+            stopLines.AddRange(stop.Left.Select(l => "남음: " + l));
+            stopLines.Add(stop.PortFree ? $"포트 {stop.Port}: 비어 있음" : $"포트 {stop.Port}: 사용 중 ({stop.PortOwner})");
+            if (!LastStopLines.SequenceEqual(stopLines))
+            {
+                LastStopLines.Clear();
+                foreach (var line in stopLines)
+                {
+                    LastStopLines.Add(line);
+                }
+            }
+        }
+
+        StartCommand.NotifyCanExecuteChanged();
+        StopCommand.NotifyCanExecuteChanged();
+    }
+}

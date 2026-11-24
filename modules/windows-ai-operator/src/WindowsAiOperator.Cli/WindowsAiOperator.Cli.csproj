@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- wao.exe: read-only diagnostics (windows, UIA tree, database status) and backup. It never automates anything. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>WindowsAiOperator.Cli</RootNamespace>
+    <AssemblyName>wao</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Storage\WindowsAiOperator.Storage.csproj" />
+    <ProjectReference Include="..\WindowsAiOperator.Automation.Windows\WindowsAiOperator.Automation.Windows.csproj" />
+  </ItemGroup>
+</Project>

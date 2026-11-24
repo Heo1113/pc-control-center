@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The one hardware sensor reader of the integrated app (NVML GPU, Windows CPU/RAM). Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Hardware</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Telemetry\LocalAiPerf.Telemetry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

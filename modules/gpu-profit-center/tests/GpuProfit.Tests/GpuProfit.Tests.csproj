@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>GpuProfit.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Timeouts on the integration tests exist to name a hanging test on CI; the code under test takes no token. -->
+    <NoWarn>$(NoWarn);xUnit1069</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GpuProfit.Recording\GpuProfit.Recording.csproj" />
+    <ProjectReference Include="..\..\src\GpuProfit.Export\GpuProfit.Export.csproj" />
+    <ProjectReference Include="..\..\src\GpuProfit.Presentation\GpuProfit.Presentation.csproj" />
+    <ProjectReference Include="..\..\src\GpuProfit.Cli\GpuProfit.Cli.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

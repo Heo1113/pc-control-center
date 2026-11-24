@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Bringing data of the original programs (A, B, C, E) into the integrated app: read-only inspection, byte copy with
+       hash comparison, checks on the copy only, and an explicit, reversible apply. Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Migration</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Core\PcControlCenter.Core.csproj" />
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Storage\LocalAiPerf.Storage.csproj" />
+    <ProjectReference Include="..\..\modules\gpu-profit-center\src\GpuProfit.Storage\GpuProfit.Storage.csproj" />
+    <ProjectReference Include="..\..\modules\windows-diagnostics-lab\src\WinDiag.Storage\WinDiag.Storage.csproj" />
+    <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.Storage\WindowsAiOperator.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

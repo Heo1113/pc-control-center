@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>LocalAiPerf.Presentation</RootNamespace>
+
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="ScottPlot" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAiPerf.Recording\LocalAiPerf.Recording.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Export\LocalAiPerf.Export.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LocalAiPerf.Tests" />
+  </ItemGroup>
+</Project>

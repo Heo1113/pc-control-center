@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Basalt/Strata adapters without a network or a UI: JSON parsing, no answer and timeouts, process name matching, all
+       against an in-memory HTTP handler (MockHttp). Runs on Linux and Windows. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Basalt.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <NoWarn>$(NoWarn);xUnit1069</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PcControlCenter.Basalt\PcControlCenter.Basalt.csproj" />
+    <ProjectReference Include="..\..\src\PcControlCenter.GpuMemory\PcControlCenter.GpuMemory.csproj" />
+    <!-- The local AI module's own Strata adapter (unchanged), fed Basalt-like answers. -->
+    <ProjectReference Include="..\..\modules\local-ai-performance-center\src\LocalAiPerf.Runtimes\LocalAiPerf.Runtimes.csproj" />
+  </ItemGroup>
+</Project>

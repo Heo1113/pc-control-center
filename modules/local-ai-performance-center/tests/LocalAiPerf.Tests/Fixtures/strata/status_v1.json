@@ -1,0 +1,6 @@
+{
+  "service": "strata", "model": "Qwen3.6-35B-A3B", "loaded": true, "auto_load": true, "engine": "0.1.40",
+  "started": 1793530000, "uptime_s": 4500, "cache_max_tokens": 32768, "context": {"native": 32768, "max_positions": 32768},
+  "concurrency": {"serving": 1, "requested": 1}, "vision": {"enabled": false, "available": false, "error": null},
+  "activity": {"requests": 7, "in_flight": 1, "last_request_at": 1793534000}, "last_timings": null
+}

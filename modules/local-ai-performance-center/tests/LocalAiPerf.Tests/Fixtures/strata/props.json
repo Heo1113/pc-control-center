@@ -1,0 +1,7 @@
+{
+  "default_generation_settings": {"n_ctx": 65536, "params": {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "seed": -1, "repeat_penalty": 1.05, "n_predict": -1, "unknown_new_param": {"nested": true}}},
+  "total_slots": 2, "model_alias": "Qwen3.8-Flash-Next", "chat_template": "{% for m in messages %}{{ m.content }}{% endfor %}",
+  "chat_template_caps": {"supports_tools": true}, "modalities": {"vision": false}, "models_autoload": true, "is_sleeping": false,
+  "model_path": "C:\\Users\\SomeUser\\AppData\\Local\\Strata\\models\\Qwen3.8-Flash-Next-IQ3_S.gguf",
+  "build_info": "Strata 0.1.55"
+}

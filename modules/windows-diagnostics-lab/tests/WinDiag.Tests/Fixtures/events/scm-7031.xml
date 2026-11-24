@@ -1,0 +1,26 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Service Control Manager" Guid="{555908d1-a6d7-4695-8e1e-26931d2012f4}" EventSourceName="Service Control Manager" />
+    <EventID Qualifiers="49152">7031</EventID>
+    <Version>0</Version>
+    <Level>2</Level>
+    <Task>0</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8080000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-26T14:20:00.0000000Z" />
+    <EventRecordID>45800</EventRecordID>
+    <Correlation />
+    <Execution ProcessID="1100" ThreadID="1200" />
+    <Channel>System</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security />
+  </System>
+  <EventData>
+    <Data Name="param1">Example Update Service</Data>
+    <Data Name="param2">1</Data>
+    <Data Name="param3">60000</Data>
+    <Data Name="param4">1</Data>
+    <Data Name="param5">서비스 다시 시작</Data>
+    <Data Name="Binary">450078006100</Data>
+  </EventData>
+</Event>

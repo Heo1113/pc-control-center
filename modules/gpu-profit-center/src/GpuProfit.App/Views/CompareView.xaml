@@ -1,0 +1,131 @@
+<UserControl x:Class="GpuProfit.App.Views.CompareView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:GpuProfit.App.Controls">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <TextBlock Text="비교" Style="{StaticResource PageTitle}" />
+      <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="120" Margin="12,0,6,8" VerticalAlignment="Center" AutomationProperties.Name="기간" />
+      <ComboBox ItemsSource="{Binding Views}" SelectedItem="{Binding SelectedView}" MinWidth="300" Margin="0,0,6,8" VerticalAlignment="Center" AutomationProperties.Name="수익 기준" />
+      <Button Content="비교 실행" Command="{Binding CompareCommand}" Style="{StaticResource ToolButton}" VerticalAlignment="Center" />
+      <Button Content="CSV 내보내기" Command="{Binding ExportCommand}" Style="{StaticResource ToolButton}" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding StatusText}" Style="{StaticResource StatusLine}" VerticalAlignment="Center" />
+    </DockPanel>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Border Style="{StaticResource Card}">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Text="비교할 세션" Style="{StaticResource SectionTitle}" />
+          <WrapPanel DockPanel.Dock="Top">
+            <Button Content="모두 선택" Command="{Binding SelectAllCommand}" Style="{StaticResource ToolButton}" />
+            <Button Content="모두 해제" Command="{Binding SelectNoneCommand}" Style="{StaticResource ToolButton}" />
+          </WrapPanel>
+          <TextBlock DockPanel.Dock="Top" Text="{Binding EmptyText}" Style="{StaticResource Caption}" Visibility="{Binding EmptyText, Converter={StaticResource NotEmptyToVisibility}}" />
+          <ListBox ItemsSource="{Binding Candidates}" AutomationProperties.Name="비교할 세션 목록">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <CheckBox IsChecked="{Binding IsSelected}" Content="{Binding Label}" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </Border>
+      <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="비교 조건 경고" Style="{StaticResource SectionTitle}" />
+              <ItemsControl ItemsSource="{Binding Warnings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate><TextBlock Text="{Binding StringFormat='⚠ {0}'}" Style="{StaticResource WarningText}" /></DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="세션을 고른 뒤 '비교 실행'을 누르세요." Style="{StaticResource Caption}" Visibility="{Binding HasResult, Converter={StaticResource InverseBoolToVisibility}}" />
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="세션별 (시간당·에너지당 정규화)" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False" MaxHeight="360"
+                        AutomationProperties.Name="세션별 비교">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="세션" Binding="{Binding Session}" />
+                  <DataGridTextColumn Header="작업" Binding="{Binding Workload}" />
+                  <DataGridTextColumn Header="시작" Binding="{Binding Started}" />
+                  <DataGridTextColumn Header="시간" Binding="{Binding Hours}" />
+                  <DataGridTextColumn Header="에너지" Binding="{Binding Energy}" />
+                  <DataGridTextColumn Header="평균 GPU 전력" Binding="{Binding AvgPower}" />
+                  <DataGridTextColumn Header="관측률" Binding="{Binding Coverage}" />
+                  <DataGridTextColumn Header="매출" Binding="{Binding Revenue}" />
+                  <DataGridTextColumn Header="총비용" Binding="{Binding Cost}" />
+                  <DataGridTextColumn Header="순수익" Binding="{Binding Net}" />
+                  <DataGridTextColumn Header="시간당 순수익" Binding="{Binding NetPerHour}" />
+                  <DataGridTextColumn Header="kWh당 순수익" Binding="{Binding NetPerKwh}" />
+                  <DataGridTextColumn Header="시간당 비용" Binding="{Binding CostPerHour}" />
+                  <DataGridTextColumn Header="전력 기준" Binding="{Binding Basis}" />
+                  <DataGridTextColumn Header="전기요금" Binding="{Binding Rate}" />
+                  <DataGridTextColumn Header="표시" Binding="{Binding Flags}" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+          <Border Style="{StaticResource Card}" Height="260"><c:ChartView Data="{Binding NetChart}" /></Border>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="작업 유형별" Style="{StaticResource SectionTitle}" />
+              <DataGrid ItemsSource="{Binding ByType}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="유형" Binding="{Binding Group}" />
+                  <DataGridTextColumn Header="계산된/전체 세션" Binding="{Binding Sessions}" />
+                  <DataGridTextColumn Header="시간" Binding="{Binding Hours}" />
+                  <DataGridTextColumn Header="에너지" Binding="{Binding Energy}" />
+                  <DataGridTextColumn Header="매출" Binding="{Binding Revenue}" />
+                  <DataGridTextColumn Header="총비용" Binding="{Binding Cost}" />
+                  <DataGridTextColumn Header="순수익" Binding="{Binding Net}" />
+                  <DataGridTextColumn Header="시간당" Binding="{Binding NetPerHour}" />
+                  <DataGridTextColumn Header="kWh당" Binding="{Binding NetPerKwh}" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Text="작업별" Style="{StaticResource SectionTitle}" Margin="0,12,0,8" />
+              <DataGrid ItemsSource="{Binding ByWorkload}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="작업" Binding="{Binding Group}" />
+                  <DataGridTextColumn Header="계산된/전체 세션" Binding="{Binding Sessions}" />
+                  <DataGridTextColumn Header="시간" Binding="{Binding Hours}" />
+                  <DataGridTextColumn Header="에너지" Binding="{Binding Energy}" />
+                  <DataGridTextColumn Header="순수익" Binding="{Binding Net}" />
+                  <DataGridTextColumn Header="시간당" Binding="{Binding NetPerHour}" />
+                  <DataGridTextColumn Header="kWh당" Binding="{Binding NetPerKwh}" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Text="시간대별 (세션 시작 시각 기준)" Style="{StaticResource SectionTitle}" Margin="0,12,0,8" />
+              <DataGrid ItemsSource="{Binding ByTimeOfDay}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="시간대" Binding="{Binding Group}" />
+                  <DataGridTextColumn Header="계산된/전체 세션" Binding="{Binding Sessions}" />
+                  <DataGridTextColumn Header="시간" Binding="{Binding Hours}" />
+                  <DataGridTextColumn Header="순수익" Binding="{Binding Net}" />
+                  <DataGridTextColumn Header="시간당" Binding="{Binding NetPerHour}" />
+                  <DataGridTextColumn Header="kWh당" Binding="{Binding NetPerKwh}" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Text="실제 수익과 예상 수익" Style="{StaticResource SectionTitle}" Margin="0,12,0,8" />
+              <DataGrid ItemsSource="{Binding ActualVsExpected}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="세션" Binding="{Binding Session}" />
+                  <DataGridTextColumn Header="실제 수령" Binding="{Binding Actual}" />
+                  <DataGridTextColumn Header="예상" Binding="{Binding Expected}" />
+                  <DataGridTextColumn Header="차이" Binding="{Binding Difference}" />
+                  <DataGridTextColumn Header="실제/예상" Binding="{Binding Ratio}" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </DockPanel>
+</UserControl>

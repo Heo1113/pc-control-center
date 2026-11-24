@@ -1,0 +1,32 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="EventLog" />
+    <EventID Qualifiers="32768">6008</EventID>
+    <Version>0</Version>
+    <Level>2</Level>
+    <Task>0</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x80000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-30T13:44:10.0000000Z" />
+    <EventRecordID>48215</EventRecordID>
+    <Correlation />
+    <Execution ProcessID="0" ThreadID="0" />
+    <Channel>System</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security />
+  </System>
+  <EventData>
+    <Data>‎오후 10:41:10</Data>
+    <Data>‎2026-10-30</Data>
+    <Data></Data>
+    <Data></Data>
+    <Data>21530</Data>
+    <Data></Data>
+    <Data></Data>
+    <Binary>EA070A0005001E00160029000A00000000000000</Binary>
+  </EventData>
+  <RenderingInfo Culture="ko-KR">
+    <Message>이전 시스템 종료(2026-10-30 오후 10:41:10)가 예기치 않게 발생했습니다.</Message>
+    <Level>오류</Level>
+  </RenderingInfo>
+</Event>

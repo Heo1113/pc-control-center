@@ -1,0 +1,37 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Microsoft-Windows-WHEA-Logger" Guid="{c26c4f3c-3f66-4e99-8f8a-39405cfed220}" />
+    <EventID>19</EventID>
+    <Version>0</Version>
+    <Level>3</Level>
+    <Task>0</Task>
+    <Opcode>0</Opcode>
+    <Keywords>0x8000000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-29T11:02:33.7020000Z" />
+    <EventRecordID>47001</EventRecordID>
+    <Correlation ActivityID="{11111111-2222-3333-4444-555555555555}" />
+    <Execution ProcessID="4400" ThreadID="5100" />
+    <Channel>System</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security UserID="S-1-5-19" />
+  </System>
+  <EventData>
+    <Data Name="ErrorSource">1</Data>
+    <Data Name="ApicId">6</Data>
+    <Data Name="MCABank">5</Data>
+    <Data Name="MciStat">0x9c20000000000000</Data>
+    <Data Name="MciAddr">0x0</Data>
+    <Data Name="MciMisc">0x0</Data>
+    <Data Name="ErrorType">9</Data>
+    <Data Name="TransactionType">256</Data>
+    <Data Name="Participation">0</Data>
+    <Data Name="RequestType">0</Data>
+    <Data Name="MemorIO">0</Data>
+    <Data Name="MemHierarchyLvl">3</Data>
+    <Data Name="Timeout">0</Data>
+    <Data Name="OperationType">256</Data>
+    <Data Name="Channel">256</Data>
+    <Data Name="Length">928</Data>
+    <Data Name="RawData">435045521002FFFFFFFF</Data>
+  </EventData>
+</Event>

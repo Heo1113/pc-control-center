@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Real desktop access: FlaUI (UIA3) + Win32. Windows only; compiles on other systems for CI. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>WindowsAiOperator.Automation.Windows</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FlaUI.UIA3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WindowsAiOperator.Core\WindowsAiOperator.Core.csproj" />
+  </ItemGroup>
+</Project>

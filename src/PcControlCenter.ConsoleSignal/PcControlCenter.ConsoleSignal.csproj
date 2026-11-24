@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- PcControlCenter.ConsoleSignal.exe <pid>: sends Ctrl+C to the console that process is attached to, the same signal
+       as pressing Ctrl+C in that window (how Basalt is stopped cleanly). A process of its own because joining another
+       console changes the console of the whole process: the window would receive the Ctrl+C too. No window, no network,
+       kernel32 only. Published trimmed (scripts/publish.ps1). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.ConsoleSignal</RootNamespace>
+    <AssemblyName>PcControlCenter.ConsoleSignal</AssemblyName>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+  </PropertyGroup>
+</Project>

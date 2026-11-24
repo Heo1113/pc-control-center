@@ -1,0 +1,21 @@
+<Application x:Class="WindowsAiOperator.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WindowsAiOperator.App"
+             ThemeMode="Dark"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Themes/Theme.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+      <local:ToneBrushConverter x:Key="ToneBrush" />
+      <local:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+      <local:BoolToVisibilityConverter x:Key="InverseBoolToVisibility" Invert="True" />
+      <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibility" />
+      <local:NotEmptyToVisibilityConverter x:Key="EmptyToVisibility" Invert="True" />
+      <local:PngToImageConverter x:Key="PngToImage" />
+      <local:BoolToFontWeightConverter x:Key="BoolToFontWeight" />
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

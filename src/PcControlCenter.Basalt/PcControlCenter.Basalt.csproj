@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The local Basalt server (a Strata fork for Blackwell GPUs) seen from the shell: which processes are the server (the
+       process listening on its port, that process's descendants and its basalt* wrapper), starting it with its own start
+       script, stopping it gracefully (Ctrl+C to its console through PcControlCenter.ConsoleSignal.exe) and only then, if
+       needed, ending exactly those processes and checking that nothing is left. Normal user rights only. The logic is
+       platform-neutral and tested on Linux with a fake system; the Windows system is exercised on the Windows runner. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Basalt</RootNamespace>
+    <!-- LibraryImport (kernel32: OpenProcess, GetProcessTimes, TerminateProcess). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Core\PcControlCenter.Core.csproj" />
+    <!-- The process list, start times and TCP listener table (the same Windows queries as the GPU memory page). -->
+    <ProjectReference Include="..\PcControlCenter.GpuMemory\PcControlCenter.GpuMemory.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

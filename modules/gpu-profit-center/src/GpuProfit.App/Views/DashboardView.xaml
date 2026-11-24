@@ -1,0 +1,136 @@
+<UserControl x:Class="GpuProfit.App.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <TextBlock Text="대시보드" Style="{StaticResource PageTitle}" />
+      <TextBlock Text="{Binding StatusText}" Style="{StaticResource StatusLine}" VerticalAlignment="Center" />
+    </DockPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <Border Style="{StaticResource Card}" Visibility="{Binding EmptyText, Converter={StaticResource NotEmptyToVisibility}}">
+          <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Value}" FontSize="14" />
+        </Border>
+
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="3*" />
+            <ColumnDefinition Width="2*" />
+          </Grid.ColumnDefinitions>
+          <Border Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="현재 장치 (GPU)" Style="{StaticResource SectionTitle}" />
+              <ItemsControl ItemsSource="{Binding Gpus}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,4,0,8">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                          <Ellipse Width="10" Height="10" Margin="0,0,6,0" Fill="{Binding Ok, Converter={StaticResource OkBrush}}" />
+                          <TextBlock Text="{Binding Name}" Style="{StaticResource CardTitle}" />
+                          <TextBlock Text="{Binding Status, StringFormat=' · {0}'}" Style="{StaticResource Caption}" Margin="4,1,0,0" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource Value}">
+                          <Run Text="사용률 " Foreground="{StaticResource TextMutedBrush}" /><Run Text="{Binding Utilization, Mode=OneWay}" />
+                          <Run Text="  온도 " Foreground="{StaticResource TextMutedBrush}" /><Run Text="{Binding Temperature, Mode=OneWay}" />
+                          <Run Text="  VRAM " Foreground="{StaticResource TextMutedBrush}" /><Run Text="{Binding Vram, Mode=OneWay}" />
+                          <Run Text="  클럭 " Foreground="{StaticResource TextMutedBrush}" /><Run Text="{Binding Clocks, Mode=OneWay}" />
+                        </TextBlock>
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                        <TextBlock Text="보드 전력" Style="{StaticResource Caption}" HorizontalAlignment="Right" />
+                        <TextBlock Text="{Binding Power}" Style="{StaticResource BigValue}" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <TextBlock Text="{Binding PowerNote}" Style="{StaticResource Caption}" Margin="0,4,0,0" />
+              <TextBlock Text="{Binding SensorNote}" Style="{StaticResource WarningText}" Visibility="{Binding SensorNote, Converter={StaticResource NotEmptyToVisibility}}" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Style="{StaticResource Card}">
+            <StackPanel>
+              <TextBlock Text="시스템" Style="{StaticResource SectionTitle}" />
+              <ItemsControl ItemsSource="{Binding SystemRows}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Grid Margin="0,2">
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Text="{Binding Name}" Style="{StaticResource Label}" />
+                      <TextBlock Grid.Column="1" Text="{Binding Value}" Style="{StaticResource Value}" />
+                      <TextBlock Grid.Column="2" Text="{Binding Note}" Style="{StaticResource Caption}" Margin="8,2,0,0" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="작업 세션" Style="{StaticResource SectionTitle}" />
+            <WrapPanel Margin="0,0,0,6">
+              <TextBlock Text="작업" Style="{StaticResource Label}" VerticalAlignment="Center" />
+              <ComboBox ItemsSource="{Binding Workloads}" SelectedItem="{Binding SelectedWorkload}" DisplayMemberPath="Name" MinWidth="220" Margin="0,0,10,6"
+                        AutomationProperties.Name="작업 선택" />
+              <TextBlock Text="세션 제목" Style="{StaticResource Label}" VerticalAlignment="Center" />
+              <TextBox Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" MinWidth="200" Margin="0,0,10,6" AutomationProperties.Name="세션 제목" />
+              <Button Content="기록 시작" Command="{Binding StartCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+            <DataGrid ItemsSource="{Binding Active}" SelectedItem="{Binding SelectedActive}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                      CanUserAddRows="False" MinHeight="80" MaxHeight="260" AutomationProperties.Name="기록 중인 세션">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="#" Binding="{Binding Id}" />
+                <DataGridTextColumn Header="세션" Binding="{Binding Title}" Width="*" />
+                <DataGridTextColumn Header="작업" Binding="{Binding Workload}" />
+                <DataGridTextColumn Header="상태" Binding="{Binding State}" />
+                <DataGridTextColumn Header="기록 시간" Binding="{Binding Elapsed}" />
+                <DataGridTextColumn Header="에너지" Binding="{Binding Energy}" />
+                <DataGridTextColumn Header="전력비" Binding="{Binding Cost}" />
+                <DataGridTextColumn Header="전력 관측률" Binding="{Binding Coverage}" />
+                <DataGridTextColumn Header="작업 실행" Binding="{Binding Activity}" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <WrapPanel Margin="0,8,0,0">
+              <Button Content="일시정지" Command="{Binding PauseCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="재개" Command="{Binding ResumeCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="종료" Command="{Binding StopCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="수익성 보기" Command="{Binding OpenAccountingCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+            <TextBlock Style="{StaticResource Caption}" Text="기록 중인 세션이 없으면 표가 비어 있습니다. 기록 버튼은 측정 구간을 표시할 뿐, 작업 프로그램이 실제로 실행됐다는 증거가 아닙니다." />
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="오늘 · 이번 달" Style="{StaticResource SectionTitle}" />
+            <DataGrid ItemsSource="{Binding Totals}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False"
+                      AutomationProperties.Name="오늘과 이번 달 합계">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="기간" Binding="{Binding Period}" />
+                <DataGridTextColumn Header="세션" Binding="{Binding Sessions}" />
+                <DataGridTextColumn Header="에너지" Binding="{Binding Energy}" />
+                <DataGridTextColumn Header="추정 비중" Binding="{Binding EstimatedShare}" />
+                <DataGridTextColumn Header="총비용" Binding="{Binding Cost}" />
+                <DataGridTextColumn Header="실현 매출" Binding="{Binding Revenue}" />
+                <DataGridTextColumn Header="실현 순수익" Binding="{Binding Net}" />
+                <DataGridTextColumn Header="비고" Binding="{Binding Note}" Width="*" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Text="{Binding TotalsNote}" Style="{StaticResource Caption}" Margin="0,6,0,0" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

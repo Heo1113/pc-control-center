@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+artifacts/
+dist/
+publish/
+TestResults/
+*.binlog
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local data that must never be committed
+*.db
+*.db-wal
+*.db-shm
+*.log
+settings.local.json
+.env

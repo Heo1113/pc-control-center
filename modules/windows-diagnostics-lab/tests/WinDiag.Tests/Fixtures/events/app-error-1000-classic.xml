@@ -1,0 +1,29 @@
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+  <System>
+    <Provider Name="Application Error" />
+    <EventID Qualifiers="0">1000</EventID>
+    <Level>2</Level>
+    <Task>100</Task>
+    <Keywords>0x80000000000000</Keywords>
+    <TimeCreated SystemTime="2026-10-20T10:00:00.0000000Z" />
+    <EventRecordID>8000</EventRecordID>
+    <Channel>Application</Channel>
+    <Computer>DESKTOP-TEST01</Computer>
+    <Security />
+  </System>
+  <EventData>
+    <Data>editor.exe</Data>
+    <Data>2.0.0.0</Data>
+    <Data>5f000000</Data>
+    <Data>ntdll.dll</Data>
+    <Data>10.0.26100.1</Data>
+    <Data>a0000000</Data>
+    <Data>c0000374</Data>
+    <Data>00000000000fb2a9</Data>
+    <Data>0x1a2c</Data>
+    <Data>0x1d0000000000000</Data>
+    <Data>C:\Program Files\Editor\editor.exe</Data>
+    <Data>C:\WINDOWS\SYSTEM32\ntdll.dll</Data>
+    <Data>11112222-3333-4444-5555-666677778888</Data>
+  </EventData>
+</Event>

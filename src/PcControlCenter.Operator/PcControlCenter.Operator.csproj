@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Isolation of project E's desktop automation: the protocol, the server run by PcControlCenter.OperatorHost.exe,
+       the client used by the shell (RemoteDesktop) and the host process supervisor. Platform-neutral; tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Operator</RootNamespace>
+    <!-- Windows job object (kill on close, UI restrictions) through LibraryImport. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\windows-ai-operator\src\WindowsAiOperator.Core\WindowsAiOperator.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "source": "server-v1",
+  "sampled_at": 1793534400.25,
+  "instance": {"id": "4f1c2a9b8e7d6c5b4a3928170615aabb", "boot_time": 1793530800, "server": "strata", "state": "ready"},
+  "model": {"id": "Qwen3.8-Flash-Next", "loaded": true, "context": 65536},
+  "work": {
+    "slots_requested": 2, "slots_effective": 2, "active": 1, "queued": 0, "waiting": 0, "outside_slots": 0, "groups": null,
+    "requests_omitted": 0, "max_queue": 16, "admission_limit": 18, "admission_reserved": 1, "admission_rejected": 3,
+    "oldest_queue_s": 0, "queue_timeout_s": 600, "queue_timeouts": 1, "client_disconnect_cancels": 2,
+    "effective_rows_window": null, "occupied_slots": 1,
+    "slots": [
+      {"slot": 0, "group": null, "replica": null, "request_id": "a1b2c3d4e5f6", "state": "decoding", "held_tokens": 12000, "prompt_tokens": 11000, "prompt_read": 11000, "generated": 512, "elapsed_s": 14.2, "tok_s": 38.5},
+      {"slot": 1, "group": null, "replica": null, "request_id": null, "state": "idle", "held_tokens": 3000, "prompt_tokens": null, "prompt_read": null, "generated": null, "elapsed_s": null, "tok_s": null}
+    ],
+    "requests": [{"id": "a1b2c3d4e5f6", "state": "decoding", "queued_at": 1793534380.0, "admitted_at": 1793534380.1, "slot": 0, "group": null, "replica": null, "prompt_tokens": 11000, "prompt_read": 11000, "generated": 512, "first_engine_token_s": 1.9}]
+  },
+  "rates": {"answer_tok_s": 38.5, "answer_window_s": 3.0, "prefill_tok_s": 1450.2, "output_tokens_server_counter": 987654},
+  "topology": {"mode": null, "configured_split": null, "selected_devices": [0], "replica_devices": [], "replica_stages": [], "resolved": false, "stages": [], "source": null},
+  "devices": [{"index": 0, "name": "NVIDIA GeForce RTX 5080", "mem_used": 14000000000, "mem_total": 17094934528, "util": 97, "temp": 71, "power": 301.5}],
+  "ram": {"used": 40000000000, "total": 68000000000},
+  "recent": [
+    {"id": "0f0e0d0c0b0a", "time": 1793534300.0, "duration_s": 22.4, "finish": "stop", "prompt_tokens": 9000, "reused": 8000, "output_tokens": 640, "prompt_ms": 690.0, "decode_ms": 16400.0, "first_engine_token_s": 0.81},
+    {"id": "0a0a0a0a0a0a", "time": 1793534200.0, "duration_s": 3.1, "finish": "error", "prompt_tokens": 100, "reused": 0, "output_tokens": 1, "prompt_ms": 80.0, "decode_ms": null, "first_engine_token_s": null},
+    {"id": 12345, "time": 1793534100.0, "duration_s": 1.0, "finish": "stop"}
+  ],
+  "totals": {"since": 1793530800, "requests": 41, "prompt_tokens": 400000, "output_tokens": 987000},
+  "activity": {"last_seq": 120, "events": [
+    {"seq": 118, "at": 1793534300.0, "request_id": "0f0e0d0c0b0a", "event": "finished", "outcome": "stop"},
+    {"seq": 119, "at": 1793534380.0, "request_id": "a1b2c3d4e5f6", "event": "queued", "outcome": null},
+    {"seq": 119, "at": 1793534381.0, "request_id": "a1b2c3d4e5f6", "event": "admitted", "outcome": null},
+    {"seq": 120, "at": 1793534382.0, "request_id": "NOT-HEX-ID!!", "event": "reading", "outcome": null}
+  ]},
+  "quality": {"request_correlation": "reported", "per_device": "measured", "telemetry": "available"}
+}

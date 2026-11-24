@@ -1,0 +1,2141 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using LocalAiPerf.Core.Runtime;
+using LocalAiPerf.Core.Hardware;
+using LocalAiPerf.Presentation.Charts;
+using PcControlCenter.Core;
+using PcControlCenter.GpuMemory;
+using PcControlCenter.Hardware;
+
+namespace PcControlCenter.Presentation;
+
+/// <summary>A part of a bar: its share of the whole (0-1), color, label, and whether it is an estimate (drawn hatched).</summary>
+public sealed record BarSegment(double Fraction, string ColorHex, string Label, bool IsEstimate = false);
+
+/// <summary>
+/// A legend entry under a bar. <see cref="Kind"/> or <see cref="Group"/>: the process kind or group it stands for (clicking
+/// a group's entry in the device strip filters the table).
+/// </summary>
+public sealed record LegendItem(string ColorHex, string Label, string Value, bool IsEstimate = false, string? ToolTip = null,
+    ProcessKind? Kind = null, bool IsActive = false, KindGroup? Group = null);
+
+/// <summary>
+/// How the device strip groups process kinds: the AI workloads keep a colour each, the rest fold into two grays (emphasis:
+/// the question this page answers is how much of the card the AI workloads hold). The table keeps the exact kind.
+/// </summary>
+public enum KindGroup
+{
+    Llm,
+    Ai,
+    Compute,
+    Apps,
+    Windows,
+}
+
+/// <summary>
+/// One adapter in the device strip, every adapter on the same one-line layout: short name (the full name and NVML's view
+/// in the tooltip), the dedicated memory bar by kind group with its legend, used / capacity with free and shared memory,
+/// and the busiest engine.
+/// </summary>
+public sealed record AdapterView(
+    string Name,
+    string Meta,
+    IReadOnlyList<BarSegment> DedicatedSegments,
+    string DedicatedText,
+    IReadOnlyList<LegendItem> Legend,
+    string? LegendNote,
+    string SharedText,
+    string Utilization,
+    string UtilizationLabel,
+    string Engines,
+    string? Nvml,
+    bool HasCapacity,
+    string LegendText = "",
+    string? FreeText = null,
+    string? DeltaText = null,
+    string? SharedUsedText = null)
+{
+    /// <summary>"RTX 5080" for "NVIDIA GeForce RTX 5080".</summary>
+    public string ShortName => GpuMemoryViewModel.ShortAdapterName(Name);
+
+    /// <summary>Free and shared memory under the used / capacity figure (the shared capacity is in the tooltip).</summary>
+    public string SecondaryText => string.Join(" · ", new[] { FreeText, $"공유 {SharedUsedText ?? SharedText}" }.Where(x => !string.IsNullOrEmpty(x)));
+
+    public string SecondaryToolTip => $"여유 = 카드 용량 − 사용량 (계산). 공유 {SharedText} = GPU가 쓰는 시스템 RAM (LLM의 RAM 오프로딩과 같은 뜻이 아님)";
+
+    /// <summary>The full name, the vendor notes and NVML's view, for the tooltip.</summary>
+    public string NameToolTip => string.Join(Environment.NewLine, new[] { Name, Meta, Nvml is null ? null : $"{Nvml} (공통 센서, 장치 전체 — 집계 방식이 달라 값이 다를 수 있음)" }
+        .Where(x => !string.IsNullOrEmpty(x)));
+}
+
+/// <summary>One choice of a small chooser (the chart's metric and window): what it says, and the value it stands for.</summary>
+public sealed record ChoiceOption(string Label, object Value);
+
+/// <summary>
+/// One adapter's place in the header. The slot stays while its adapter does and only its <see cref="View"/> changes, so
+/// the strip is not rebuilt on every reading (an open tooltip stays open).
+/// </summary>
+public sealed partial class AdapterSlot : ObservableObject
+{
+    public AdapterSlot(long luid, AdapterView view)
+    {
+        Luid = luid;
+        View = view;
+    }
+
+    public long Luid { get; }
+
+    [ObservableProperty] public partial AdapterView View { get; set; }
+}
+
+/// <summary>A labelled value in the detail panel.</summary>
+public sealed record DetailFact(string Label, string Value, bool IsEstimate = false, string? ToolTip = null);
+
+/// <summary>
+/// What a runtime reported about itself (Strata's engine, Ollama, llama.cpp's server): settings or its last report, never the
+/// current use. The title says which and from when; the note says what the values mean and where they came from.
+/// </summary>
+public sealed record ReportGroup(string Title, string Note, IReadOnlyList<DetailFact> Facts, bool IsError = false, string? Details = null)
+{
+    /// <summary>An info mark after the short note when there is more to read (in its tooltip).</summary>
+    public string InfoGlyph => string.IsNullOrEmpty(Details) ? "" : GpuMemoryViewModel.InfoGlyphText;
+
+    public bool SameAs(ReportGroup other)
+        => Title == other.Title && Note == other.Note && Details == other.Details && IsError == other.IsError && Facts.SequenceEqual(other.Facts);
+}
+
+/// <summary>A model file mapped into the selected process.</summary>
+public sealed record ModelRow(string Name, string Summary, string Size, string Evidence);
+
+/// <summary>The selected process: numbers, what is loaded, an estimated split for LLMs, Strata's report (null unless it is Strata's), a short note.</summary>
+public sealed record ProcessDetailView(
+    string Title,
+    string Pid,
+    string Kind,
+    string KindColor,
+    string KindBasis,
+    bool IsStrata,
+    string Subtitle,
+    string Dedicated,
+    string? DedicatedShare,
+    string Shared,
+    string Committed,
+    string Gpu,
+    string Engines,
+    IReadOnlyList<BarSegment> Breakdown,
+    IReadOnlyList<LegendItem> BreakdownLegend,
+    string? BreakdownNote,
+    string? BreakdownDetails,
+    string BreakdownTitle,
+    string GpuCaption,
+    string Runtimes,
+    IReadOnlyList<ModelRow> Models,
+    string? StrataModel,
+    string? StrataWindow,
+    string? StrataSlots,
+    string? StrataEvidence,
+    IReadOnlyList<ReportGroup> Reports,
+    string Note,
+    ChartModel? Chart)
+{
+    /// <summary>An info mark after the composition note when its full explanation is in the tooltip.</summary>
+    public string BreakdownInfoGlyph => string.IsNullOrEmpty(BreakdownDetails) ? "" : GpuMemoryViewModel.InfoGlyphText;
+
+    /// <summary>The local LLM server the process is linked to ("Basalt", "Strata"); empty when none.</summary>
+    public string ServerLabel { get; init; } = "";
+
+    /// <summary>The title over the local AI module's report (it reads Basalt through Strata's API when both share the port).</summary>
+    public string StrataTitle { get; init; } = "Strata가 보고한 값";
+
+    /// <summary>How the process was linked to Basalt (port owner, descendants, wrapper); null when it is not Basalt's.</summary>
+    public string? BasaltEvidence { get; init; }
+
+    /// <summary>The link evidence for the server chip.</summary>
+    public string? ServerEvidence => BasaltEvidence ?? StrataEvidence;
+}
+
+/// <summary>
+/// Small icons of the processes' executables (the app layer reads them in the background). <see cref="Icon"/> returns an
+/// image object for the view, or a generic program icon while the real one is unknown or cannot be read; it never blocks.
+/// <see cref="Changed"/> fires (on the UI thread) when icons arrived.
+/// </summary>
+public interface IProcessIcons
+{
+    object? Icon(int pid, string name);
+
+    event Action? Changed;
+}
+
+/// <summary>
+/// The local AI module's view of Strata for this page: its latest poll, or why there is none, and the name of the environment
+/// variable its settings read the API key from (the page reads the key for each request to Strata's /metrics, never keeps it).
+/// </summary>
+public sealed record StrataContext(RuntimeSnapshot? Snapshot, string? Unavailable, string? CredentialVariable = null);
+
+/// <summary>
+/// The Basalt server for this page: its port while Basalt runs (or starts, or stops), null otherwise. The page links the
+/// port's listener, its descendants and its basalt* wrapper to the measured processes; nothing is asked of Basalt here.
+/// </summary>
+public sealed record BasaltContext(int? Port, string State, int? OwnerPid = null, DateTimeOffset? OwnerStart = null, DateTimeOffset? ObservedAt = null);
+
+/// <summary>One row of the process table. Updated in place on every reading, so selection and sort order survive refreshes.</summary>
+public sealed partial class GpuProcessRow(ProcessKey key, long luid) : ObservableObject
+{
+    public ProcessKey Key { get; } = key;
+    public long Luid { get; } = luid;
+
+    [ObservableProperty] public partial int Pid { get; set; }
+    [ObservableProperty] public partial string Name { get; set; } = "";
+    [ObservableProperty] public partial ProcessKind Kind { get; set; }
+    [ObservableProperty] public partial string KindLabel { get; set; } = "";
+    [ObservableProperty] public partial string KindColor { get; set; } = GpuMemoryViewModel.KindColors[ProcessKind.App];
+    [ObservableProperty] public partial string KindBasis { get; set; } = "";
+
+    /// <summary>The kind was given by the user (by executable name), not classified from evidence.</summary>
+    [ObservableProperty] public partial bool KindOverridden { get; set; }
+
+    /// <summary>The executable's small icon (an image for the view), or a generic program icon; null without an icon source.</summary>
+    [ObservableProperty] public partial object? Icon { get; set; }
+
+    /// <summary>Bytes for sorting; -1 = N/A (sorts last when the largest come first).</summary>
+    [ObservableProperty] public partial long Dedicated { get; set; }
+    [ObservableProperty] public partial string DedicatedText { get; set; } = "";
+
+    /// <summary>Share of the adapter's dedicated capacity (0-1), for the bar under the number.</summary>
+    [ObservableProperty] public partial double DedicatedShare { get; set; }
+
+    /// <summary>"카드 VRAM의 61%"; null when the capacity is unknown.</summary>
+    [ObservableProperty] public partial string? DedicatedShareText { get; set; }
+    [ObservableProperty] public partial long Shared { get; set; }
+    [ObservableProperty] public partial string SharedText { get; set; } = "";
+    [ObservableProperty] public partial long Committed { get; set; }
+    [ObservableProperty] public partial string CommittedText { get; set; } = "";
+
+    /// <summary>Change of dedicated memory since the baseline, for sorting; long.MinValue without a baseline or a value.</summary>
+    [ObservableProperty] public partial long Delta { get; set; } = long.MinValue;
+    [ObservableProperty] public partial string DeltaText { get; set; } = "";
+
+    /// <summary>How the row relates to the baseline: started after it, restarted (another PID), or null for the same process.</summary>
+    [ObservableProperty] public partial string? DeltaNote { get; set; }
+
+    /// <summary>Busiest engine in percent; -1 = not read.</summary>
+    [ObservableProperty] public partial double Gpu { get; set; }
+    [ObservableProperty] public partial string GpuText { get; set; } = "";
+    [ObservableProperty] public partial string Runtimes { get; set; } = "";
+    [ObservableProperty] public partial string Inside { get; set; } = "";
+
+    /// <summary><see cref="Inside"/> is what processes of this kind usually hold, not something found in this one.</summary>
+    [ObservableProperty] public partial bool InsideIsGeneric { get; set; }
+    /// <summary>Short adapter name for the column ("RTX 5080"); <see cref="AdapterFull"/> for the tooltip.</summary>
+    [ObservableProperty] public partial string Adapter { get; set; } = "";
+    [ObservableProperty] public partial string AdapterFull { get; set; } = "";
+    [ObservableProperty] public partial bool IsStrata { get; set; }
+
+    /// <summary>The local LLM server this process is linked to by port and process tree ("Basalt", "Strata"); empty when none.</summary>
+    [ObservableProperty] public partial string ServerLabel { get; set; } = "";
+    /// <summary>Why the row's identity is uncertain; null when it was verified (no tooltip then).</summary>
+    [ObservableProperty] public partial string? Identity { get; set; }
+    [ObservableProperty] public partial bool IsUncertain { get; set; }
+}
+
+/// <summary>
+/// Hardware › GPU 메모리. The layout follows the tools people already use for this (Task Manager's GPU page and Details
+/// columns, gputaskman, nvtop): a device strip with a memory bar split by process kind, a dense sortable process table,
+/// and a detail panel for the selected process. Values are measurements unless marked: estimates are labelled "추정" and
+/// drawn hatched, Strata's values are grouped as reported by Strata, and the help panel explains the rest.
+/// </summary>
+public sealed partial class GpuMemoryViewModel : ObservableObject
+{
+
+    /// <summary>A Strata poll older than this is not used to link processes (the port may belong to someone else by then).</summary>
+    public static readonly TimeSpan StrataMaxAge = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// The three accent colours pass every all-pairs check of the data-viz palette validator on the dark card surface
+    /// (#1a1a19: CVD ΔE ≥ 9.4, normal vision ≥ 20.9, ≥ 3:1). The other kinds share two grays, lighter for applications than
+    /// for Windows itself; the unattributed part is darker still and free memory is the track.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<KindGroup, string> GroupColors = new Dictionary<KindGroup, string>
+    {
+        [KindGroup.Llm] = "#3987E5",
+        [KindGroup.Ai] = "#199E70",
+        [KindGroup.Compute] = "#D95926",
+        [KindGroup.Apps] = "#9A9892",
+        [KindGroup.Windows] = "#64635D",
+    };
+
+    public static readonly IReadOnlyDictionary<KindGroup, string> GroupLabels = new Dictionary<KindGroup, string>
+    {
+        [KindGroup.Llm] = "LLM",
+        [KindGroup.Ai] = "AI",
+        [KindGroup.Compute] = "연산",
+        [KindGroup.Apps] = "앱·그래픽",
+        [KindGroup.Windows] = "Windows",
+    };
+
+    public static KindGroup GroupOf(ProcessKind kind) => kind switch
+    {
+        ProcessKind.Llm => KindGroup.Llm,
+        ProcessKind.Ai => KindGroup.Ai,
+        ProcessKind.Compute => KindGroup.Compute,
+        ProcessKind.Compositor or ProcessKind.System or ProcessKind.Kernel => KindGroup.Windows,
+        _ => KindGroup.Apps,
+    };
+
+    public static readonly IReadOnlyDictionary<ProcessKind, string> KindColors = Enum.GetValues<ProcessKind>().ToDictionary(k => k, k => GroupColors[GroupOf(k)]);
+
+    public static readonly IReadOnlyDictionary<ProcessKind, string> KindLabels = new Dictionary<ProcessKind, string>
+    {
+        [ProcessKind.Llm] = "LLM",
+        [ProcessKind.Ai] = "AI",
+        [ProcessKind.Compute] = "연산",
+        [ProcessKind.Graphics3D] = "3D",
+        [ProcessKind.Video] = "영상",
+        [ProcessKind.Browser] = "브라우저",
+        [ProcessKind.Compositor] = "화면 합성",
+        [ProcessKind.System] = "시스템",
+        [ProcessKind.Kernel] = "커널",
+        [ProcessKind.App] = "앱",
+    };
+
+    private const string DefaultPlaceholder = "표에서 프로세스를 고르면 자세한 내용이 여기에 나옵니다.";
+
+    /// <summary>The icon font's "info" glyph, after a short note whose full explanation is in its tooltip.</summary>
+    public const string InfoGlyphText = "\uE946";
+    private static readonly string[] AdapterNoise = ["NVIDIA GeForce ", "NVIDIA ", "AMD ", "Intel(R) ", "Microsoft ", "(R)", "(TM)"];
+    private const string UnattributedColor = "#43423D";
+    private const long OverlapTolerance = 16L << 20;
+    private const string WeightsColor = "#3987E5";
+    private const string KvColor = "#D95926";
+    private const string RestColor = "#64635D";
+    private const string SelectedSeriesColor = "#3987E5";
+    private const string TotalSeriesColor = "#8A8984";
+    private const string MeasuredColor = "#F0EFEC";
+    private static readonly double ChartGapDays = TimeSpan.FromSeconds(25).TotalDays;
+    private static readonly CultureInfo Ko = CultureInfo.GetCultureInfo("ko-KR");
+
+    private static readonly IReadOnlyDictionary<ProcessKind, string> KindNotes = new Dictionary<ProcessKind, string>
+    {
+        [ProcessKind.Llm] = "가중치·KV 캐시·계산 버퍼·CUDA 컨텍스트가 함께 들어 있습니다. 런타임이 바이트를 보고하지 않는 한 나눈 값은 추정입니다.",
+        [ProcessKind.Ai] = "ML 런타임의 텐서와 작업 공간입니다. 밖에서는 내부 할당을 나눠 볼 수 없습니다.",
+        [ProcessKind.Compute] = "CUDA·HIP 할당입니다. 내용은 Nsight 같은 런타임 도구로만 볼 수 있습니다.",
+        [ProcessKind.Graphics3D] = "텍스처·메시·렌더 타깃입니다. 리소스 이름은 PIX·Nsight 같은 그래픽 디버거가 필요합니다.",
+        [ProcessKind.Video] = "영상 디코드·인코드 프레임과 코덱 버퍼입니다.",
+        [ProcessKind.Browser] = "페이지 타일·이미지·영상 프레임·WebGL/WebGPU 버퍼입니다.",
+        [ProcessKind.Compositor] = "창 버퍼와 합성된 화면입니다. 다른 앱의 표면이 함께 집계될 수 있습니다.",
+        [ProcessKind.System] = "커서·디스플레이 표면을 가진 세션 프로세스입니다.",
+        [ProcessKind.Kernel] = "드라이버·커널 할당입니다 (페이징 버퍼, 화면 출력 등).",
+        [ProcessKind.App] = "창 버퍼와 UI 표면입니다.",
+    };
+
+    private readonly GpuMemoryMonitor _monitor;
+    private readonly SharedHardwareHub _hub;
+    private readonly Func<StrataContext> _strata;
+    private readonly TimeProvider _time;
+    private readonly Dictionary<(ProcessKey, long), GpuProcessRow> _rows = [];
+    private readonly HashSet<GpuProcessRow> _shown = [];
+    private readonly GpuMemoryPageSettings _page;
+    private readonly Action? _savePage;
+    private readonly RuntimeReportPoller? _reports;
+    private readonly IProcessIcons? _icons;
+    private int _reportsVersion = -1;
+    private StrataContext? _strataContext;
+    private (string Name, int Pid)? _lost;
+    private Baseline? _baseline;
+    private Dictionary<(ProcessKey, long), (long? Delta, string? Note, Baseline.Entry? Then)> _deltas = [];
+    private List<Baseline.Entry> _gone = [];
+    private GpuMemorySnapshot? _current;
+    private ServerProcessLink? _link;
+    private ServerProcessLink? _basaltLink;
+    private BasaltContext? _basaltContext;
+    private readonly Func<BasaltContext>? _basalt;
+    private RuntimeSnapshot? _strataSnapshot;
+    private bool _rendered;
+    private DateTimeOffset? _renderedAt;
+    private bool _renderedStale;
+    private string? _renderedKey;
+
+    /// <param name="page">Where the page's layout is remembered (the shell settings); a private copy when null.</param>
+    /// <param name="savePage">Writes <paramref name="page"/> (the shell settings file); failures only cost the memory of the layout.</param>
+    /// <param name="runtimeHttp">
+    /// Asks local runtimes about the selected process (Strata's /metrics, Ollama's /api/ps, llama.cpp's /props and /models);
+    /// null asks nothing.
+    /// </param>
+    /// <param name="icons">The processes' executable icons for the table; null shows none.</param>
+    /// <param name="basalt">The Basalt server's port while it runs (the shell's Basalt control); null leaves Basalt out.</param>
+    public GpuMemoryViewModel(GpuMemoryMonitor monitor, SharedHardwareHub hub, Func<StrataContext> strata, TimeProvider? time = null,
+        GpuMemoryPageSettings? page = null, Action? savePage = null, IRuntimeHttp? runtimeHttp = null, IProcessIcons? icons = null,
+        Func<BasaltContext>? basalt = null)
+    {
+        _monitor = monitor;
+        _hub = hub;
+        _strata = strata;
+        _basalt = basalt;
+        _time = time ?? TimeProvider.System;
+        _page = page ?? new GpuMemoryPageSettings();
+        _page.Normalize();
+        _savePage = savePage;
+        _reports = runtimeHttp is null ? null : new RuntimeReportPoller(runtimeHttp, _time);
+        _icons = icons;
+        if (icons is not null)
+        {
+            icons.Changed += () =>
+            {
+                foreach (var row in _rows.Values)
+                {
+                    row.Icon = icons.Icon(row.Pid, row.Name);
+                }
+            };
+        }
+        ShowAll = _page.ShowAll;
+        ChartMetric = _page.ChartMetric;
+        ChartMinutes = _page.ChartMinutes;
+    }
+
+    public ObservableCollection<AdapterSlot> Adapters { get; } = [];
+
+    /// <summary>The visible rows (filter and "전체" applied); the view sorts them.</summary>
+    public ObservableCollection<GpuProcessRow> Processes { get; } = [];
+
+    public ObservableCollection<string> Issues { get; } = [];
+
+    [ObservableProperty] public partial GpuProcessRow? SelectedProcess { get; set; }
+    [ObservableProperty] public partial ProcessDetailView? Detail { get; set; }
+    [ObservableProperty] public partial Level StatusLevel { get; set; } = Level.Muted;
+    [ObservableProperty] public partial string StatusText { get; set; } = "";
+    [ObservableProperty] public partial string StatusToolTip { get; set; } = "";
+    [ObservableProperty] public partial bool IsMock { get; set; }
+
+    /// <summary>Shown over the table instead of rows (no reading yet, stale, unavailable, switched off).</summary>
+    [ObservableProperty] public partial string Message { get; set; } = "";
+    [ObservableProperty] public partial string MessageDetail { get; set; } = "";
+    [ObservableProperty] public partial bool HasValues { get; set; }
+    [ObservableProperty] public partial string CountText { get; set; } = "";
+
+    /// <summary>Why the table is empty while there are values (nothing above the listing threshold, or the filter matches nothing).</summary>
+    [ObservableProperty] public partial string EmptyText { get; set; } = "";
+    [ObservableProperty] public partial bool ShowGpuColumn { get; set; }
+    [ObservableProperty] public partial string StrataText { get; set; } = "";
+    [ObservableProperty] public partial Level StrataLevel { get; set; } = Level.Muted;
+    [ObservableProperty] public partial string? StrataToolTip { get; set; }
+
+    /// <summary>Holds the table and the detail panel on the values they show (the reader keeps reading).</summary>
+    [ObservableProperty] public partial bool IsPaused { get; set; }
+
+    /// <summary>Also list processes below 1 MiB local / 16 MiB shared or committed.</summary>
+    [ObservableProperty] public partial bool ShowAll { get; set; }
+
+    /// <summary>Name, PID, kind, runtime or model.</summary>
+    [ObservableProperty] public partial string Filter { get; set; } = "";
+
+    /// <summary>Only processes of this kind (set by clicking a legend entry); null = all.</summary>
+    [ObservableProperty] public partial ProcessKind? KindFilter { get; set; }
+
+    /// <summary>Only processes of this kind group (set by clicking a device strip legend entry); null = all.</summary>
+    [ObservableProperty] public partial KindGroup? GroupFilter { get; set; }
+    [ObservableProperty] public partial string KindFilterText { get; set; } = "";
+
+    /// <summary>Strata's status is shown in the toolbar only while Strata answers (reachable); otherwise it is in the status tooltip.</summary>
+    [ObservableProperty] public partial bool ShowStrataStatus { get; set; }
+
+    /// <summary>Basalt's status in the toolbar, shown while Basalt runs (the Basalt page controls it).</summary>
+    [ObservableProperty] public partial bool ShowBasaltStatus { get; set; }
+    [ObservableProperty] public partial string BasaltText { get; set; } = "";
+    [ObservableProperty] public partial string BasaltToolTip { get; set; } = "";
+    [ObservableProperty] public partial Level BasaltLevel { get; set; } = Level.Muted;
+
+    /// <summary>A baseline is held: rows and adapters show the change since it (B1).</summary>
+    [ObservableProperty] public partial bool HasBaseline { get; set; }
+
+    /// <summary>When the baseline was taken and how each adapter changed since.</summary>
+    [ObservableProperty] public partial string BaselineText { get; set; } = "";
+
+    /// <summary>Processes listed at the baseline that are no longer in the list (ended or released their GPU memory).</summary>
+    [ObservableProperty] public partial string BaselineGone { get; set; } = "";
+
+    /// <summary>The detail chart's metric (Dedicated, Shared, Gpu) and window in minutes; remembered in the shell settings.</summary>
+    [ObservableProperty] public partial string ChartMetric { get; set; } = "Dedicated";
+    [ObservableProperty] public partial int ChartMinutes { get; set; } = 15;
+
+    public IReadOnlyList<ChoiceOption> ChartMetricOptions { get; } = [new("전용", "Dedicated"), new("공유", "Shared"), new("GPU %", "Gpu")];
+
+    public IReadOnlyList<ChoiceOption> ChartWindowOptions { get; } = [new("5분", 5), new("15분", 15), new("30분", 30)];
+
+    /// <summary>The detail panel's text while no process is selected (why, when the selected one went away).</summary>
+    [ObservableProperty] public partial string DetailPlaceholder { get; set; } = DefaultPlaceholder;
+    [ObservableProperty] public partial bool HelpOpen { get; set; }
+
+    /// <summary>The page is on screen: the reader then reads every 2 s and includes engines and loaded files.</summary>
+    [ObservableProperty] public partial bool IsVisible { get; set; }
+
+    public IReadOnlyList<LegendItem> ValueKinds { get; } =
+    [
+        new("#F0EFEC", "측정", "Windows·드라이버가 보고한 값 (별도 표시 없음)"),
+        new("#F0EFEC", "계산", "측정값의 합·차 (예: 나뉘지 않음)"),
+        new("#898781", "추정", "모델 파일 헤더와 컨텍스트로 계산한 값 (빗금, \"추정\" 표시)", IsEstimate: true),
+        new("#F0EFEC", "런타임 보고", "Strata·Ollama·llama.cpp가 자체 API로 알린 설정값이나 마지막 보고값 (지금의 사용량이 아님)"),
+        new("#898781", "N/A", "측정할 수 없거나 보고되지 않음 (0이 아님)"),
+    ];
+
+    public IReadOnlyList<DetailFact> Knowable { get; } =
+    [
+        new("GPU 전체 사용량", "WDDM 어댑터 카운터, NVML — 측정"),
+        new("프로세스별 VRAM·공유", "WDDM 프로세스 카운터 (Local / Non Local Usage) — 측정"),
+        new("엔진 사용률", "WDDM 엔진 카운터 — 측정. CUDA 작업이 3D 엔진에 보일 수 있음"),
+        new("런타임", "프로세스에 불러온 DLL 이름 — 감지 (GPU 작업의 증거는 아님)"),
+        new("모델 파일", "프로세스에 매핑된 파일과 디스크의 GGUF 헤더 — 확인"),
+        new("가중치·KV 캐시", "헤더 구조 × 컨텍스트 — 추정 (런타임 로그나 API가 있어야 정확)"),
+        new("런타임 설정·보고값", "Strata /metrics의 engine, Ollama /api/ps, llama.cpp /props·/models — 보고 (선택한 프로세스만, 10초마다)"),
+        new("텍스처·텐서 이름", "그래픽 디버거(PIX, Nsight)가 필요 — 알 수 없음"),
+    ];
+
+    /// <summary>How the page is used (keys and clicks); the first section of the help panel.</summary>
+    public IReadOnlyList<DetailFact> Tips { get; } =
+    [
+        new("Ctrl+F", "찾기: 이름·PID·종류·런타임·모델. Esc로 지우고 Enter나 ↓로 표로 이동"),
+        new("범례 항목 누르기", "그 묶음(LLM·AI·연산·앱·그래픽·Windows)만 표에 보기. 다시 누르면 전체. 정확한 종류는 행 오른쪽 클릭"),
+        new("머리글", "눌러서 정렬, 오른쪽 클릭으로 열 보이기·숨기기"),
+        new("행 오른쪽 클릭", "이름·PID·행·상세 복사 (Ctrl+C는 행 복사)"),
+        new("표 위의 마우스", "올려 두는 동안 행 순서 고정 (값은 계속 갱신)"),
+        new("구분선", "끌어서 상세 영역 크기 조절, 두 번 누르면 기본 크기"),
+    ];
+
+    public IReadOnlyList<string> Checks { get; } =
+    [
+        "작업 관리자 › 세부 정보 › 열 선택 › 전용·공유 GPU 메모리",
+        "성능 모니터 › GPU Process Memory › Local Usage (이 화면이 읽는 카운터)",
+        "nvidia-smi --query-gpu=memory.used,memory.total --format=csv (장치 전체)",
+    ];
+
+    /// <summary>Sort column of the table (a column key of <see cref="GpuMemoryPageSettings.ColumnKeys"/>).</summary>
+    public string SortColumn => _page.SortColumn ?? "Dedicated";
+
+    public bool SortDescending => _page.SortColumn is null || _page.SortDescending;
+
+    public IReadOnlyCollection<string> HiddenColumns => _page.HiddenColumns;
+
+    /// <summary>Height of the detail panel chosen with the splitter; 0 = the default share.</summary>
+    public double DetailHeight => _page.DetailHeight;
+
+    /// <summary>Where the detail panel goes: "Auto", "Below" or "Beside" (remembered).</summary>
+    public string LayoutMode => _page.Layout;
+
+    public double DetailWidth => _page.DetailWidth;
+
+    /// <summary>The narrowest the detail panel can be beside the table (its figures and the chart stacked).</summary>
+    public const double DetailMinWidth = 440;
+
+    /// <summary>
+    /// Whether the detail panel goes beside the table: always for "Beside", never for "Below"; for "Auto" only when the width
+    /// (device-independent pixels, so a 4K screen at 175% counts as about 2,190) holds the visible columns at their minimum
+    /// widths plus the splitter and the detail panel's minimum, so the table never needs a horizontal scroll bar for it.
+    /// </summary>
+    public static bool UseBeside(string mode, double available, double tableMinWidth)
+        => mode switch
+        {
+            "Beside" => true,
+            "Below" => false,
+            _ => double.IsFinite(available) && available >= tableMinWidth + 6 + DetailMinWidth,
+        };
+
+    /// <summary>Remembers where the detail panel goes.</summary>
+    public void SetLayoutMode(string mode)
+    {
+        if (!GpuMemoryPageSettings.Layouts.Contains(mode) || mode == _page.Layout)
+        {
+            return;
+        }
+
+        _page.Layout = mode;
+        SavePage();
+        OnPropertyChanged(nameof(LayoutMode));
+    }
+
+    /// <summary>Remembers the detail panel's width beside the table (0: the default share).</summary>
+    public void SetDetailWidth(double width)
+    {
+        var value = double.IsFinite(width) && width is > 0 and < 4000 ? Math.Round(width) : 0;
+        if (value != _page.DetailWidth)
+        {
+            _page.DetailWidth = value;
+            SavePage();
+        }
+    }
+
+    [RelayCommand]
+    private void TogglePause() => IsPaused = !IsPaused;
+
+    [RelayCommand]
+    private void ToggleHelp() => HelpOpen = !HelpOpen;
+
+    /// <summary>Shows only processes of one kind; the same kind again shows all.</summary>
+    [RelayCommand]
+    private void FilterKind(ProcessKind? kind) => KindFilter = KindFilter == kind ? null : kind;
+
+    [RelayCommand]
+    private void FilterGroup(KindGroup? group) => GroupFilter = GroupFilter == group ? null : group;
+
+    [RelayCommand]
+    private void ClearKindFilter()
+    {
+        KindFilter = null;
+        GroupFilter = null;
+    }
+
+    /// <summary>Takes a baseline now, or drops the one held.</summary>
+    [RelayCommand]
+    private void ToggleBaseline() => HasBaseline = !HasBaseline;
+
+    [RelayCommand]
+    private void ClearFilter() => Filter = "";
+
+    /// <summary>Selects the process that holds the Strata model (clearing filters that hide it).</summary>
+    [RelayCommand(CanExecute = nameof(CanShowStrata))]
+    private void ShowStrata()
+    {
+        if (_rows.Values.Where(r => r.IsStrata).OrderByDescending(r => r.Dedicated).FirstOrDefault() is not { } row)
+        {
+            return;
+        }
+
+        if (!_shown.Contains(row))
+        {
+            Filter = "";
+            ClearKindFilter();
+        }
+
+        SelectedProcess = row;
+    }
+
+    private bool CanShowStrata() => _rows.Values.Any(r => r.IsStrata);
+
+    /// <summary>Selects the Basalt process with the most dedicated memory (its engine, usually), clearing filters that hide it.</summary>
+    [RelayCommand(CanExecute = nameof(CanShowBasalt))]
+    private void ShowBasalt()
+    {
+        if (_rows.Values.Where(r => r.ServerLabel == "Basalt").OrderByDescending(r => r.Dedicated).FirstOrDefault() is not { } row)
+        {
+            return;
+        }
+
+        if (!_shown.Contains(row))
+        {
+            Filter = "";
+            ClearKindFilter();
+        }
+
+        SelectedProcess = row;
+    }
+
+    private bool CanShowBasalt() => _rows.Values.Any(r => r.ServerLabel == "Basalt");
+
+    /// <summary>The port of a running Basalt on this PC; null when Basalt is off (or the shell has no Basalt control).</summary>
+    public static int? BasaltPort(BasaltContext? basalt) => basalt?.Port is int port and > 0 and <= 65535 ? port : null;
+
+    public void SetSort(string column, bool descending)
+    {
+        if (!GpuMemoryPageSettings.ColumnKeys.Contains(column) || (column == SortColumn && descending == SortDescending))
+        {
+            return;
+        }
+
+        _page.SortColumn = column;
+        _page.SortDescending = descending;
+        SavePage();
+    }
+
+    public void SetColumnHidden(string column, bool hidden)
+    {
+        if (!GpuMemoryPageSettings.ColumnKeys.Contains(column) || column == "Name" || _page.HiddenColumns.Contains(column) == hidden)
+        {
+            return;
+        }
+
+        if (hidden)
+        {
+            _page.HiddenColumns.Add(column);
+        }
+        else
+        {
+            _page.HiddenColumns.Remove(column);
+        }
+
+        SavePage();
+    }
+
+    public void ResetColumns()
+    {
+        if (_page.HiddenColumns.Count > 0)
+        {
+            _page.HiddenColumns.Clear();
+            SavePage();
+        }
+    }
+
+    public void SetDetailHeight(double height)
+    {
+        var value = double.IsFinite(height) && height is > 0 and < 4000 ? Math.Round(height) : 0;
+        if (value != _page.DetailHeight)
+        {
+            _page.DetailHeight = value;
+            SavePage();
+        }
+    }
+
+    /// <summary>One row as tab-separated text (pasting into a spreadsheet or a message keeps the columns).</summary>
+    public static string RowText(GpuProcessRow row) => string.Join('\t',
+        row.Name, row.Pid.ToString(CultureInfo.InvariantCulture), row.KindLabel, row.DedicatedText, row.SharedText,
+        row.GpuText.Length > 0 ? row.GpuText + "%" : Text.NA, row.Runtimes, row.InsideIsGeneric ? "" : row.Inside, row.AdapterFull);
+
+    /// <summary>The selected process as plain text, with each value's kind (measured, Strata's report, estimate) and the source.</summary>
+    public string? DetailText()
+    {
+        if (Detail is not { } d || _current is not { } s)
+        {
+            return null;
+        }
+
+        var lines = new List<string>
+        {
+            $"{d.Title} (PID {d.Pid}) · {d.Kind} — {d.KindBasis}",
+            d.Subtitle,
+            $"전용 {d.Dedicated}{(d.DedicatedShare is { } share ? $" ({share})" : "")} · 공유 {d.Shared} · 커밋 {d.Committed} · GPU {d.Gpu}"
+                + (d.Engines.Length > 0 ? $" ({d.Engines})" : ""),
+            $"런타임: {d.Runtimes}",
+        };
+        lines.AddRange(d.Models.Select(m => $"모델 파일: {m.Name} — {m.Summary} ({m.Size})"));
+        if (d.BreakdownLegend.Count > 0)
+        {
+            lines.Add((d.Breakdown.Count > 0 ? "구성 (추정): " : "비교: ") + string.Join(" · ", d.BreakdownLegend.Select(l => $"{l.Label} {l.Value}"))
+                      + ((d.BreakdownDetails ?? d.BreakdownNote) is { } note ? $" — {note}" : ""));
+        }
+        else if ((d.BreakdownDetails ?? d.BreakdownNote) is { } withheldNote)
+        {
+            lines.Add($"구성: {withheldNote}");
+        }
+
+        if (d.StrataModel is not null)
+        {
+            lines.Add($"Strata 보고: 모델 {d.StrataModel} · 컨텍스트 {d.StrataWindow} · 슬롯 토큰 {d.StrataSlots}");
+        }
+
+        lines.AddRange(d.Reports.Select(g => $"{g.Title}: " + string.Join(" · ", g.Facts.Select(f => $"{f.Label} {f.Value}"))
+                                             + ((g.Details ?? g.Note) is { Length: > 0 } text ? $" — {text}" : "")));
+
+        lines.Add($"측정 {Text.DateTime(s.Timestamp)} · 출처 {s.Source}");
+        return string.Join(Environment.NewLine, lines.Where(l => !string.IsNullOrWhiteSpace(l)));
+    }
+
+    /// <summary>"RTX 5080" for "NVIDIA GeForce RTX 5080": vendor words and trademark signs dropped (the full name is the tooltip).</summary>
+    public static string ShortAdapterName(string name)
+    {
+        var shortName = name;
+        foreach (var token in AdapterNoise)
+        {
+            shortName = shortName.Replace(token, " ", StringComparison.OrdinalIgnoreCase);
+        }
+
+        shortName = string.Join(' ', shortName.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return shortName.Length > 0 ? shortName : name;
+    }
+
+    private void SavePage()
+    {
+        try
+        {
+            _savePage?.Invoke();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            // Only the remembered layout is lost; the page itself is unaffected.
+        }
+    }
+
+    partial void OnIsVisibleChanged(bool value)
+    {
+        if (value)
+        {
+            // The port first, so the immediate reading that SetActive triggers already identifies the Strata processes.
+            UpdateWatchedPorts(_strata(), _time.GetUtcNow());
+            _monitor.SetActive(true);
+            Refresh();
+        }
+        else
+        {
+            _monitor.SetActive(false);
+            _reports?.Update([]); // nothing is asked while the page is closed
+        }
+    }
+
+    partial void OnIsPausedChanged(bool value)
+    {
+        if (!value)
+        {
+            _rendered = false;
+            Refresh();
+        }
+        else
+        {
+            StatusText = $"일시정지 · {Text.Clock(_renderedAt)} 값";
+            StatusLevel = Level.Muted;
+        }
+    }
+
+    partial void OnShowAllChanged(bool value)
+    {
+        if (_page.ShowAll != value)
+        {
+            _page.ShowAll = value;
+            SavePage();
+        }
+
+        RebuildRows(force: true, userAction: true);
+    }
+
+    partial void OnFilterChanged(string value) => RebuildRows(force: true, userAction: true);
+
+    partial void OnHasBaselineChanged(bool value)
+    {
+        if (value && _current is { } s)
+        {
+            _baseline = Baseline.Of(s);
+        }
+        else if (value)
+        {
+            HasBaseline = false; // nothing measured to compare against yet
+            return;
+        }
+        else
+        {
+            _baseline = null;
+        }
+
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true);
+    }
+
+    partial void OnChartMetricChanged(string value)
+    {
+        if (!GpuMemoryPageSettings.ChartMetrics.Contains(value))
+        {
+            ChartMetric = "Dedicated";
+            return;
+        }
+
+        if (_page.ChartMetric != value)
+        {
+            _page.ChartMetric = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    partial void OnChartMinutesChanged(int value)
+    {
+        if (!GpuMemoryPageSettings.ChartWindows.Contains(value))
+        {
+            ChartMinutes = 15;
+            return;
+        }
+
+        if (_page.ChartMinutes != value)
+        {
+            _page.ChartMinutes = value;
+            SavePage();
+        }
+
+        BuildDetail();
+    }
+
+    /// <summary>The comparison with the baseline as text: adapters, the listed processes and those gone since.</summary>
+    public string? BaselineReport()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        var lines = new List<string> { $"기준점 {Text.DateTime(b.At)} → {Text.DateTime(s.Timestamp)} (전용 메모리 변화, 측정값의 차)" };
+        lines.AddRange(s.Adapters.Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+            ? $"{a.Info?.Name ?? GpuLuid.Format(a.Luid)}\t{Signed(d)}" : null).OfType<string>());
+        lines.AddRange(Processes.OrderByDescending(r => r.Delta).Select(r =>
+            string.Join('\t', r.Name, r.Pid.ToString(CultureInfo.InvariantCulture), r.DeltaText, r.DeltaNote ?? "", r.DedicatedText)));
+        if (BaselineGone.Length > 0)
+        {
+            lines.Add(BaselineGone);
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// The comparison with the baseline as CSV (G4): one row per adapter, per process in this reading and per process gone
+    /// since, with the baseline's and this reading's times, the GPU, the process (name, PID, start time), both values, the
+    /// difference and the unit (bytes, as measured). Times are local with their offset (ISO 8601).
+    /// </summary>
+    public string? BaselineCsv()
+    {
+        if (_baseline is not { } b || _current is not { } s)
+        {
+            return null;
+        }
+
+        static string Iso(DateTimeOffset? t) => t is { } v ? v.ToLocalTime().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture) : "";
+        static string Num(long? v) => v is long n ? n.ToString(CultureInfo.InvariantCulture) : "";
+        string Gpu(long luid) => s.Adapter(luid)?.Info?.Name ?? GpuLuid.Format(luid);
+        var rows = new List<string[]>
+        {
+            new[] { "구분", "이름", "PID", "프로세스 시작 시각", "GPU", "기준점 측정 시각", "현재 측정 시각", "기준점 전용", "현재 전용", "차이", "단위", "비고" },
+        };
+        foreach (var a in s.Adapters)
+        {
+            if (b.AdapterDedicated.TryGetValue(a.Luid, out var then))
+            {
+                rows.Add(["어댑터", Gpu(a.Luid), "", "", Gpu(a.Luid), Iso(b.At), Iso(s.Timestamp), Num(then), Num(a.DedicatedUsageBytes),
+                    Num(Diff(a.DedicatedUsageBytes, then)), "bytes", "어댑터 전용 사용량 (측정)"]);
+            }
+        }
+
+        foreach (var p in s.Processes.OrderByDescending(p => p.DedicatedBytes ?? 0).ThenBy(p => p.ProcessId))
+        {
+            if (!_deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+            {
+                continue;
+            }
+
+            var entry = s.Process(p.ProcessId);
+            rows.Add(["프로세스", entry?.Name ?? $"PID {p.ProcessId}", p.ProcessId.ToString(CultureInfo.InvariantCulture), Iso(entry?.StartTime), Gpu(p.Luid),
+                Iso(b.At), Iso(s.Timestamp), Num(change.Then?.Dedicated), Num(p.DedicatedBytes), Num(change.Delta), "bytes", change.Note ?? "같은 프로세스"]);
+        }
+
+        foreach (var g in _gone)
+        {
+            rows.Add(["사라짐", g.Name, g.Pid.ToString(CultureInfo.InvariantCulture), g.Key.StartTicks > 0 ? Iso(new DateTimeOffset(g.Key.StartTicks, TimeSpan.Zero)) : "",
+                Gpu(g.Luid), Iso(b.At), Iso(s.Timestamp), Num(g.Dedicated), "", g.Dedicated is long d ? Num(-d) : "", "bytes", "종료했거나 GPU 메모리를 놓음"]);
+        }
+
+        return string.Join("\r\n", rows.Select(r => string.Join(',', r.Select(CsvField)))) + "\r\n";
+    }
+
+    /// <summary>A CSV field, quoted when it holds a comma, a quote or a line break (RFC 4180).</summary>
+    private static string CsvField(string value)
+        => value.IndexOfAny([',', '"', '\r', '\n']) < 0 ? value : "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+
+    /// <summary>A file name for the CSV: when the comparison was saved.</summary>
+    public string BaselineCsvFileName() => $"gpu-memory-baseline-{_time.GetUtcNow().ToLocalTime():yyyyMMdd-HHmmss}.csv";
+
+    partial void OnKindFilterChanged(ProcessKind? value)
+    {
+        if (value is not null && GroupFilter is not null)
+        {
+            GroupFilter = null; // one filter at a time; the group's handler rebuilds
+            return;
+        }
+
+        OnFiltersChanged();
+    }
+
+    partial void OnGroupFilterChanged(KindGroup? value)
+    {
+        if (value is not null && KindFilter is not null)
+        {
+            KindFilter = null;
+            return;
+        }
+
+        OnFiltersChanged();
+    }
+
+    private void OnFiltersChanged()
+    {
+        KindFilterText = KindFilter is { } kind ? $"종류: {KindLabels[kind]}" : GroupFilter is { } group ? $"종류: {GroupLabels[group]}" : "";
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current)); // the active legend entry
+        }
+
+        RebuildRows(force: true, userAction: true);
+    }
+
+    partial void OnSelectedProcessChanged(GpuProcessRow? value)
+    {
+        if (value is not null)
+        {
+            _lost = null;
+            DetailPlaceholder = DefaultPlaceholder;
+        }
+
+        UpdateReports(); // the new selection is asked about at once, not at the next refresh
+        BuildDetail();
+    }
+
+    /// <summary>A reading older than three intervals plus two seconds is not shown as current.</summary>
+    public static TimeSpan StaleAfter(GpuMemorySnapshot snapshot)
+        => (snapshot.ExpectedInterval > TimeSpan.Zero ? snapshot.ExpectedInterval : GpuMemoryMonitor.DefaultBackgroundInterval) * 3 + TimeSpan.FromSeconds(2);
+
+    /// <summary>The port of a reachable, recently polled, local Strata server; null otherwise (nothing is linked then).</summary>
+    public static int? StrataPort(StrataContext strata, DateTimeOffset now)
+    {
+        if (strata.Snapshot is not { IsReachable: true } snapshot || now - snapshot.Timestamp > StrataMaxAge
+            || !Uri.TryCreate(snapshot.Endpoint, UriKind.Absolute, out var uri) || !ServerProcessLinker.IsLocalHost(uri.Host))
+        {
+            return null;
+        }
+
+        return uri.Port;
+    }
+
+    /// <summary>Called every second while the page is visible. Cheap: readings come from the reader thread.</summary>
+    public void Refresh()
+    {
+        var now = _time.GetUtcNow();
+        var health = _monitor.Health;
+        var latest = _monitor.Latest;
+        var strata = _strata();
+        var basalt = _basalt?.Invoke();
+        _basaltContext = basalt;
+        UpdateWatchedPorts(strata, now);
+        var age = latest is null ? (TimeSpan?)null : now - latest.Timestamp;
+        // Stale by age, or because no further readings can come (reader stopped, unavailable or switched off).
+        var stale = latest is not null && (health.State is GpuMemoryMonitorState.Stopped or GpuMemoryMonitorState.Unavailable or GpuMemoryMonitorState.Disabled
+                                           || age > StaleAfter(latest));
+        if (IsPaused && _rendered)
+        {
+            return;
+        }
+
+        UpdateStatus(health, latest, age, stale);
+        var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}|{BasaltPort(basalt)}|{basalt?.OwnerPid}|{basalt?.OwnerStart:O}|{basalt?.ObservedAt:O}";
+        _strataContext = strata;
+        if (_rendered && latest?.Timestamp == _renderedAt && stale == _renderedStale && key == _renderedKey)
+        {
+            UpdateStrata(strata, now);
+            UpdateBasalt();
+            if (UpdateReports())
+            {
+                BuildDetail();
+            }
+
+            return;
+        }
+
+        _rendered = true;
+        _renderedAt = latest?.Timestamp;
+        _renderedStale = stale;
+        _renderedKey = key;
+        IsMock = latest?.IsMock ?? health.IsMock;
+        _current = latest is not null && !stale ? latest : null;
+        _strataSnapshot = strata.Snapshot;
+        _link = _current is not null && StrataPort(strata, now) is not null ? ServerProcessLinker.Link(strata.Snapshot!.Endpoint, _current) : null;
+        _basaltLink = _current is not null && BasaltPort(basalt) is int basaltPort && basalt is { OwnerPid: int pid, OwnerStart: { } start, ObservedAt: { } observed } &&
+                     (_current.Timestamp - observed).Duration() <= StaleAfter(_current) && _current.Process(pid)?.StartTime == start &&
+                     _current.Listeners.Any(l => l.Port == basaltPort && l.ProcessId == pid)
+            ? ServerProcessLinker.Link($"http://127.0.0.1:{basaltPort.ToString(CultureInfo.InvariantCulture)}", _current, ProcessKinds.IsBasaltName)
+            : null;
+        UpdateStrata(strata, now);
+        UpdateBasalt();
+        UpdateReports();
+        HasValues = _current is not null;
+        Replace(Issues, [.. (latest?.Issues ?? []).Select(i => $"{i.Source} [{i.Scope}]: {i.Message}").Distinct()]);
+        (Message, MessageDetail) = health.State switch
+        {
+            GpuMemoryMonitorState.Disabled => ("프로세스별 GPU 메모리 읽기가 꺼져 있습니다", "설정 › 공통 › 공통 센서에서 켤 수 있습니다."),
+            GpuMemoryMonitorState.Unavailable => ("Windows GPU 카운터를 읽을 수 없습니다", health.UnavailableReason ?? ""),
+            _ when latest is null => ("첫 측정을 기다리는 중", ""),
+            _ when stale => ("새 측정값이 없습니다", $"마지막 측정 {Text.Clock(latest.Timestamp)} · 오래된 값은 표시하지 않습니다."),
+            _ => ("", ""),
+        };
+        SyncAdapters(_current is null ? [] : BuildAdapters(_current));
+        RebuildRows(force: true);
+    }
+
+    private void UpdateStatus(GpuMemoryHealth health, GpuMemorySnapshot? latest, TimeSpan? age, bool stale)
+    {
+        (StatusLevel, StatusText) = health.State switch
+        {
+            GpuMemoryMonitorState.Disabled => (Level.Muted, "꺼짐"),
+            GpuMemoryMonitorState.Unavailable => (Level.Warning, "사용 불가"),
+            _ when latest is null => (Level.Muted, "측정 대기"),
+            _ when stale => (Level.Error, $"새 측정 없음 · 마지막 {Text.Clock(latest.Timestamp)}"),
+            _ => (latest.IsMock || latest.Variant != ProcessCounterVariant.LocalNonLocal ? Level.Warning : Level.Good,
+                (latest.IsMock ? "MOCK · " : "") + $"{Text.Clock(latest.Timestamp)} · {health.Interval.TotalSeconds:0.#}초마다"),
+        };
+        var lines = new List<string> { $"출처: {latest?.Source ?? health.ProviderName}" };
+        if (latest is not null)
+        {
+            lines.Add(latest.Variant switch
+            {
+                ProcessCounterVariant.LocalNonLocal => "프로세스 값: Local Usage / Non Local Usage",
+                ProcessCounterVariant.DedicatedShared => "프로세스 값: Dedicated Usage / Shared Usage (대체 카운터 — 공유 리소스가 중복 집계될 수 있음)",
+                _ => "프로세스 값: 읽을 수 없음",
+            });
+            lines.Add($"측정 {Text.DateTime(latest.Timestamp)} ({Text.Age(age ?? TimeSpan.Zero)}) · 한 번 읽는 데 {latest.CollectionTime.TotalMilliseconds:0} ms");
+        }
+
+        if (health.Failures > 0)
+        {
+            lines.Add($"읽기 예외 {health.Failures}회 — {health.LastError}");
+        }
+
+        lines.AddRange((latest?.Issues ?? []).Select(i => $"• {i.Message}"));
+        StatusToolTip = string.Join(Environment.NewLine, lines);
+    }
+
+    private void UpdateStrata(StrataContext strata, DateTimeOffset now)
+    {
+        if (strata.Snapshot is not { } rt)
+        {
+            (StrataLevel, StrataText, StrataToolTip) = (Level.Muted, "Strata 꺼짐", strata.Unavailable);
+            ShowStrataStatus = false;
+            return;
+        }
+
+        var port = StrataPort(strata, now);
+        var holder = _link is { IsLinked: true } link
+            ? link.Processes.FirstOrDefault(p => p.Memory.Any(m => m.DedicatedBytes > 0))?.Process ?? link.Listener
+            : null;
+        StrataLevel = !rt.IsReachable ? Level.Muted : port is null ? Level.Warning : Level.Good;
+        // The local AI module reading Basalt through Strata's API (same port): one chip, Basalt's.
+        ShowStrataStatus = rt.IsReachable && !(port is not null && port == BasaltPort(_basaltContext) && _basaltLink is { IsLinked: true });
+        StrataText = !rt.IsReachable ? $"Strata {RuntimeStateText.ToKorean(rt.State)}"
+            : holder is not null ? $"Strata · {holder.Name}"
+            : "Strata 연결됨";
+        StrataToolTip = string.Join(Environment.NewLine, new[]
+        {
+            $"{RuntimeStateText.ToKorean(rt.State)} · {rt.Endpoint} · 조회 {Text.Clock(rt.Timestamp)}",
+            rt.IsReachable && port is null ? "이 PC의 주소가 아니거나 조회가 오래되어 프로세스와 연결하지 않습니다." : null,
+            _link is { IsLinked: false, Reason: { } reason } ? reason : null,
+            _link is { IsLinked: true } l ? string.Join(Environment.NewLine, l.Evidence) : null,
+        }.Where(x => x is not null));
+    }
+
+    private void UpdateWatchedPorts(StrataContext strata, DateTimeOffset now)
+        => _monitor.SetWatchedPorts(new[] { StrataPort(strata, now), BasaltPort(_basaltContext) }.OfType<int>().Distinct());
+
+    private void UpdateBasalt()
+    {
+        if (BasaltPort(_basaltContext) is not int port)
+        {
+            ShowBasaltStatus = false;
+            BasaltText = "";
+            BasaltToolTip = _basaltContext?.State ?? "";
+            ShowBasaltCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        var holder = _basaltLink is { IsLinked: true } link
+            ? link.Processes.Where(p => p.Memory.Any(m => m.DedicatedBytes > 0)).OrderByDescending(p => p.Memory.Sum(m => m.DedicatedBytes ?? 0)).FirstOrDefault()?.Process
+              ?? link.Listener
+            : null;
+        ShowBasaltStatus = true;
+        BasaltLevel = _basaltLink is { IsLinked: true } ? Level.Good : Level.Warning;
+        BasaltText = holder is not null ? $"Basalt · {holder.Name}" : "Basalt";
+        var sharesPort = StrataPort(_strataContext ?? new StrataContext(null, null), _time.GetUtcNow()) == port;
+        BasaltToolTip = string.Join(Environment.NewLine, new[]
+        {
+            $"{_basaltContext!.State} · 127.0.0.1:{port}",
+            sharesPort ? "로컬 AI 모듈도 이 주소에 Strata API로 연결되어 있습니다." : null,
+            _basaltLink is { IsLinked: false, Reason: { } reason } ? reason : null,
+            _basaltLink is { IsLinked: true } l ? string.Join(Environment.NewLine, l.Evidence) : null,
+        }.Where(x => x is not null));
+        ShowBasaltCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SyncAdapters(IReadOnlyList<(long Luid, AdapterView View)> views)
+    {
+        if (Adapters.Count == views.Count && Adapters.Select(a => a.Luid).SequenceEqual(views.Select(v => v.Luid)))
+        {
+            for (var i = 0; i < views.Count; i++)
+            {
+                Adapters[i].View = views[i].View;
+            }
+
+            return;
+        }
+
+        Adapters.Clear();
+        foreach (var (luid, view) in views)
+        {
+            Adapters.Add(new AdapterSlot(luid, view));
+        }
+    }
+
+    internal static GpuSample? MatchNvml(GpuAdapterInfo adapter, IReadOnlyList<GpuAdapterMemory> adapters, IReadOnlyList<GpuSample> samples)
+    {
+        var nvidia = adapters.Where(a => a.Info is { IsNvidia: true, IsSoftware: false }).ToArray();
+        if (!adapter.IsNvidia || adapter.IsSoftware || nvidia.Length != samples.Count || samples.Count == 0) return null;
+        if (samples.Count == 1 && (adapter.PciAddress is null || samples[0].PciAddress is null)) return samples[0];
+        if (adapter.PciAddress is not { } location ||
+            nvidia.Any(a => a.Info!.PciAddress is null) ||
+            nvidia.Count(a => a.Info!.PciAddress!.Value.SameLocation(location)) != 1 ||
+            samples.Any(g => g.PciAddress is not { Domain: 0 } || string.IsNullOrWhiteSpace(g.DeviceUuid)) ||
+            samples.Select(g => g.DeviceUuid).Distinct(StringComparer.OrdinalIgnoreCase).Count() != samples.Count) return null;
+
+        var matches = samples.Where(g => g.PciAddress!.Value.SameLocation(location)).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
+    }
+
+    private List<(long Luid, AdapterView View)> BuildAdapters(GpuMemorySnapshot s)
+    {
+        var hubSample = _hub.Latest?.Snapshot;
+        var hubFresh = hubSample is not null && _time.GetUtcNow() - hubSample.Timestamp <= _hub.Health.Interval * 2 + TimeSpan.FromSeconds(1);
+        var views = new List<(long, AdapterView)>();
+        foreach (var adapter in s.Adapters)
+        {
+            var info = adapter.Info;
+            var capacity = info?.DedicatedVideoMemoryBytes ?? 0;
+            var rows = s.Processes.Where(p => p.Luid == adapter.Luid).ToList();
+            var byGroup = rows.Where(p => p.DedicatedBytes > 0)
+                .GroupBy(p => GroupOf(KindOf(s, p).Kind))
+                .Select(g => (Group: g.Key, Bytes: g.Sum(p => p.DedicatedBytes!.Value),
+                    Kinds: g.GroupBy(p => KindOf(s, p).Kind).Select(k => (Kind: k.Key, Bytes: k.Sum(p => p.DedicatedBytes!.Value))).OrderByDescending(k => k.Bytes).ToList()))
+                .OrderByDescending(x => x.Bytes)
+                .ToList();
+            long? processSum = s.Variant != ProcessCounterVariant.Unavailable && s.DedicatedProcessCountersRead != false && rows.All(p => p.DedicatedBytes is not null) ? rows.Sum(p => p.DedicatedBytes ?? 0) : null;
+            var used = adapter.DedicatedUsageBytes;
+            long? unattributed = used is long u && processSum is long sum ? u - sum : null;
+            var scale = capacity > 0 ? capacity : Math.Max(1, used ?? byGroup.Sum(k => k.Bytes));
+            var parts = byGroup.Select(g => (Color: GroupColors[g.Group], Label: GroupLabels[g.Group], g.Bytes, Group: (KindGroup?)g.Group,
+                ToolTip: (string?)$"{string.Join(" · ", g.Kinds.Select(k => $"{KindLabels[k.Kind]} {Text.Bytes(k.Bytes)}"))} — 누르면 표에 이 묶음만")).ToList();
+            if (unattributed > 0)
+            {
+                parts.Add((UnattributedColor, "나뉘지 않음", unattributed.Value, null,
+                    "어댑터 사용량 − 프로세스 합계 (계산): 커널·드라이버 할당, 읽지 못한 프로세스, 수집 시점 차이가 섞여 있습니다"));
+            }
+
+            // When the process rows add up to more than the adapter reports (shared surfaces counted twice), the bar keeps the
+            // proportions within the adapter's usage; the legend keeps the raw numbers.
+            var partsTotal = parts.Sum(p => p.Bytes);
+            var factor = used is long usedBytes && partsTotal > usedBytes && partsTotal > 0 ? (double)usedBytes / partsTotal : 1.0;
+            var segments = parts.Select(p => new BarSegment(Math.Clamp(p.Bytes * factor / scale, 0, 1), p.Color, p.Label)).ToList();
+            var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes), ToolTip: p.ToolTip, Group: p.Group,
+                IsActive: p.Group is not null && p.Group == GroupFilter)).ToList();
+            // A few MiB either way is the counters' timing; more is shared resources counted for several processes.
+            string? legendNote = processSum is null ? "프로세스 측정 불완전 · 합계와 미귀속 값 계산 불가" : unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
+                ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)"
+                : null;
+            var shared = adapter.SharedUsageBytes;
+            var sharedCapacity = info?.SharedSystemMemoryBytes ?? 0;
+            string? nvml = null;
+            if (info is not null && hubFresh && MatchNvml(info, s.Adapters, hubSample!.Gpus) is { } gpu)
+            {
+                nvml = $"NVML {Pair(gpu.MemoryUsedBytes, gpu.MemoryTotalBytes)}";
+            }
+
+            var engines = adapter.Engines;
+            var meta = info is null ? "DXGI 목록에 없는 LUID"
+                : info.VendorName + (info.IsSoftware ? " · 소프트웨어" : "")
+                  + (info is { IsSoftware: false } && capacity is > 0 and <= 512L << 20 ? " · 통합 GPU일 수 있음" : "")
+                  + (info is { IsSoftware: false } && capacity == 0 ? " · 전용 메모리 없음" : "");
+            views.Add((adapter.Luid, new AdapterView(
+                info?.Name ?? $"어댑터 {GpuLuid.Format(adapter.Luid)}",
+                meta,
+                segments,
+                capacity > 0 ? Pair(used, capacity) : Text.Bytes(used),
+                legend,
+                legendNote,
+                sharedCapacity > 0 ? Pair(shared, sharedCapacity) : Text.Bytes(shared),
+                engines is null ? "" : $"{engines.Busiest:0}%",
+                engines is null ? "" : BusiestEngine(engines),
+                engines is null ? "" : EnginesText(engines),
+                nvml,
+                capacity > 0,
+                LegendText: string.Join(" · ", legend.Select(l => $"{l.Label} {l.Value}")),
+                FreeText: capacity > 0 && used is long usedNow ? $"여유 {Text.Bytes(Math.Max(0, capacity - usedNow))}" : null,
+                DeltaText: _baseline is { } b && b.AdapterDedicated.TryGetValue(adapter.Luid, out var then) && Diff(used, then) is long change
+                    ? $"기준점 대비 {Signed(change)}" : null,
+                SharedUsedText: Text.Bytes(shared))));
+        }
+
+        return views;
+    }
+
+    /// <param name="userAction">A filter or checkbox change (not a new reading): a selection hidden by it moves to the largest visible row.</param>
+    private void RebuildRows(bool force, bool userAction = false)
+    {
+        if (IsPaused && !force)
+        {
+            return;
+        }
+
+        var previous = SelectedProcess; // before the table drops it (a bound DataGrid clears the selection on removal)
+        var s = _current;
+        if (s is null)
+        {
+            Processes.Clear();
+            _rows.Clear();
+            _shown.Clear();
+            CountText = "";
+            EmptyText = "";
+            ShowGpuColumn = false;
+            SelectedProcess = null;
+            Detail = null;
+            ShowStrataCommand.NotifyCanExecuteChanged();
+            return;
+        }
+
+        var filter = Filter.Trim();
+        var listed = s.Processes.Where(p => ShowAll || GpuMemoryRules.IsListed(p)).ToList();
+        CompareWithBaseline(s);
+        var keys = new HashSet<(ProcessKey, long)>();
+        var luids = new HashSet<long>();
+        foreach (var p in listed)
+        {
+            var key = (KeyOf(s, p), p.Luid);
+            keys.Add(key);
+            if (!_rows.TryGetValue(key, out var row))
+            {
+                row = new GpuProcessRow(key.Item1, p.Luid);
+                _rows[key] = row;
+            }
+
+            Update(row, s, p);
+            var show = (KindFilter is not { } kind || row.Kind == kind) && (GroupFilter is not { } group || GroupOf(row.Kind) == group) && Matches(row, filter);
+            if (show && _shown.Add(row))
+            {
+                Processes.Add(row);
+            }
+            else if (!show && _shown.Remove(row))
+            {
+                Processes.Remove(row);
+            }
+
+            if (show)
+            {
+                luids.Add(row.Luid);
+            }
+        }
+
+        foreach (var gone in _rows.Where(r => !keys.Contains(r.Key)).ToList())
+        {
+            _rows.Remove(gone.Key);
+            if (_shown.Remove(gone.Value))
+            {
+                Processes.Remove(gone.Value);
+            }
+        }
+
+        var visible = Processes.Count;
+        var hidden = s.Processes.Count - listed.Count;
+        var filtering = filter.Length > 0 || KindFilter is not null || GroupFilter is not null;
+        var kindName = KindFilter is { } k1 ? KindLabels[k1] : GroupFilter is { } g1 ? GroupLabels[g1] : null;
+        CountText = filtering ? $"{visible}/{listed.Count}개 표시"
+            : $"프로세스 {visible}개" + (hidden > 0 && !ShowAll ? $" · 작은 프로세스 {hidden}개 숨김" : ""); // next to the "작은 프로세스 포함" box
+        EmptyText = visible > 0 ? ""
+            : filter.Length > 0 ? $"'{filter}'와 맞는 프로세스가 없습니다" + (kindName is not null ? $" ({kindName} 종류 안에서)" : "")
+            : kindName is not null ? $"{kindName} 종류의 프로세스가 없습니다"
+            : hidden > 0 ? $"GPU 메모리를 1 MiB 넘게 쓰는 프로세스가 없습니다 · '작은 프로세스 포함'으로 {hidden}개를 볼 수 있습니다"
+            : "GPU 메모리를 쓰는 프로세스가 없습니다";
+        ShowGpuColumn = luids.Count > 1;
+        ShowStrataCommand.NotifyCanExecuteChanged();
+        Select(previous, userAction);
+    }
+
+    /// <summary>
+    /// Keeps the selection on the same process. When it left the table: after a filter change the largest visible row is
+    /// selected; after a reading a process of the same name (a restart) is followed, otherwise the panel says it went away
+    /// and the next process of that name is selected when it appears.
+    /// </summary>
+    private void Select(GpuProcessRow? previous, bool userAction)
+    {
+        if (previous is not null && _shown.Contains(previous))
+        {
+            if (!ReferenceEquals(SelectedProcess, previous))
+            {
+                SelectedProcess = previous;
+            }
+            else
+            {
+                BuildDetail();
+            }
+
+            return;
+        }
+
+        if (userAction || (previous is null && _lost is null))
+        {
+            _lost = null;
+            DetailPlaceholder = DefaultPlaceholder;
+            SelectedProcess = Processes.OrderByDescending(r => r.Dedicated).FirstOrDefault();
+            return;
+        }
+
+        var name = previous?.Name ?? _lost!.Value.Name;
+        var follow = Processes.Where(r => r.Name == name).OrderByDescending(r => previous is not null && r.Luid == previous.Luid).ThenByDescending(r => r.Dedicated)
+            .FirstOrDefault();
+        if (follow is not null)
+        {
+            SelectedProcess = follow; // clears _lost
+            return;
+        }
+
+        if (previous is not null)
+        {
+            _lost = (previous.Name, previous.Pid);
+        }
+
+        SelectedProcess = null;
+        DetailPlaceholder = $"선택했던 프로세스가 목록에서 사라졌습니다: {_lost!.Value.Name} (PID {_lost.Value.Pid}). 종료했거나 GPU 메모리를 놓았습니다. "
+                            + "같은 이름의 프로세스가 나타나면 다시 선택합니다.";
+    }
+
+    private void Update(GpuProcessRow row, GpuMemorySnapshot s, GpuProcessMemory p)
+    {
+        var entry = s.Process(p.ProcessId);
+        var detail = s.Detail(p.ProcessId);
+        var kind = KindOf(s, p);
+        var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Error: null })?.Gguf;
+        var capacity = s.Adapter(p.Luid)?.Info?.DedicatedVideoMemoryBytes ?? 0;
+        var strata = IsStrata(p.ProcessId);
+        row.Pid = p.ProcessId;
+        row.Name = entry?.Name ?? $"PID {p.ProcessId}";
+        row.Kind = kind.Kind;
+        row.KindLabel = KindLabels[kind.Kind];
+        row.KindColor = KindColors[kind.Kind];
+        row.KindBasis = $"분류 근거: {kind.Basis}";
+        row.KindOverridden = OverrideOf(p.ProcessId, row.Name) is not null;
+        row.Icon = _icons?.Icon(p.ProcessId, row.Name);
+        row.Dedicated = p.DedicatedBytes ?? -1;
+        row.DedicatedText = Text.Bytes(p.DedicatedBytes);
+        row.DedicatedShare = capacity > 0 && p.DedicatedBytes is long d ? Math.Clamp((double)d / capacity, 0, 1) : 0;
+        row.DedicatedShareText = capacity > 0 && p.DedicatedBytes is not null ? $"카드 VRAM의 {Percent(row.DedicatedShare)}" : null;
+        row.Shared = p.SharedBytes ?? -1;
+        row.SharedText = Text.Bytes(p.SharedBytes);
+        if (_baseline is not null && _deltas.TryGetValue((KeyOf(s, p), p.Luid), out var change))
+        {
+            row.Delta = change.Delta ?? long.MinValue;
+            row.DeltaText = change.Delta is long d2 ? Signed(d2) : Text.NA;
+            row.DeltaNote = change.Note;
+        }
+        else
+        {
+            row.Delta = long.MinValue;
+            row.DeltaText = "";
+            row.DeltaNote = null;
+        }
+        row.Committed = p.CommittedBytes ?? -1;
+        row.CommittedText = s.CommittedAvailable ? Text.Bytes(p.CommittedBytes) : Text.NA;
+        row.Gpu = p.Engines?.Busiest ?? -1;
+        row.GpuText = p.Engines is { } e ? e.Busiest.ToString("0", Ko) : "";
+        row.Runtimes = detail is null ? "" : detail.AccessDenied ? "권한 없음" : string.Join(" · ", detail.Runtimes.Take(3));
+        var found = model is not null && kind.Kind is ProcessKind.Llm or ProcessKind.Ai
+            ? string.Join(" · ", new[] { model.Name, ParamsLabel(model.Parameters), model.Quantization }.Where(x => !string.IsNullOrEmpty(x)))
+            : strata && _strataSnapshot?.Model?.Id is { } id ? id
+            : detail?.Models.FirstOrDefault()?.FileName;
+        row.Inside = found ?? InsideOf(kind.Kind);
+        row.InsideIsGeneric = found is null && row.Inside.Length > 0;
+        row.AdapterFull = s.Adapter(p.Luid)?.Info?.Name ?? GpuLuid.Format(p.Luid);
+        row.Adapter = ShortAdapterName(row.AdapterFull);
+        row.IsStrata = strata;
+        row.ServerLabel = ServerOf(p.ProcessId);
+        row.IsUncertain = entry?.State is not ProcessIdentityState.Verified;
+        row.Identity = IdentityText(entry) is { Length: > 0 } identity ? identity : null;
+    }
+
+    private void BuildDetail()
+    {
+        var s = _current;
+        var row = SelectedProcess;
+        var p = s is null || row is null ? null : s.Processes.FirstOrDefault(x => x.ProcessId == row.Pid && x.Luid == row.Luid);
+        if (s is null || row is null || p is null)
+        {
+            Detail = null;
+            return;
+        }
+
+        var entry = s.Process(p.ProcessId);
+        var detail = s.Detail(p.ProcessId);
+        var kind = KindOf(s, p);
+        var engines = p.Engines;
+        // An estimated split only for an LLM whose model file header was read; Strata's context when this is its process.
+        // A split estimated from the header only where the header can say it: an LLM file, not served by Strata (its engine
+        // places experts, KV - int8 by default - and session buffers its own way) and not a mixture of experts (their weights
+        // are often kept in RAM, --n-cpu-moe, so the header cannot say which weights are on the GPU).
+        // Strata's engine is recognised by the link to its server or, without one (the local AI module not connected), by its
+        // executable name: the header cannot say how it places the model either way.
+        var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
+        (string Note, string Details)? withheld = model is null ? null
+            : IsBasalt(p.ProcessId) || ProcessKinds.IsBasaltName(entry?.Name ?? "") ? ("Basalt(Strata에서 갈라진 엔진)는 메모리를 자체 방식으로 배치한다고 보고 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
+                "Basalt는 Strata에서 갈라진 엔진이라 Strata처럼 전문가 캐시·KV·세션 버퍼를 자체 방식으로 배치한다고 보고, GGUF 헤더로 나누지 않습니다. "
+                + "이 판단은 Basalt의 구조를 실기기에서 확인하기 전의 추정입니다. 위 값은 Windows가 측정한 값입니다.")
+            : IsStrata(p.ProcessId) ? ("Strata 엔진은 메모리를 자체 방식으로 배치해 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
+                "Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 자체 방식으로 배치해, GGUF 헤더로는 나눌 수 없어 구성을 그리지 않습니다. "
+                + "위 값은 측정값과 Strata가 보고한 값입니다.")
+            : ProcessKinds.IsStrataEngineName(entry?.Name ?? "") ? ("Strata 엔진(strata.exe)이라 헤더로 나누지 않습니다.",
+                "이름이 Strata 엔진(strata.exe)이라 구성을 그리지 않습니다. Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 "
+                + "자체 방식으로 배치해 GGUF 헤더로는 나눌 수 없습니다. 로컬 AI 모듈이 이 Strata에 연결되면 엔진이 보고한 값도 함께 보여 줍니다.")
+            : s.Processes.Any(other => other.ProcessId == p.ProcessId && other.Luid != p.Luid && other.DedicatedBytes > 0) || detail!.Models.Count(m => m.Gguf is { Kind: "LLM" }) > 1
+                ? ("장치별 가중치 배분 미보고", "여러 GPU 또는 모델 파일에 분산되어 있어 파일 크기를 이 GPU의 상주 가중치로 표시할 수 없습니다.")
+            : model.Experts is > 0 ? ("전문가(MoE) 모델이라 GPU에 있는 가중치를 헤더로 정할 수 없어 나누지 않습니다.",
+                "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다.")
+            : null;
+        long? context = null; // no runtime reports the context of a process other than Strata's yet, so KV is not split
+        var estimate = model is null || withheld is not null ? null : LlmMemoryEstimate.From(model, p.DedicatedBytes, context);
+        IReadOnlyList<BarSegment> breakdown = [];
+        IReadOnlyList<LegendItem> breakdownLegend = [];
+        string? breakdownNote = null;
+        string? breakdownDetails = null;
+        if (estimate is { FitsAllLayers: false })
+        {
+            // Not every layer can be on the GPU, and which part of the measured total is weights is unknown: the two numbers
+            // are shown apart and no split is drawn.
+            breakdownLegend =
+            [
+                new(WeightsColor, "가중치 (모든 층 GPU 가정, 이론값)", Text.Bytes(estimate.WeightsAllLayers), true),
+                new(MeasuredColor, "이 프로세스 전용 (측정)", Text.Bytes(estimate.Total)),
+            ];
+            breakdownNote = "일부 층만 GPU에 있는 것으로 보여 구성은 그리지 않습니다.";
+            breakdownDetails = "모든 층을 GPU에 올렸을 때의 가중치가 이 프로세스의 전용 메모리보다 커서 일부 층만 GPU에 있는 것으로 보입니다. "
+                               + "측정값 중 얼마가 가중치·KV·버퍼인지는 알 수 없어 구성은 그리지 않습니다.";
+        }
+        else if (estimate is { Rest: long rest })
+        {
+            double Frac(long bytes) => estimate.Total > 0 ? (double)bytes / estimate.Total : 0;
+            var segments = new List<BarSegment> { new(Frac(estimate.WeightsAllLayers), WeightsColor, "가중치", true) };
+            var legend = new List<LegendItem> { new(WeightsColor, "가중치", Text.Bytes(estimate.WeightsAllLayers), true) };
+            if (estimate.KvCache is long kv)
+            {
+                segments.Add(new(Frac(kv), KvColor, "KV 캐시", true));
+                legend.Add(new(KvColor, estimate.KvIsUpperBound ? "KV 캐시 (f16, 상한)" : "KV 캐시 (f16)", Text.Bytes(kv), true));
+            }
+
+            segments.Add(new(Frac(rest), RestColor, "나머지", true));
+            legend.Add(new(RestColor, estimate.KvCache is null ? "KV·버퍼·런타임" : "버퍼·런타임", Text.Bytes(rest), true));
+            breakdown = segments;
+            breakdownLegend = legend;
+            var kvShort = estimate.KvCache is not null ? null
+                : model!.KvUnknownReason is { } reason ? $"KV는 나누지 않음 ({reason})"
+                : context is null ? "KV는 나누지 않음 (컨텍스트 미보고)"
+                : "KV는 나누지 않음 (추정값이 남은 양보다 큼)";
+            breakdownNote = kvShort is null ? "모든 층이 GPU에 있다고 가정한 추정입니다." : $"모든 층이 GPU에 있다고 가정한 추정입니다. {kvShort}.";
+            breakdownDetails = string.Join(" ", new[]
+            {
+                "모든 층이 GPU에 있다고 가정한 추정입니다.",
+                estimate.KvCache is not null ? null
+                    : model!.KvUnknownReason is { } reason2 ? $"{reason2}라 KV를 헤더로 계산할 수 없어 나누지 않았습니다."
+                    : context is null ? "런타임이 컨텍스트를 알려 주지 않아 KV 캐시는 나누지 않았습니다."
+                    : "KV 추정값이 남은 양보다 커서 나누지 않았습니다.",
+            }.Where(x => x is not null));
+            if (breakdownDetails == breakdownNote)
+            {
+                breakdownDetails = null;
+            }
+        }
+        else if (withheld is { } why)
+        {
+            (breakdownNote, breakdownDetails) = why;
+        }
+
+        IReadOnlyList<ModelRow> models = (detail?.Models ?? []).Select(m => new ModelRow(
+            m.Gguf?.Name ?? m.FileName,
+            m.Gguf is { Error: null } g
+                ? string.Join(" · ", new[]
+                {
+                    g.Architecture, ParamsLabel(g.Parameters), g.Quantization, g.Layers > 0 ? $"{g.Layers}층" : null,
+                    g.TrainedContext is long tc ? $"학습 컨텍스트 {Text.Count(tc)}" : null,
+                    g.KvBytesPerTokenF16 is long kvt ? $"KV {kvt / 1024} KiB/토큰" : null,
+                }.Where(x => !string.IsNullOrEmpty(x)))
+                : m.Gguf?.Error ?? m.Format,
+            Text.Bytes(m.SizeBytes),
+            m.FileName)).ToList();
+        if (Detail is { } previous && previous.Models.SequenceEqual(models))
+        {
+            models = previous.Models; // same list: the rows (and an open tooltip) stay
+        }
+
+        string? strataModel = null, strataWindow = null, strataSlots = null, evidence = null;
+        if (IsStrata(p.ProcessId) && _strataSnapshot is { } rt)
+        {
+            strataModel = rt.Model?.Id ?? Text.NA;
+            strataWindow = rt.Model?.ContextTokens is long ctx ? $"{Text.Count(ctx)} 토큰" : Text.NA;
+            var held = rt.Slots.Where(x => x.HeldTokens is not null).ToList();
+            strataSlots = held.Count == 0 ? Text.NA : $"{Text.Count(held.Sum(x => x.HeldTokens!.Value))} (슬롯 {rt.Slots.Count})";
+            evidence = _link is { IsLinked: true } l ? string.Join(Environment.NewLine, l.Evidence) : null;
+        }
+
+        IReadOnlyList<ReportGroup> reports = BuildReports(s, p.ProcessId, detail);
+        if (Detail is { } before && before.Reports.Count == reports.Count && before.Reports.Zip(reports).All(x => x.First.SameAs(x.Second)))
+        {
+            reports = before.Reports; // same answers: the rows (and an open tooltip) stay
+        }
+
+        Detail = new ProcessDetailView(
+            row.Name,
+            p.ProcessId.ToString(CultureInfo.InvariantCulture),
+            KindLabels[kind.Kind],
+            KindColors[kind.Kind],
+            $"분류 근거: {kind.Basis}",
+            IsStrata(p.ProcessId),
+            string.Join(" · ", new[]
+            {
+                entry?.StartTime is { } start ? $"시작 {Text.DateTime(start)}" : null,
+                IdentityText(entry) is { Length: > 0 } id ? id : null,
+                s.Adapter(p.Luid)?.Info?.Name,
+            }.Where(x => x is not null)),
+            Text.Bytes(p.DedicatedBytes),
+            row.DedicatedShareText is { } shareText ? shareText.Replace("카드 ", "", StringComparison.Ordinal) : null,
+            Text.Bytes(p.SharedBytes),
+            s.CommittedAvailable ? Text.Bytes(p.CommittedBytes) : Text.NA,
+            engines is null ? Text.NA : $"{engines.Busiest:0}%",
+            engines is null ? "" : EnginesText(engines),
+            breakdown,
+            breakdownLegend,
+            breakdownNote,
+            breakdownDetails,
+            breakdown.Count > 0 ? "구성 (추정)" : breakdownLegend.Count > 0 ? "모델 가중치와 측정값" : "구성",
+            engines is null || engines.Busiest < 1 ? "" : EngineName(engines),
+            detail is null ? "아직 확인하지 않음" : detail.AccessDenied ? "확인할 수 없음 (보호되었거나 다른 사용자의 프로세스)"
+                : detail.Runtimes.Count == 0 ? "알려진 GPU·AI 런타임 없음" : string.Join(" · ", detail.Runtimes) + (detail.Partial ? " (일부만 확인)" : ""),
+            models,
+            strataModel,
+            strataWindow,
+            strataSlots,
+            evidence,
+            reports,
+            KindNotes[kind.Kind],
+            BuildChart(row, p))
+        {
+            ServerLabel = ServerOf(p.ProcessId),
+            StrataTitle = IsBasalt(p.ProcessId) ? "로컬 AI 모듈이 보고한 값 (Basalt를 Strata API로 읽음)" : "Strata가 보고한 값",
+            BasaltEvidence = IsBasalt(p.ProcessId) && _basaltLink is { IsLinked: true } bl ? string.Join(Environment.NewLine, bl.Evidence) : null,
+        };
+    }
+
+    private ChartModel BuildChart(GpuProcessRow row, GpuProcessMemory p)
+    {
+        // Missing values stay out of the series, so the chart shows a gap (never 0) where nothing was read.
+        var history = _monitor.History(TimeSpan.FromMinutes(ChartMinutes));
+        var gpu = ChartMetric == "Gpu";
+        const double GiB = 1024.0 * 1024 * 1024;
+        double? ProcessValue(GpuProcessHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedBytes / GiB,
+        };
+        double? AdapterValue(GpuAdapterHistoryValue v) => ChartMetric switch
+        {
+            "Shared" => v.SharedUsageBytes / GiB,
+            "Gpu" => v.Busiest,
+            _ => v.DedicatedUsageBytes / GiB,
+        };
+        var processPoints = history
+            .Select(h => (h.Timestamp, Value: h.Processes.Where(x => x.Key == row.Key && x.Luid == p.Luid).Select(ProcessValue).FirstOrDefault()))
+            .Where(x => x.Value is not null)
+            .ToList();
+        var adapterPoints = history
+            .Select(h => (h.Timestamp, Value: h.Adapters.Where(a => a.Luid == p.Luid).Select(AdapterValue).FirstOrDefault()))
+            .Where(x => x.Value is not null)
+            .ToList();
+        var series = new List<ChartSeries>();
+        if (adapterPoints.Count > 0)
+        {
+            series.Add(new ChartSeries("GPU 전체", [.. adapterPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
+                [.. adapterPoints.Select(x => x.Value!.Value)], TotalSeriesColor));
+        }
+
+        if (processPoints.Count > 0)
+        {
+            series.Add(new ChartSeries(row.Name, [.. processPoints.Select(x => x.Timestamp.LocalDateTime.ToOADate())],
+                [.. processPoints.Select(x => x.Value!.Value)], SelectedSeriesColor)); // the selected process stands out; the total is gray
+        }
+
+        return new ChartModel
+        {
+            Title = "", // the metric and window selectors above the chart say what it shows
+            Unit = gpu ? "%" : "GiB",
+            Series = series,
+            XIsTime = true,
+            GapThreshold = ChartGapDays,
+            YMin = 0,
+            YMax = gpu ? 100 : null,
+            ValueFormat = gpu ? "0" : "0.00",
+            EmptyText = gpu ? "GPU 사용률은 이 화면을 보는 동안만 기록합니다" : "기록 없음",
+        };
+    }
+
+    private void CompareWithBaseline(GpuMemorySnapshot s)
+    {
+        _deltas = [];
+        _gone = [];
+        if (_baseline is not { } b)
+        {
+            BaselineText = "";
+            BaselineGone = "";
+            return;
+        }
+
+        // Same process (PID and start time) on the same adapter: the change. A new process with the name of one that is gone
+        // since: restarted, compared with that one. Otherwise it started (or began using the GPU) after the baseline.
+        var live = s.Processes.Select(p => (Key: KeyOf(s, p), p.Luid)).ToHashSet();
+        var restartedFrom = new HashSet<Baseline.Entry>();
+        foreach (var p in s.Processes)
+        {
+            var key = KeyOf(s, p);
+            var entry = s.Process(p.ProcessId);
+            if (b.Processes.FirstOrDefault(x => x.Key == key && x.Luid == p.Luid) is { } same)
+            {
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, same.Dedicated), null, same);
+                continue;
+            }
+
+            var name = entry?.Name ?? $"PID {p.ProcessId}";
+            if (b.Processes.Where(x => x.Name == name && x.Luid == p.Luid && !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x))
+                    .OrderByDescending(x => x.Dedicated ?? 0).FirstOrDefault() is { } previous)
+            {
+                restartedFrom.Add(previous);
+                _deltas[(key, p.Luid)] = (Diff(p.DedicatedBytes, previous.Dedicated), $"재시작 (이전 PID {previous.Pid})", previous);
+                continue;
+            }
+
+            var startedAfter = entry?.StartTime is { } started && started > b.At;
+            _deltas[(key, p.Luid)] = (p.DedicatedBytes, startedAfter ? "기준점 뒤 시작" : "기준점 뒤 GPU 사용 시작", null);
+        }
+
+        var gone = b.Processes
+            .Where(x => !live.Contains((x.Key, x.Luid)) && !restartedFrom.Contains(x) && (x.Dedicated >= GpuMemoryRules.MiB || x.Shared >= 16 * GpuMemoryRules.MiB))
+            .OrderByDescending(x => x.Dedicated ?? 0)
+            .ToList();
+        _gone = gone;
+        BaselineGone = gone.Count == 0 ? ""
+            : $"사라짐 {gone.Count}개: " + string.Join(", ", gone.Take(4).Select(x => $"{x.Name} (PID {x.Pid}) {Signed(-(x.Dedicated ?? 0))}"))
+              + (gone.Count > 4 ? " 외" : "") + " (종료했거나 GPU 메모리를 놓음)";
+        var adapters = s.Adapters
+            .Select(a => b.AdapterDedicated.TryGetValue(a.Luid, out var then) && Diff(a.DedicatedUsageBytes, then) is long d
+                ? $"{ShortAdapterName(a.Info?.Name ?? GpuLuid.Format(a.Luid))} 전용 {Signed(d)}" : null)
+            .OfType<string>();
+        BaselineText = string.Join(" · ", new[] { $"기준점 {Text.Clock(b.At)} ({Text.Age(s.Timestamp - b.At)})" }.Concat(adapters));
+    }
+
+    private static long? Diff(long? now, long? then) => now is long n && then is long t ? n - t : null;
+
+    private static string Signed(long bytes) => bytes > 0 ? "+" + Text.Bytes(bytes) : bytes < 0 ? "\u2212" + Text.Bytes(-bytes) : "0";
+
+    /// <summary>The memory picture at the moment the baseline was taken.</summary>
+    private sealed record Baseline(DateTimeOffset At, IReadOnlyList<Baseline.Entry> Processes, IReadOnlyDictionary<long, long?> AdapterDedicated)
+    {
+        public sealed record Entry(ProcessKey Key, string Name, int Pid, long Luid, long? Dedicated, long? Shared);
+
+        public static Baseline Of(GpuMemorySnapshot s) => new(
+            s.Timestamp,
+            [.. s.Processes.Select(p => new Entry(KeyOf(s, p), s.Process(p.ProcessId)?.Name ?? $"PID {p.ProcessId}", p.ProcessId, p.Luid, p.DedicatedBytes, p.SharedBytes))],
+            s.Adapters.ToDictionary(a => a.Luid, a => a.DedicatedUsageBytes));
+    }
+
+    /// <summary>The kind from the evidence, or the one the user gave this executable name (the basis then says both).</summary>
+    private KindResult KindOf(GpuMemorySnapshot s, GpuProcessMemory p)
+    {
+        var name = s.Process(p.ProcessId)?.Name ?? "";
+        var server = ServerOf(p.ProcessId);
+        var classified = ProcessKinds.Classify(p.ProcessId, name, s.Detail(p.ProcessId), p.Engines, server.Length > 0, server.Length > 0 ? server : "Strata");
+        return OverrideOf(p.ProcessId, name) is { } kind
+            ? new KindResult(kind, $"사용자가 지정함 (자동 분류: {KindLabels[classified.Kind]} — {classified.Basis})")
+            : classified;
+    }
+
+    private ProcessKind? OverrideOf(int pid, string name)
+        => pid > 4 && name.Length > 0 && _page.KindOverrides.TryGetValue(name, out var value) && Enum.TryParse<ProcessKind>(value, out var kind)
+            ? kind
+            : null;
+
+    /// <summary>The kinds the row menu offers (the kernel's is the System process's own).</summary>
+    public IReadOnlyList<ProcessKind> AssignableKinds { get; } =
+    [
+        ProcessKind.Llm, ProcessKind.Ai, ProcessKind.Compute, ProcessKind.Graphics3D, ProcessKind.Video, ProcessKind.Browser,
+        ProcessKind.Compositor, ProcessKind.System, ProcessKind.App,
+    ];
+
+    /// <summary>A process with an executable name (not the kernel, not an unknown PID) can be given a kind.</summary>
+    public bool CanOverrideKind(GpuProcessRow row) => row.Pid > 4 && GpuMemoryPageSettings.IsExecutableName(row.Name) && !row.Name.StartsWith("PID ", StringComparison.Ordinal);
+
+    /// <summary>The kind the user gave this row's executable name, if any.</summary>
+    public ProcessKind? KindOverrideOf(GpuProcessRow row) => OverrideOf(row.Pid, row.Name);
+
+    /// <summary>
+    /// Gives every process with this row's executable name the kind (null: back to the classification), remembered in the
+    /// shell settings. The table, the device legend and the detail follow at once.
+    /// </summary>
+    public void SetKindOverride(GpuProcessRow row, ProcessKind? kind)
+    {
+        if (!CanOverrideKind(row))
+        {
+            return;
+        }
+
+        var name = row.Name.Trim().ToLowerInvariant();
+        if (kind is { } set)
+        {
+            if (_page.KindOverrides.TryGetValue(name, out var old) ? old == set.ToString() : _page.KindOverrides.Count >= GpuMemoryPageSettings.MaxKindOverrides)
+            {
+                return;
+            }
+
+            _page.KindOverrides[name] = set.ToString();
+        }
+        else if (!_page.KindOverrides.Remove(name))
+        {
+            return;
+        }
+
+        SavePage();
+        if (_current is not null)
+        {
+            SyncAdapters(BuildAdapters(_current));
+        }
+
+        RebuildRows(force: true, userAction: true);
+        BuildDetail();
+    }
+
+    private bool IsStrata(int pid) => _link is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
+
+    private bool IsBasalt(int pid) => _basaltLink is { IsLinked: true } link && link.Processes.Any(x => x.Process.ProcessId == pid);
+
+    /// <summary>"Basalt" when linked to Basalt's port (also when the local AI module reads it as Strata), "Strata", or empty.</summary>
+    private string ServerOf(int pid) => IsBasalt(pid) ? "Basalt" : IsStrata(pid) ? "Strata" : "";
+
+    /// <summary>Completes when the runtimes asked so far have answered (tests wait on it).</summary>
+    internal Task ReportsIdle() => _reports?.WhenIdle() ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Asks the runtimes about the selected process only, and only while the page is visible and not paused. Returns whether
+    /// answers arrived (or were dropped) since the detail was last built.
+    /// </summary>
+    private bool UpdateReports()
+    {
+        if (_reports is null)
+        {
+            return false;
+        }
+
+        if (IsVisible && !IsPaused)
+        {
+            _reports.Update(_current is { } s && SelectedProcess is { } row ? TargetsFor(s, row.Pid) : []);
+        }
+
+        return _reports.Version != _reportsVersion;
+    }
+
+    /// <summary>
+    /// The runtimes that can say something about a process: Strata's engine for a Strata process (its server's /metrics), the
+    /// Ollama server that runs it (the topmost ollama process that listens: runners listen on ports of their own, for the
+    /// server), the llama.cpp server it is, and the router that started it. Loopback addresses only.
+    /// </summary>
+    private List<RuntimeTarget> TargetsFor(GpuMemorySnapshot s, int pid)
+    {
+        if (IsStrata(pid))
+        {
+            return _strataContext is { } strata && StrataPort(strata, _time.GetUtcNow()) is int port
+                ? [new RuntimeTarget(RuntimeReportSource.StrataEngine, s.Listeners.FirstOrDefault(l => l.Port == port)?.ProcessId ?? 0, port, strata.CredentialVariable)]
+                : [];
+        }
+
+        if (s.Process(pid) is not { } entry || LocalAiServers.SourceOf(entry.Name) is not { } source)
+        {
+            return [];
+        }
+
+        if (source == RuntimeReportSource.Ollama)
+        {
+            RuntimeTarget? server = null;
+            for (var (e, depth) = (entry, 0); e is not null && depth < 4 && LocalAiServers.SourceOf(e.Name) == source; (e, depth) = (Parent(s, e), depth + 1))
+            {
+                server = ListenerTarget(s, e.ProcessId, source) ?? server;
+            }
+
+            return server is null ? [] : [server];
+        }
+
+        var targets = new List<RuntimeTarget>();
+        if (ListenerTarget(s, pid, source) is { } own)
+        {
+            targets.Add(own);
+        }
+
+        if (Parent(s, entry) is { } parent && LocalAiServers.SourceOf(parent.Name) == source && ListenerTarget(s, parent.ProcessId, source) is { } router)
+        {
+            targets.Add(router);
+        }
+
+        return targets;
+    }
+
+    /// <summary>The parent process, unless its PID was reused by a process that started after this one.</summary>
+    private static ProcessEntry? Parent(GpuMemorySnapshot s, ProcessEntry entry)
+        => entry.ParentProcessId > 4 && entry.ParentProcessId != entry.ProcessId && s.Process(entry.ParentProcessId) is { } parent
+           && !(parent.StartTime is { } ps && entry.StartTime is { } cs && ps > cs)
+            ? parent
+            : null;
+
+    /// <summary>The port a process serves on: IPv4 before IPv6, Ollama's default port first, then the lowest.</summary>
+    private static RuntimeTarget? ListenerTarget(GpuMemorySnapshot s, int pid, RuntimeReportSource source)
+        => s.ServiceListeners.Where(l => l.ProcessId == pid)
+            .OrderBy(l => l.IsIpv6).ThenBy(l => l.Port == LocalAiServers.OllamaDefaultPort ? 0 : 1).ThenBy(l => l.Port)
+            .Select(l => new RuntimeTarget(source, pid, l.Port, Ipv6: l.IsIpv6))
+            .FirstOrDefault();
+
+    /// <summary>The answers about this process, as groups that say what kind of value each is (setting, last report) and from when.</summary>
+    private List<ReportGroup> BuildReports(GpuMemorySnapshot s, int pid, ProcessDetail? detail)
+    {
+        var groups = new List<ReportGroup>();
+        if (_reports is null)
+        {
+            return groups;
+        }
+
+        _reportsVersion = _reports.Version;
+        var results = _reports.Results;
+        foreach (var target in TargetsFor(s, pid))
+        {
+            if (!results.TryGetValue(target, out var result))
+            {
+                continue; // not answered yet (or not asked while paused)
+            }
+
+            var read = $"{Text.Clock(result.At)}에 읽음";
+            if (result.Error is { } error)
+            {
+                groups.Add(new ReportGroup($"{SourceTitle(target.Source)} · 읽지 못함", $"{error} ({read})", [], IsError: true));
+                continue;
+            }
+
+            switch (result.Report, result.Extra)
+            {
+                case (StrataEngineReport r, _):
+                    groups.AddRange(StrataGroups(r, read));
+                    break;
+                case (OllamaReport o, _):
+                    groups.AddRange(OllamaGroups(o, s, pid, read));
+                    break;
+                case (var server, var router):
+                    var own = target.OwnerPid == pid;
+                    if (own && server is LlamaServerReport ls)
+                    {
+                        groups.Add(LlamaServerGroup(ls, read));
+                    }
+
+                    if (router is LlamaRouterReport lr && LlamaRouterGroup(lr, own, detail, read) is { } routed)
+                    {
+                        groups.Add(routed);
+                    }
+
+                    break;
+            }
+        }
+
+        return groups;
+    }
+
+    private static string SourceTitle(RuntimeReportSource source) => source switch
+    {
+        RuntimeReportSource.StrataEngine => "Strata 엔진 보고",
+        RuntimeReportSource.Ollama => "Ollama 보고",
+        _ => "llama.cpp 서버 보고",
+    };
+
+    private static string Mib(long? mib) => mib is long m ? Text.Bytes(m * 1024 * 1024) : Text.NA;
+
+    private static void Add(List<DetailFact> facts, string label, string? value, string? toolTip = null)
+    {
+        if (!string.IsNullOrEmpty(value))
+        {
+            facts.Add(new DetailFact(label, value, ToolTip: toolTip));
+        }
+    }
+
+    /// <summary>
+    /// Strata's engine: what it set when it started, and its last report (the start, or the last VRAM adjustment, whose
+    /// answer the server keeps apart). Neither is the current VRAM use: that is the measured dedicated memory above.
+    /// </summary>
+    private static IEnumerable<ReportGroup> StrataGroups(StrataEngineReport r, string read)
+    {
+        var settings = new List<DetailFact>();
+        Add(settings, "KV 형식", r.KvType, "엔진이 시작할 때 정한 KV 캐시 형식 (--kv). int8이면 f16의 절반 크기입니다.");
+        Add(settings, "컨텍스트", r.Context is long c ? $"{Text.Count(c)} 토큰" : null, "엔진이 시작할 때 정한 최대 컨텍스트");
+        Add(settings, "배치 슬롯", r.BatchSlots is long b ? Text.Count(b) : null, "한 번에 처리하는 요청 수 (--batch)");
+        Add(settings, "대화 캐시 상한 (RAM)", r.ConversationCacheMib is long cc ? cc <= 0 ? "꺼짐" : Mib(cc) : null,
+            "끝난 대화를 보관하는 RAM 예산입니다. VRAM이 아닙니다.");
+        Add(settings, "CPU·RAM 전문가", r.CpuExperts is not null || r.RamExperts is not null
+            ? $"CPU {(r.CpuExperts is long ce ? Text.Count(ce) : Text.NA)} · RAM {(r.RamExperts is long re ? Text.Count(re) : Text.NA)}" : null);
+        Add(settings, "엔진", r.EngineVersion);
+        if (settings.Count > 0)
+        {
+            yield return new ReportGroup("Strata 엔진 · 시작 때 정한 값", $"엔진 시작 때 보고 · {read}", settings,
+                Details: $"엔진이 시작할 때 /metrics의 engine으로 알린 설정입니다 ({read}).");
+        }
+
+        var a = r.LastAdjustment;
+        static string? OfMax(string? value, string? max) => value is null ? null : max is null ? value : $"{value} (최대 {max})";
+        var last = new List<DetailFact>();
+        Add(last, "전문가 슬롯", OfMax((a?.ExpertSlots ?? r.ExpertSlots) is long slots ? Text.Count(slots) : null,
+            a?.ExpertSlotsFull is long full ? Text.Count(full) : null), "VRAM에 둘 수 있는 전문가 수");
+        Add(last, "전문가 캐시", OfMax((a?.ExpertCacheMib ?? r.ExpertCacheMibAtStart) is long cache ? Mib(cache) : null,
+            a?.ExpertCacheFullMib is long fullCache ? Mib(fullCache) : null), "엔진이 GPU에 잡은 전문가 캐시 크기");
+        if (a is null && r.ExpertCachePrimaryMibAtStart is long primary && primary != r.ExpertCacheMibAtStart)
+        {
+            Add(last, "그중 주 GPU", Mib(primary));
+        }
+
+        Add(last, "여유 VRAM (그때 장치 전체)", (a?.VramFreeMib ?? r.VramFreeMib) is long free ? Mib(free) : null,
+            "엔진이 보고할 때 장치 전체에 남아 있던 VRAM");
+        Add(last, "요청한 예약", a?.ReserveMib is long reserve ? Mib(reserve) : null, "마지막 VRAM 조정에서 다른 프로그램 몫으로 비워 달라고 한 양");
+        if (last.Count > 0)
+        {
+            yield return new ReportGroup(a is null ? "Strata 엔진 · 마지막 보고 (시작 시)" : "Strata 엔진 · 마지막 보고 (VRAM 조정 시)",
+                $"보고값 · 지금 사용량은 위의 측정값 · {read}", last,
+                Details: $"엔진이 {(a is null ? "시작할 때" : "마지막 VRAM 조정 때")} 알린 값입니다. 지금 이 프로세스의 VRAM 사용량은 위의 전용 메모리(Windows 측정)이며, "
+                         + $"이 값과 다를 수 있습니다 ({read}).");
+        }
+    }
+
+    /// <summary>
+    /// Ollama's own figures for its loaded models. They come from llama-server's load log, are set equal when every layer is on
+    /// the GPU, and fall back to the model file's size for both when the log was not read: size − size_vram is not RAM use.
+    /// </summary>
+    private static IEnumerable<ReportGroup> OllamaGroups(OllamaReport o, GpuMemorySnapshot s, int pid, string read)
+    {
+        if (o.Models.Count == 0)
+        {
+            yield return new ReportGroup("Ollama · 로드된 모델 없음", $"/api/ps에 로드된 모델이 없습니다 ({read}).", []);
+            yield break;
+        }
+
+        foreach (var m in o.Models)
+        {
+            var facts = new List<DetailFact>();
+            Add(facts, "전체 (Ollama 계산)", m.Size is long size ? Text.Bytes(size) : null, "Ollama /api/ps의 size");
+            Add(facts, "VRAM (Ollama 계산)", m.SizeVram is long vram ? Text.Bytes(vram) : null, "Ollama /api/ps의 size_vram");
+            Add(facts, "컨텍스트", m.ContextLength is long ctx ? $"{Text.Count(ctx)} 토큰" : null, "Ollama가 이 모델을 불러올 때 정한 컨텍스트");
+            Add(facts, "파라미터", m.ParameterSize);
+            Add(facts, "양자화", m.Quantization);
+            var notes = new List<string>
+            {
+                $"Ollama가 /api/ps로 알린 값입니다 ({read}). 크기는 llama-server의 로드 로그에서 읽고, 로그를 읽지 못하면 두 값 모두 모델 파일 크기로 채웁니다.",
+                "전체 − VRAM을 RAM 사용량으로 보면 안 됩니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.",
+            };
+            if (m.Size is long t && m.SizeVram is long v && t == v)
+            {
+                notes.Add("두 값이 같으면 모든 층이 GPU에 있거나(그때 Ollama가 두 값을 맞춥니다) 파일 크기로 채운 경우입니다.");
+            }
+
+            if (o.Models.Count > 1)
+            {
+                notes.Add("어느 실행기가 어느 모델인지는 Ollama가 알려 주지 않아, 서버에 로드된 모델을 모두 보여 줍니다.");
+            }
+
+            yield return new ReportGroup($"Ollama · {m.Name}", $"Ollama 계산값 · 전체 − VRAM은 RAM 사용량이 아님 · {read}", facts, Details: string.Join(" ", notes));
+        }
+    }
+
+    private static ReportGroup LlamaServerGroup(LlamaServerReport r, string read)
+    {
+        var facts = new List<DetailFact>();
+        Add(facts, "컨텍스트 (n_ctx)", r.ContextTokens is long ctx ? $"{Text.Count(ctx)} 토큰" : null, "/props의 default_generation_settings.n_ctx");
+        Add(facts, "슬롯", r.TotalSlots is long slots ? Text.Count(slots) : null, "동시에 처리하는 요청 수 (--parallel)");
+        Add(facts, "모델 파일", r.ModelFile);
+        Add(facts, "빌드", r.Build);
+        return new ReportGroup("llama.cpp 서버 · 설정", $"설정값 · KV 형식 미보고라 KV는 나누지 않음 · {read}", facts,
+            Details: $"/props가 알린 설정입니다 ({read}). KV 형식은 알려 주지 않아 KV 크기는 나누지 않습니다.");
+    }
+
+    /// <summary>
+    /// A router's loaded instance: the memory it reported allocating (effective), per device. min and max are what the model
+    /// would need at the smallest and largest context, not what it holds, so they are not shown. Shown for the router itself
+    /// (every loaded model) or for the child process whose mapped model file is the instance's.
+    /// </summary>
+    private static ReportGroup? LlamaRouterGroup(LlamaRouterReport r, bool own, ProcessDetail? detail, string read)
+    {
+        var files = (detail?.Models ?? []).Select(m => m.FileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var loaded = own ? r.Loaded : r.Loaded.Where(m => m.ModelFile is { } file && files.Contains(file)).ToList();
+        if (loaded.Count == 0)
+        {
+            return null;
+        }
+
+        var facts = new List<DetailFact>();
+        foreach (var m in loaded)
+        {
+            var prefix = own ? $"{m.Id} · " : "";
+            Add(facts, prefix + "컨텍스트 (n_ctx)", m.ContextTokens is long ctx ? $"{Text.Count(ctx)} 토큰" : null);
+            foreach (var dev in m.Devices)
+            {
+                var where = dev.Kind == "host" ? "RAM" : dev.Name;
+                Add(facts, $"{prefix}{where}", $"가중치 {Text.Bytes(dev.Model)} · 컨텍스트 {Text.Bytes(dev.Context)} · 계산 {Text.Bytes(dev.Compute)}",
+                    "인스턴스가 불러온 뒤 실제로 할당했다고 보고한 크기 (effective)");
+            }
+        }
+
+        return new ReportGroup(own ? "llama.cpp 라우터 · 로드된 인스턴스" : "llama.cpp 라우터 · 이 인스턴스",
+            $"인스턴스가 실제 할당한 크기(effective) · min·max는 표시 안 함 · {read}", facts,
+            Details: $"라우터의 /models가 알린, 인스턴스가 불러온 뒤 실제로 할당한 크기(effective)입니다 ({read}). "
+                     + "min·max는 컨텍스트에 따라 필요할 것으로 본 범위라 표시하지 않습니다. 지금의 VRAM 사용량은 위의 전용 메모리(Windows 측정)입니다.");
+    }
+
+    private static ProcessKey KeyOf(GpuMemorySnapshot s, GpuProcessMemory p) => s.Process(p.ProcessId)?.Key ?? new ProcessKey(p.ProcessId, 0, $"PID {p.ProcessId}");
+
+    /// <summary>The filter text in the name, kind, runtimes or found contents, or the exact PID.</summary>
+    private static bool Matches(GpuProcessRow row, string filter)
+        => filter.Length == 0
+           || row.Pid.ToString(CultureInfo.InvariantCulture) == filter
+           || row.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || row.KindLabel.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || row.Runtimes.Contains(filter, StringComparison.OrdinalIgnoreCase)
+           || (!row.InsideIsGeneric && row.Inside.Contains(filter, StringComparison.OrdinalIgnoreCase));
+
+    private static string Percent(double share) => share > 0 && share < 0.01 ? "1% 미만" : (share * 100).ToString("0", CultureInfo.InvariantCulture) + "%";
+
+    private static string IdentityText(ProcessEntry? entry) => entry?.State switch
+    {
+        ProcessIdentityState.Verified => "",
+        ProcessIdentityState.StartTimeUnavailable => "시작 시각 확인 불가",
+        ProcessIdentityState.Exited => "측정 직후 종료됨",
+        ProcessIdentityState.ReusedAfterSample => "PID 재사용됨 (값은 이전 프로세스)",
+        _ => "프로세스 정보 없음",
+    };
+
+    private static string InsideOf(ProcessKind kind) => kind switch
+    {
+        ProcessKind.Compositor => "창 버퍼·합성 화면",
+        ProcessKind.Browser => "페이지·영상 텍스처",
+        ProcessKind.Video => "영상 프레임",
+        ProcessKind.Graphics3D => "텍스처·렌더 타깃",
+        ProcessKind.Kernel => "드라이버 할당",
+        _ => "",
+    };
+
+    private static string ParamsLabel(long parameters) => parameters >= 1_000_000_000 ? (parameters / 1e9).ToString("0.#", CultureInfo.InvariantCulture) + "B"
+        : parameters >= 1_000_000 ? (parameters / 1e6).ToString("0", CultureInfo.InvariantCulture) + "M"
+        : parameters > 0 ? parameters.ToString(CultureInfo.InvariantCulture) : "";
+
+    private static string EnginesText(EngineUsage e) => $"3D {e.ThreeD:0} · 연산 {e.Compute:0} · 복사 {e.Copy:0} · 영상 {e.Video:0}";
+
+    /// <summary>"GPU" plus the busiest engine group, as Task Manager's GPU column counts it (the busiest engine).</summary>
+    private static string BusiestEngine(EngineUsage e) => e.Busiest < 1 ? "GPU" : $"GPU · {EngineName(e)}";
+
+    /// <summary>The engine group the busiest figure comes from.</summary>
+    private static string EngineName(EngineUsage e)
+        => e.Busiest == e.Compute ? "연산" : e.Busiest == e.ThreeD ? "3D" : e.Busiest == e.Video ? "영상" : e.Busiest == e.Copy ? "복사" : "기타";
+
+    private static string Pair(long? used, long? total) => used is null && total is null ? Text.NA : $"{Text.Bytes(used)} / {Text.Bytes(total)}";
+
+    private static void Replace<T>(ObservableCollection<T> target, IReadOnlyList<T> items)
+    {
+        if (target.SequenceEqual(items))
+        {
+            return;
+        }
+
+        target.Clear();
+        foreach (var item in items)
+        {
+            target.Add(item);
+        }
+    }
+}

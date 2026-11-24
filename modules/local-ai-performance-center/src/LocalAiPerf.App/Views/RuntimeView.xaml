@@ -1,0 +1,144 @@
+<UserControl x:Class="LocalAiPerf.App.Views.RuntimeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:LocalAiPerf.App.Controls"
+             xmlns:local="clr-namespace:LocalAiPerf.App">
+  <UserControl.Resources>
+    <local:StatusBrushConverter x:Key="StatusBrush" />
+    <local:NotEmptyToVisibilityConverter x:Key="NotEmpty" />
+    <local:BoolToVisibilityConverter x:Key="CountVisible" />
+    <DataTemplate x:Key="ValueRows">
+      <DataGrid ItemsSource="{Binding}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" Margin="0,4,0,0">
+        <DataGrid.Columns>
+          <DataGridTextColumn Header="항목" Binding="{Binding Name, Mode=OneWay}" Width="150" />
+          <DataGridTemplateColumn Header="값" Width="*">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding Value}" Style="{StaticResource WrapCell}" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTextColumn Header="출처" Binding="{Binding Origin, Mode=OneWay}" Width="70" />
+          <DataGridTemplateColumn Header="비고" Width="*">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate><TextBlock Text="{Binding Note}" Style="{StaticResource WrapCell}" Foreground="{StaticResource TextMutedBrush}" /></DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
+    </DataTemplate>
+  </UserControl.Resources>
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel>
+      <TextBlock Text="AI 런타임" Style="{StaticResource PageTitle}" />
+
+      <Border Style="{StaticResource Card}">
+        <Grid>
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+          <TextBlock Text="연결 대상" Style="{StaticResource Label}" />
+          <TextBlock Grid.Column="1" Text="{Binding Endpoint, StringFormat='Strata · {0} (읽기 전용 GET만 사용)'}" Style="{StaticResource Value}" />
+          <Button Grid.Column="2" Grid.RowSpan="2" Content="다시 연결" Command="{Binding ReconnectCommand}" Padding="14,4" VerticalAlignment="Top" />
+          <TextBlock Grid.Row="1" Text="상태" Style="{StaticResource Label}" />
+          <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal">
+            <Ellipse Width="10" Height="10" Margin="0,0,6,0" Fill="{Binding StateLevel, Converter={StaticResource StatusBrush}}" />
+            <TextBlock Text="{Binding StateText}" Style="{StaticResource Value}" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding ErrorCategory, StringFormat=' · 분류: {0}'}" Style="{StaticResource Value}"
+                       Visibility="{Binding ErrorCategory, Converter={StaticResource NotEmpty}}" />
+          </StackPanel>
+          <TextBlock Grid.Row="2" Text="내용" Style="{StaticResource Label}" Visibility="{Binding ErrorMessage, Converter={StaticResource NotEmpty}}" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ErrorMessage}" Style="{StaticResource Value}" Visibility="{Binding ErrorMessage, Converter={StaticResource NotEmpty}}" />
+          <TextBlock Grid.Row="3" Text="안내" Style="{StaticResource Label}" Visibility="{Binding ErrorHint, Converter={StaticResource NotEmpty}}" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ErrorHint}" Style="{StaticResource Value}" Visibility="{Binding ErrorHint, Converter={StaticResource NotEmpty}}" />
+          <TextBlock Grid.Row="4" Text="마지막 성공" Style="{StaticResource Label}" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Style="{StaticResource Value}">
+            <Run Text="{Binding LastSuccess, Mode=OneWay}" /> <Run Text="{Binding NextRetry, Mode=OneWay}" Foreground="{StaticResource TextMutedBrush}" />
+          </TextBlock>
+          <TextBlock Grid.Row="5" Text="인증" Style="{StaticResource Label}" />
+          <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding KeyStatus}" Style="{StaticResource Value}" />
+          <TextBlock Grid.Row="6" Grid.ColumnSpan="3" Style="{StaticResource Caption}" Margin="0,6,0,0"
+                     Text="연결 오류(실행 안 됨·포트 다름·시간 초과)와 API 호환성 오류(Strata 업데이트 등으로 응답 형식이 바뀜)를 구분해 표시합니다. 이 앱은 Strata 설정·파일·프로세스를 바꾸지 않으며, 프롬프트와 응답 내용은 조회하지 않습니다." />
+        </Grid>
+      </Border>
+
+      <UniformGrid Columns="2">
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="서버" Style="{StaticResource SectionTitle}" />
+            <ContentControl Content="{Binding Server}" ContentTemplate="{StaticResource ValueRows}" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="모델" Style="{StaticResource SectionTitle}" />
+            <ContentControl Content="{Binding Model}" ContentTemplate="{StaticResource ValueRows}" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="실시간 추론 성능" Style="{StaticResource SectionTitle}" />
+            <ContentControl Content="{Binding Live}" ContentTemplate="{StaticResource ValueRows}" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}" MinHeight="260">
+          <c:ChartView Model="{Binding ThroughputChart}" />
+        </Border>
+      </UniformGrid>
+
+      <UniformGrid Rows="1">
+        <Border Style="{StaticResource Card}" Visibility="{Binding Settings.Count, Converter={StaticResource CountVisible}}">
+          <StackPanel>
+            <TextBlock Text="모델 기본 생성 설정 (/props)" Style="{StaticResource SectionTitle}" />
+            <ContentControl Content="{Binding Settings}" ContentTemplate="{StaticResource ValueRows}" />
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="슬롯별 컨텍스트" Style="{StaticResource SectionTitle}" />
+            <DataGrid ItemsSource="{Binding Slots}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" Margin="0,4,0,0">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="슬롯" Binding="{Binding Slot, Mode=OneWay}" Width="50" />
+                <DataGridTextColumn Header="상태" Binding="{Binding State, Mode=OneWay}" Width="90" />
+                <DataGridTextColumn Header="보유 토큰" Binding="{Binding Held, Mode=OneWay}" Width="100" />
+                <DataGridTextColumn Header="컨텍스트 사용 (계산값)" Binding="{Binding Fill, Mode=OneWay}" Width="*" />
+                <DataGridTextColumn Header="tok/s" Binding="{Binding TokS, Mode=OneWay}" Width="70" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </Border>
+      </UniformGrid>
+
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="최근 완료 요청 (내용 없이 수치만)" Style="{StaticResource SectionTitle}" />
+          <DataGrid ItemsSource="{Binding Recent}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" Margin="0,4,0,0" MaxHeight="320">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="시작" Binding="{Binding Time, Mode=OneWay}" Width="150" />
+              <DataGridTextColumn Header="처리 시간" Binding="{Binding Duration, Mode=OneWay}" Width="80" />
+              <DataGridTextColumn Header="종료" Binding="{Binding Finish, Mode=OneWay}" Width="70" />
+              <DataGridTextColumn Header="프롬프트 토큰" Binding="{Binding PromptTokens, Mode=OneWay}" Width="100" />
+              <DataGridTextColumn Header="캐시 재사용" Binding="{Binding Reused, Mode=OneWay}" Width="90" />
+              <DataGridTextColumn Header="출력 토큰" Binding="{Binding OutputTokens, Mode=OneWay}" Width="80" />
+              <DataGridTextColumn Header="프롬프트 ms" Binding="{Binding PrefillMs, Mode=OneWay}" Width="90" />
+              <DataGridTextColumn Header="디코드 ms" Binding="{Binding DecodeMs, Mode=OneWay}" Width="90" />
+              <DataGridTextColumn Header="디코드 tok/s (계산값)" Binding="{Binding DecodeTokS, Mode=OneWay}" Width="140" />
+              <DataGridTextColumn Header="첫 토큰 (엔진 기준)" Binding="{Binding FirstToken, Mode=OneWay}" Width="*" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+      </Border>
+
+      <Border Style="{StaticResource Card}">
+        <StackPanel>
+          <TextBlock Text="요청 활동 (오류·시간 초과 포함, 익명 요청 ID)" Style="{StaticResource SectionTitle}" />
+          <DataGrid ItemsSource="{Binding Activity}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="Horizontal" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single" Background="Transparent" BorderThickness="0" Margin="0,4,0,0" MaxHeight="260">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="시각" Binding="{Binding Time, Mode=OneWay}" Width="160" />
+              <DataGridTextColumn Header="요청 ID" Binding="{Binding RequestId, Mode=OneWay}" Width="130" />
+              <DataGridTextColumn Header="이벤트" Binding="{Binding Event, Mode=OneWay}" Width="120" />
+              <DataGridTextColumn Header="결과" Binding="{Binding Outcome, Mode=OneWay}" Width="*" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

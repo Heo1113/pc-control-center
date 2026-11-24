@@ -1,0 +1,78 @@
+<UserControl x:Class="GpuProfit.App.Views.HistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:c="clr-namespace:GpuProfit.App.Controls">
+  <DockPanel>
+    <DockPanel DockPanel.Dock="Top">
+      <TextBlock Text="기록" Style="{StaticResource PageTitle}" />
+      <ComboBox ItemsSource="{Binding Granularities}" SelectedItem="{Binding SelectedGranularity}" MinWidth="150" Margin="12,0,6,8" VerticalAlignment="Center" AutomationProperties.Name="집계 단위" />
+      <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="120" Margin="0,0,6,8" VerticalAlignment="Center" AutomationProperties.Name="기간" />
+      <ComboBox ItemsSource="{Binding WorkloadFilters}" SelectedItem="{Binding SelectedWorkload}" MinWidth="160" Margin="0,0,6,8" VerticalAlignment="Center" AutomationProperties.Name="작업" />
+      <Button Content="CSV 내보내기" Command="{Binding ExportCommand}" Style="{StaticResource ToolButton}" VerticalAlignment="Center" />
+      <TextBlock Text="{Binding StatusText}" Style="{StaticResource StatusLine}" VerticalAlignment="Center" />
+    </DockPanel>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <Border Style="{StaticResource Card}" Visibility="{Binding EmptyText, Converter={StaticResource NotEmptyToVisibility}}">
+          <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Value}" FontSize="14" />
+        </Border>
+        <UniformGrid Columns="2">
+          <Border Style="{StaticResource Card}" Height="260"><c:ChartView Data="{Binding EnergyChart}" /></Border>
+          <Border Style="{StaticResource Card}" Height="260"><c:ChartView Data="{Binding MoneyChart}" /></Border>
+        </UniformGrid>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="기간별 기록" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="{Binding PeriodNote}" Style="{StaticResource Caption}" Margin="0,0,0,6" />
+            <DataGrid ItemsSource="{Binding Periods}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False" MaxHeight="420"
+                      AutomationProperties.Name="기간별 기록">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="기간" Binding="{Binding Period}" />
+                <DataGridTextColumn Header="세션" Binding="{Binding Sessions}" />
+                <DataGridTextColumn Header="시간" Binding="{Binding Hours}" />
+                <DataGridTextColumn Header="실측" Binding="{Binding Measured}" />
+                <DataGridTextColumn Header="추정" Binding="{Binding Estimated}" />
+                <DataGridTextColumn Header="전력계 입력" Binding="{Binding Entered}" />
+                <DataGridTextColumn Header="총 에너지" Binding="{Binding Total}" />
+                <DataGridTextColumn Header="추정 비중" Binding="{Binding EstimatedShare}" />
+                <DataGridTextColumn Header="관측률" Binding="{Binding Coverage}" />
+                <DataGridTextColumn Header="전력비" Binding="{Binding Electricity}" />
+                <DataGridTextColumn Header="기타 비용" Binding="{Binding OtherCost}" />
+                <DataGridTextColumn Header="실현 매출" Binding="{Binding Revenue}" />
+                <DataGridTextColumn Header="미확정" Binding="{Binding Unconfirmed}" />
+                <DataGridTextColumn Header="예상" Binding="{Binding Expected}" />
+                <DataGridTextColumn Header="실현 순수익" Binding="{Binding Net}" />
+                <DataGridTextColumn Header="비고" Binding="{Binding Notes}" Width="*" ElementStyle="{StaticResource WrapCell}" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <DockPanel>
+              <TextBlock Text="센서 시계열" Style="{StaticResource SectionTitle}" />
+              <ComboBox ItemsSource="{Binding SeriesRanges}" SelectedItem="{Binding SelectedSeriesRange}" MinWidth="130" Margin="12,0,0,8" HorizontalAlignment="Left" AutomationProperties.Name="시계열 기간" />
+            </DockPanel>
+            <TextBlock Text="{Binding SeriesNote}" Style="{StaticResource Caption}" />
+            <UniformGrid Columns="2">
+              <Border Style="{StaticResource Card}" Height="240"><c:ChartView Data="{Binding PowerChart}" /></Border>
+              <Border Style="{StaticResource Card}" Height="240"><c:ChartView Data="{Binding PowerPeakChart}" /></Border>
+              <Border Style="{StaticResource Card}" Height="240"><c:ChartView Data="{Binding UtilChart}" /></Border>
+              <Border Style="{StaticResource Card}" Height="240"><c:ChartView Data="{Binding TempChart}" /></Border>
+            </UniformGrid>
+            <TextBlock Text="기록 공백 (앱 종료·절전·센서 끊김·시각 변경)" Style="{StaticResource SectionTitle}" Margin="0,8,0,4" />
+            <DataGrid ItemsSource="{Binding Gaps}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" CanUserAddRows="False" MaxHeight="260">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="시작" Binding="{Binding From}" />
+                <DataGridTextColumn Header="끝" Binding="{Binding To}" />
+                <DataGridTextColumn Header="길이" Binding="{Binding Duration}" />
+                <DataGridTextColumn Header="종류" Binding="{Binding Kind}" />
+                <DataGridTextColumn Header="설명" Binding="{Binding Detail}" Width="*" ElementStyle="{StaticResource WrapCell}" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

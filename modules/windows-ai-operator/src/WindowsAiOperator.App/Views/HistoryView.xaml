@@ -1,0 +1,97 @@
+<UserControl x:Class="WindowsAiOperator.App.Views.HistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             AutomationProperties.AutomationId="HistoryPage">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="5*" />
+      <ColumnDefinition Width="6*" />
+    </Grid.ColumnDefinitions>
+    <TextBlock Grid.ColumnSpan="2" Text="기록" Style="{StaticResource PageTitle}" />
+    <StackPanel Grid.Row="1" Grid.ColumnSpan="2">
+      <Border Style="{StaticResource Banner}" Visibility="{Binding Notice, Converter={StaticResource NotEmptyToVisibility}}">
+        <TextBlock Text="{Binding Notice}" Style="{StaticResource WarningText}" />
+      </Border>
+      <WrapPanel Margin="6,0,6,6">
+        <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="260" Margin="0,0,6,6" AutomationProperties.Name="검색어" />
+        <Button Content="검색" Command="{Binding RefreshCommand}" Style="{StaticResource ToolButton}" IsDefault="True" />
+        <ComboBox ItemsSource="{Binding StatusFilters}" SelectedItem="{Binding SelectedStatus}" DisplayMemberPath="Label" Width="140" Margin="0,0,6,6" />
+        <ComboBox ItemsSource="{Binding PeriodFilters}" SelectedItem="{Binding SelectedPeriod}" DisplayMemberPath="Label" Width="120" Margin="0,0,6,6" />
+      </WrapPanel>
+    </StackPanel>
+    <Border Grid.Row="2" Style="{StaticResource Card}">
+      <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="HistoryList">
+        <ListBox.ItemTemplate>
+          <DataTemplate>
+            <StackPanel Margin="0,4">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" Margin="8,0,0,0" />
+                <TextBlock Text="{Binding When}" Style="{StaticResource Caption}" />
+              </DockPanel>
+              <TextBlock Text="{Binding Request}" TextWrapping="Wrap" />
+              <TextBlock Style="{StaticResource Caption}">
+                <Run Text="{Binding Source, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding Counts, Mode=OneWay}" />
+              </TextBlock>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Border>
+    <ScrollViewer Grid.Row="2" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="{Binding Selected.Request}" Style="{StaticResource SectionTitle}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding Detail.Summary.StatusMessage}" Style="{StaticResource Value}" />
+            <TextBlock Text="{Binding Breakdown}" Style="{StaticResource Value}" FontWeight="SemiBold" Margin="0,6,0,0" />
+            <TextBlock Text="{Binding Detail.Report, StringFormat=결과 보고: {0}}" Style="{StaticResource Value}" Visibility="{Binding Detail.Report, Converter={StaticResource NotEmptyToVisibility}}" />
+            <TextBlock Text="{Binding Detail.LastKnownState, StringFormat=마지막으로 확인한 상태: {0}}" Style="{StaticResource Caption}"
+                       Visibility="{Binding Detail.LastKnownState, Converter={StaticResource NotEmptyToVisibility}}" />
+            <TextBlock Text="{Binding Timing}" Style="{StaticResource Caption}" />
+            <TextBlock Text="{Binding Detail.Summary.ModelLabel, StringFormat=계획: {0}}" Style="{StaticResource Caption}" />
+            <WrapPanel Margin="0,8,0,0">
+              <Button Content="같은 요청으로 다시 실행(작업 화면에 채우기)" Command="{Binding RunAgainCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="JSON 내보내기…" Command="{Binding ExportCommand}" Style="{StaticResource ToolButton}" />
+              <Button Content="삭제" Command="{Binding DeleteCommand}" Style="{StaticResource ToolButton}" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="단계" Style="{StaticResource SectionTitle}" />
+            <ItemsControl ItemsSource="{Binding Steps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="0,3">
+                    <DockPanel>
+                      <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{Binding Tone, Converter={StaticResource ToneBrush}}" Margin="8,0,0,0" />
+                      <TextBlock Text="{Binding Title}" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <TextBlock Text="이벤트" Style="{StaticResource SectionTitle}" />
+            <ItemsControl ItemsSource="{Binding Events}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding}" Style="{StaticResource Caption}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

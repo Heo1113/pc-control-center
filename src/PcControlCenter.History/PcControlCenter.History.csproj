@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The integrated time axis: reads each module's own database read-only (no merge, no writes) and lines up
+       sensors, inference, power, errors and Operator tasks with their sources and observation gaps. Tested on Linux. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.History</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Core\PcControlCenter.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+  </ItemGroup>
+</Project>

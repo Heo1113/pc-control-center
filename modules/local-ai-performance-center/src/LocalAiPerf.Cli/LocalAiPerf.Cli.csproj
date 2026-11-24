@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>LocalAiPerf.Cli</RootNamespace>
+    <AssemblyName>lapc</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LocalAiPerf.Recording\LocalAiPerf.Recording.csproj" />
+    <ProjectReference Include="..\LocalAiPerf.Export\LocalAiPerf.Export.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shell view models without WPF types (navigation, integrated dashboard, shared sensors, settings, history).
+       Unit-tested on Linux, like the modules' own Presentation projects. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>PcControlCenter.Presentation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\PcControlCenter.Modules\PcControlCenter.Modules.csproj" />
+    <ProjectReference Include="..\PcControlCenter.History\PcControlCenter.History.csproj" />
+    <ProjectReference Include="..\PcControlCenter.Migration\PcControlCenter.Migration.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="PcControlCenter.Tests" />
+    <InternalsVisibleTo Include="PcControlCenter" />
+  </ItemGroup>
+</Project>
