@@ -58,7 +58,11 @@ internal static unsafe class DxgiAdapters
                             (int)desc.VendorId,
                             (long)Math.Min((ulong)desc.DedicatedVideoMemory, long.MaxValue),
                             (long)Math.Min((ulong)desc.SharedSystemMemory, long.MaxValue),
-                            (desc.Flags & DxgiAdapterFlagSoftware) != 0));
+                            (desc.Flags & DxgiAdapterFlagSoftware) != 0)
+                        {
+                            PciAddress = desc.VendorId == GpuVendors.Nvidia && (desc.Flags & DxgiAdapterFlagSoftware) == 0
+                                ? AdapterPciLocation.Read(desc.AdapterLuidLowPart, desc.AdapterLuidHighPart) : null,
+                        });
                     }
                 }
                 finally

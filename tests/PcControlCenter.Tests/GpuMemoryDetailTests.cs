@@ -694,6 +694,8 @@ public class GpuProcessInspectionTests
         Assert.Equal((false, false), ModelFiles.Classify(@"C:\ollama\blobs\sha256-1", 10 * M, Magic));
         Assert.Equal(0, checks);
         Assert.Equal((true, true), ModelFiles.Classify(@"C:\ollama\blobs\sha256-1", 200 * M, Magic));
+        Assert.Equal((true, false), ModelFiles.Classify("local.basalt", 30 * M, NoMagic));
+        Assert.Equal("Basalt 모델 팩", ModelFiles.FormatOf("local.basalt", false));
         Assert.Equal((true, false), ModelFiles.Classify("model.safetensors", 5 * M, NoMagic));
         Assert.Equal((false, false), ModelFiles.Classify("model.safetensors", M, NoMagic));
         Assert.Equal((false, false), ModelFiles.Classify("cache.bin", 10 * M, NoMagic)); // also used for caches: needs 64 MiB

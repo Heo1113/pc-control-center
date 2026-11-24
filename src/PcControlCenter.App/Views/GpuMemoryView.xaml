@@ -589,7 +589,7 @@
         <ColumnDefinition Width="*" />
         <ColumnDefinition Width="Auto" />
       </Grid.ColumnDefinitions>
-      <DataGrid x:Name="Table" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
+      <DataGrid FrozenColumnCount="3" x:Name="Table" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess, Mode=TwoWay}"
                 AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column" GridLinesVisibility="None" CanUserAddRows="False"
                 CanUserResizeRows="False" CanUserReorderColumns="False" SelectionMode="Single" SelectionUnit="FullRow" RowHeight="28"
                 ScrollViewer.HorizontalScrollBarVisibility="Auto" AutomationProperties.AutomationId="GpuMemoryProcesses">
@@ -630,6 +630,11 @@
           <DataGridTextColumn Binding="{Binding Pid}" SortMemberPath="Pid" Width="64" MinWidth="64" ElementStyle="{StaticResource SecondaryNum}">
             <DataGridTextColumn.Header>
               <TextBlock Text="PID" ToolTip="프로세스 ID. 찾기 칸에 PID를 넣으면 그 프로세스만" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
+          <DataGridTextColumn Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="120" MinWidth="120" ElementStyle="{StaticResource AdapterCell}">
+            <DataGridTextColumn.Header>
+              <TextBlock Text="GPU" ToolTip="이 메모리가 있는 어댑터 (어댑터가 둘 이상일 때)" />
             </DataGridTextColumn.Header>
           </DataGridTextColumn>
           <DataGridTemplateColumn SortMemberPath="KindLabel" Width="96" MinWidth="96">
@@ -706,11 +711,6 @@
           <DataGridTextColumn Binding="{Binding Inside}" SortMemberPath="Inside" Width="1.6*" MinWidth="100" ElementStyle="{StaticResource InsideCell}">
             <DataGridTextColumn.Header>
               <TextBlock Text="내용" ToolTip="이 프로세스에서 확인한 모델 파일이나 Strata 모델" />
-            </DataGridTextColumn.Header>
-          </DataGridTextColumn>
-          <DataGridTextColumn Binding="{Binding Adapter}" SortMemberPath="Adapter" Width="120" MinWidth="120" ElementStyle="{StaticResource AdapterCell}">
-            <DataGridTextColumn.Header>
-              <TextBlock Text="GPU" ToolTip="이 메모리가 있는 어댑터 (어댑터가 둘 이상일 때)" />
             </DataGridTextColumn.Header>
           </DataGridTextColumn>
         </DataGrid.Columns>

@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using LocalAiPerf.Core.Runtime;
+using LocalAiPerf.Core.Hardware;
 using LocalAiPerf.Presentation.Charts;
 using PcControlCenter.Core;
 using PcControlCenter.GpuMemory;
@@ -177,7 +178,7 @@ public sealed record StrataContext(RuntimeSnapshot? Snapshot, string? Unavailabl
 /// The Basalt server for this page: its port while Basalt runs (or starts, or stops), null otherwise. The page links the
 /// port's listener, its descendants and its basalt* wrapper to the measured processes; nothing is asked of Basalt here.
 /// </summary>
-public sealed record BasaltContext(int? Port, string State);
+public sealed record BasaltContext(int? Port, string State, int? OwnerPid = null, DateTimeOffset? OwnerStart = null, DateTimeOffset? ObservedAt = null);
 
 /// <summary>One row of the process table. Updated in place on every reading, so selection and sort order survive refreshes.</summary>
 public sealed partial class GpuProcessRow(ProcessKey key, long luid) : ObservableObject
@@ -1011,7 +1012,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
 
         UpdateStatus(health, latest, age, stale);
-        var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}|{BasaltPort(basalt)}";
+        var key = $"{strata.Snapshot?.State}|{strata.Snapshot?.Endpoint}|{strata.Snapshot?.Model?.Id}|{strata.Snapshot?.Model?.ContextTokens}|{StrataPort(strata, now)}|{BasaltPort(basalt)}|{basalt?.OwnerPid}|{basalt?.OwnerStart:O}|{basalt?.ObservedAt:O}";
         _strataContext = strata;
         if (_rendered && latest?.Timestamp == _renderedAt && stale == _renderedStale && key == _renderedKey)
         {
@@ -1033,7 +1034,9 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         _current = latest is not null && !stale ? latest : null;
         _strataSnapshot = strata.Snapshot;
         _link = _current is not null && StrataPort(strata, now) is not null ? ServerProcessLinker.Link(strata.Snapshot!.Endpoint, _current) : null;
-        _basaltLink = _current is not null && BasaltPort(basalt) is int basaltPort
+        _basaltLink = _current is not null && BasaltPort(basalt) is int basaltPort && basalt is { OwnerPid: int pid, OwnerStart: { } start, ObservedAt: { } observed } &&
+                     (_current.Timestamp - observed).Duration() <= StaleAfter(_current) && _current.Process(pid)?.StartTime == start &&
+                     _current.Listeners.Any(l => l.Port == basaltPort && l.ProcessId == pid)
             ? ServerProcessLinker.Link($"http://127.0.0.1:{basaltPort.ToString(CultureInfo.InvariantCulture)}", _current, ProcessKinds.IsBasaltName)
             : null;
         UpdateStrata(strata, now);
@@ -1164,10 +1167,23 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         }
     }
 
+    internal static GpuSample? MatchNvml(GpuAdapterInfo adapter, IReadOnlyList<GpuAdapterMemory> adapters, IReadOnlyList<GpuSample> samples)
+    {
+        var nvidia = adapters.Where(a => a.Info is { IsNvidia: true, IsSoftware: false }).ToArray();
+        if (!adapter.IsNvidia || adapter.IsSoftware || nvidia.Length != samples.Count || samples.Count == 0) return null;
+        if (samples.Count == 1 && (adapter.PciAddress is null || samples[0].PciAddress is null)) return samples[0];
+        if (adapter.PciAddress is not { } location ||
+            nvidia.Any(a => a.Info!.PciAddress is null) ||
+            nvidia.Count(a => a.Info!.PciAddress!.Value.SameLocation(location)) != 1 ||
+            samples.Any(g => g.PciAddress is not { Domain: 0 } || string.IsNullOrWhiteSpace(g.DeviceUuid)) ||
+            samples.Select(g => g.DeviceUuid).Distinct(StringComparer.OrdinalIgnoreCase).Count() != samples.Count) return null;
+
+        var matches = samples.Where(g => g.PciAddress!.Value.SameLocation(location)).ToArray();
+        return matches.Length == 1 ? matches[0] : null;
+    }
+
     private List<(long Luid, AdapterView View)> BuildAdapters(GpuMemorySnapshot s)
     {
-        var nvidia = s.Adapters.Count(a => a.Info is { IsNvidia: true, IsSoftware: false });
-        var devices = _hub.GpuDevices;
         var hubSample = _hub.Latest?.Snapshot;
         var hubFresh = hubSample is not null && _time.GetUtcNow() - hubSample.Timestamp <= _hub.Health.Interval * 2 + TimeSpan.FromSeconds(1);
         var views = new List<(long, AdapterView)>();
@@ -1182,7 +1198,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
                     Kinds: g.GroupBy(p => KindOf(s, p).Kind).Select(k => (Kind: k.Key, Bytes: k.Sum(p => p.DedicatedBytes!.Value))).OrderByDescending(k => k.Bytes).ToList()))
                 .OrderByDescending(x => x.Bytes)
                 .ToList();
-            long? processSum = rows.All(p => p.DedicatedBytes is not null) ? rows.Sum(p => p.DedicatedBytes ?? 0) : null;
+            long? processSum = s.Variant != ProcessCounterVariant.Unavailable && s.DedicatedProcessCountersRead != false && rows.All(p => p.DedicatedBytes is not null) ? rows.Sum(p => p.DedicatedBytes ?? 0) : null;
             var used = adapter.DedicatedUsageBytes;
             long? unattributed = used is long u && processSum is long sum ? u - sum : null;
             var scale = capacity > 0 ? capacity : Math.Max(1, used ?? byGroup.Sum(k => k.Bytes));
@@ -1202,13 +1218,13 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             var legend = parts.Select(p => new LegendItem(p.Color, p.Label, Text.Bytes(p.Bytes), ToolTip: p.ToolTip, Group: p.Group,
                 IsActive: p.Group is not null && p.Group == GroupFilter)).ToList();
             // A few MiB either way is the counters' timing; more is shared resources counted for several processes.
-            string? legendNote = unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
+            string? legendNote = processSum is null ? "프로세스 측정 불완전 · 합계와 미귀속 값 계산 불가" : unattributed < -Math.Max(OverlapTolerance, (used ?? 0) / 50)
                 ? $"프로세스 합이 어댑터 사용량보다 {Text.Bytes(-unattributed)} 큽니다 (공유 리소스 중복 집계 가능)"
                 : null;
             var shared = adapter.SharedUsageBytes;
             var sharedCapacity = info?.SharedSystemMemoryBytes ?? 0;
             string? nvml = null;
-            if (info is { IsNvidia: true, IsSoftware: false } && nvidia == 1 && devices.Count == 1 && hubFresh && hubSample!.Gpu(devices[0].Index) is { } gpu)
+            if (info is not null && hubFresh && MatchNvml(info, s.Adapters, hubSample!.Gpus) is { } gpu)
             {
                 nvml = $"NVML {Pair(gpu.MemoryUsedBytes, gpu.MemoryTotalBytes)}";
             }
@@ -1446,7 +1462,7 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
         // executable name: the header cannot say how it places the model either way.
         var model = detail?.Models.FirstOrDefault(m => m.Gguf is { Kind: "LLM", Error: null })?.Gguf;
         (string Note, string Details)? withheld = model is null ? null
-            : IsBasalt(p.ProcessId) ? ("Basalt(Strata에서 갈라진 엔진)는 메모리를 자체 방식으로 배치한다고 보고 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
+            : IsBasalt(p.ProcessId) || ProcessKinds.IsBasaltName(entry?.Name ?? "") ? ("Basalt(Strata에서 갈라진 엔진)는 메모리를 자체 방식으로 배치한다고 보고 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
                 "Basalt는 Strata에서 갈라진 엔진이라 Strata처럼 전문가 캐시·KV·세션 버퍼를 자체 방식으로 배치한다고 보고, GGUF 헤더로 나누지 않습니다. "
                 + "이 판단은 Basalt의 구조를 실기기에서 확인하기 전의 추정입니다. 위 값은 Windows가 측정한 값입니다.")
             : IsStrata(p.ProcessId) ? ("Strata 엔진은 메모리를 자체 방식으로 배치해 헤더로 나누지 않습니다. 위 값은 측정값입니다.",
@@ -1455,6 +1471,8 @@ public sealed partial class GpuMemoryViewModel : ObservableObject
             : ProcessKinds.IsStrataEngineName(entry?.Name ?? "") ? ("Strata 엔진(strata.exe)이라 헤더로 나누지 않습니다.",
                 "이름이 Strata 엔진(strata.exe)이라 구성을 그리지 않습니다. Strata 엔진은 전문가 캐시·KV(기본 int8)·세션 버퍼를 "
                 + "자체 방식으로 배치해 GGUF 헤더로는 나눌 수 없습니다. 로컬 AI 모듈이 이 Strata에 연결되면 엔진이 보고한 값도 함께 보여 줍니다.")
+            : s.Processes.Any(other => other.ProcessId == p.ProcessId && other.Luid != p.Luid && other.DedicatedBytes > 0) || detail!.Models.Count(m => m.Gguf is { Kind: "LLM" }) > 1
+                ? ("장치별 가중치 배분 미보고", "여러 GPU 또는 모델 파일에 분산되어 있어 파일 크기를 이 GPU의 상주 가중치로 표시할 수 없습니다.")
             : model.Experts is > 0 ? ("전문가(MoE) 모델이라 GPU에 있는 가중치를 헤더로 정할 수 없어 나누지 않습니다.",
                 "전문가(MoE) 모델은 전문가 가중치를 RAM에 두는 설정이 흔해(예: --n-cpu-moe), 헤더만으로는 GPU에 있는 가중치를 정할 수 없어 구성을 그리지 않습니다.")
             : null;

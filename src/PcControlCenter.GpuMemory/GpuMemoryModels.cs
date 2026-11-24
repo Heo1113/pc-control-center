@@ -46,6 +46,7 @@ public sealed record GpuAdapterInfo(
     long SharedSystemMemoryBytes,
     bool IsSoftware)
 {
+    public GpuPciAddress? PciAddress { get; init; }
     public string LuidText => GpuLuid.Format(Luid);
 
     public string VendorName => GpuVendors.Name(VendorId);
@@ -259,6 +260,8 @@ public sealed record GpuMemorySnapshot
 
     /// <summary>False when <c>Total Committed</c> could not be added: committed bytes are N/A for every process.</summary>
     public bool CommittedAvailable { get; init; }
+
+    public bool? DedicatedProcessCountersRead { get; init; }
 
     /// <summary>False when the adapter-wide counters could not be added: adapter usage is N/A.</summary>
     public bool AdapterCountersAvailable { get; init; }

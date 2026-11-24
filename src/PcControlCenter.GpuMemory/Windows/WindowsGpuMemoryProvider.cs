@@ -151,6 +151,7 @@ public sealed class WindowsGpuMemoryProvider : IGpuMemoryProvider
             Timestamp = collected.CollectedAt,
             Source = "Windows 성능 카운터 (WDDM: GPU Process Memory · GPU Adapter Memory), DXGI 어댑터 정보",
             Variant = _counters.Variant,
+            DedicatedProcessCountersRead = unrecognized == 0 && collected.ProcessDedicated is not null && !issues.Any(i => i.Scope == "process.dedicated"),
             CommittedAvailable = _counters.CommittedAvailable,
             AdapterCountersAvailable = _counters.AdapterCountersAvailable,
             Adapters = adapters,

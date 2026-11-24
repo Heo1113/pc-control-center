@@ -56,7 +56,7 @@ public sealed unsafe class NvmlGpuProvider : IGpuSensorProvider
         for (var i = 0; i < _handles.Length; i++)
         {
             var sample = ReadDevice(i, _handles[i], issues, ref lost);
-            samples.Add(sample);
+            samples.Add(sample with { PciAddress = _devices[i].PciAddress, DeviceUuid = _devices[i].DeviceUuid });
         }
 
         if (lost)
@@ -284,7 +284,22 @@ public sealed unsafe class NvmlGpuProvider : IGpuSensorProvider
         for (var i = 0; i < _handles.Length; i++)
         {
             var sample = ReadDevice(i, _handles[i], throwaway, ref lostDuringProbe);
-            devices.Add(new GpuInfo(i, _names[i], sample.MemoryTotalBytes, sample.PowerLimitW));
+            NvmlPciInfo pci = default;
+            GpuPciAddress? address = null;
+            if (_api.DeviceGetPciInfo != null && (NvmlReturn)_api.DeviceGetPciInfo(_handles[i], &pci) == NvmlReturn.Success)
+            {
+                var bytes = new ReadOnlySpan<byte>(pci.BusId, 32);
+                var length = bytes.IndexOf((byte)0);
+                if (length > 0)
+                {
+                    address = GpuPciAddress.FromNvml(System.Text.Encoding.ASCII.GetString(bytes[..length]));
+                }
+            }
+
+            devices.Add(new GpuInfo(i, _names[i], sample.MemoryTotalBytes, sample.PowerLimitW)
+            {
+                PciAddress = address, DeviceUuid = ReadString(_api.DeviceGetUuid, _handles[i], 96),
+            });
         }
 
         _devices = devices;

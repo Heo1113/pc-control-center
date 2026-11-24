@@ -41,6 +41,15 @@ internal struct NvmlMemory
     public ulong Used;
 }
 
+// nvmlPciInfo_t as used by nvmlDeviceGetPciInfo_v3.
+[StructLayout(LayoutKind.Sequential)]
+internal unsafe struct NvmlPciInfo
+{
+    public fixed byte LegacyId[16];
+    public uint Domain, Bus, Device, PciDeviceId, PciSubSystemId;
+    public fixed byte BusId[32];
+}
+
 /// <summary>
 /// Thin binding to NVIDIA's NVML library, which ships with the NVIDIA display driver (nvml.dll on Windows,
 /// libnvidia-ml.so.1 on Linux). Only read functions are bound; nothing here changes GPU settings.
@@ -67,6 +76,8 @@ internal sealed unsafe class NvmlApi : IDisposable
         ErrorString = (delegate* unmanaged<int, IntPtr>)Optional("nvmlErrorString");
         SystemGetDriverVersion = (delegate* unmanaged<byte*, uint, int>)Optional("nvmlSystemGetDriverVersion");
         SystemGetNvmlVersion = (delegate* unmanaged<byte*, uint, int>)Optional("nvmlSystemGetNVMLVersion");
+        DeviceGetPciInfo = (delegate* unmanaged<IntPtr, NvmlPciInfo*, int>)Optional("nvmlDeviceGetPciInfo_v3");
+        DeviceGetUuid = (delegate* unmanaged<IntPtr, byte*, uint, int>)Optional("nvmlDeviceGetUUID");
         DeviceGetName = (delegate* unmanaged<IntPtr, byte*, uint, int>)Optional("nvmlDeviceGetName");
         DeviceGetUtilizationRates = (delegate* unmanaged<IntPtr, NvmlUtilization*, int>)Optional("nvmlDeviceGetUtilizationRates");
         DeviceGetTemperature = (delegate* unmanaged<IntPtr, int, uint*, int>)Optional("nvmlDeviceGetTemperature");
@@ -90,6 +101,8 @@ internal sealed unsafe class NvmlApi : IDisposable
     public delegate* unmanaged<int, IntPtr> ErrorString { get; }
     public delegate* unmanaged<byte*, uint, int> SystemGetDriverVersion { get; }
     public delegate* unmanaged<byte*, uint, int> SystemGetNvmlVersion { get; }
+    public delegate* unmanaged<IntPtr, NvmlPciInfo*, int> DeviceGetPciInfo { get; }
+    public delegate* unmanaged<IntPtr, byte*, uint, int> DeviceGetUuid { get; }
     public delegate* unmanaged<IntPtr, byte*, uint, int> DeviceGetName { get; }
     public delegate* unmanaged<IntPtr, NvmlUtilization*, int> DeviceGetUtilizationRates { get; }
     public delegate* unmanaged<IntPtr, int, uint*, int> DeviceGetTemperature { get; }

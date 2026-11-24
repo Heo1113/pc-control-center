@@ -376,7 +376,8 @@ public sealed partial class DashboardViewModel : ObservableObject
     private void ApplyEconomics(EconomicsSummary s)
     {
         BoardPower = Text.Watts(s.GpuBoardPowerW);
-        BoardPowerSource = s.GpuBoardPowerW is null ? "GPU 보드 전력 값 없음 (N/A, 0 W로 간주하지 않음)"
+        BoardPowerSource = s.PowerReadCount > 0 && s.PowerReadCount < s.GpuCount ? $"전력 관측 {s.PowerReadCount}/{s.GpuCount}개 GPU · 전체 전력과 시간당 비용 미확인"
+            : s.GpuBoardPowerW is null ? "GPU 보드 전력 값 없음 (N/A, 0 W로 간주하지 않음)"
             : s.PowerIsMock ? "MOCK 가상 값" : $"NVML 실측 GPU 보드 전력 · {Text.Clock(s.PowerMeasuredAt)}";
         RateText = s.RateKrwPerKwh.HasValue ? $"{s.RateKrwPerKwh.Value!.Value:N1} 원/kWh ({s.RateBasis})" : $"{Text.NA} — {s.RateKrwPerKwh.Reason}";
         CostPerHour = s.EstimatedCostPerHourKrw is decimal c ? $"약 {Text.Krw(c)}/시간 (추정)" : Text.NA;

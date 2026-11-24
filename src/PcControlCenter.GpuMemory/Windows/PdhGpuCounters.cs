@@ -290,7 +290,12 @@ internal sealed class PdhGpuCounters : IDisposable
         const uint format = PdhFmtLarge | PdhFmtNoCap100;
         uint size = 0;
         var status = PdhGetFormattedCounterArray(counter, format, ref size, out var count, 0);
-        if (status is PdhNoData or PdhCstatusNoInstance || (status == 0 && count == 0))
+        if (status == PdhNoData)
+        {
+            issues.Add(new SensorIssue(Source, scope, SensorStatus.Error, "이번 표본의 카운터 값이 없습니다."));
+            return null;
+        }
+        if (status == PdhCstatusNoInstance || (status == 0 && count == 0))
         {
             return [];
         }

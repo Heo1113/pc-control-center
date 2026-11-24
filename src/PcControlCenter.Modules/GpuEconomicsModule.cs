@@ -27,6 +27,8 @@ public sealed class GpuEconomicsModule(ModuleContext context) : ShellModuleBase(
     /// <summary>Raised after the engine was (re)started (for example after a restore), so the UI rebuilds B's view models.</summary>
     public event Action? EngineReady;
 
+    internal int HubDeviceCount => context.Hub.GpuDevices.Count;
+
     protected override bool Enabled => context.Settings.IsEnabled(Id);
 
     protected override async Task OnStartAsync(CancellationToken cancellationToken)

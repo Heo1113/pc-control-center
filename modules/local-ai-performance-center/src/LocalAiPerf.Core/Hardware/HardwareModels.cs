@@ -41,6 +41,8 @@ public sealed record SensorIssue(string Source, string Scope, SensorStatus Statu
 
 public sealed record GpuSample
 {
+    [System.Text.Json.Serialization.JsonIgnore] public GpuPciAddress? PciAddress { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? DeviceUuid { get; init; }
     public required int Index { get; init; }
     public string? Name { get; init; }
     public double? UtilizationPercent { get; init; }
@@ -93,7 +95,30 @@ public sealed record HardwareSnapshot
     public GpuSample? Gpu(int index) => Gpus.FirstOrDefault(g => g.Index == index);
 }
 
-public sealed record GpuInfo(int Index, string? Name, long? MemoryTotalBytes, double? PowerLimitW);
+public sealed record GpuInfo(int Index, string? Name, long? MemoryTotalBytes, double? PowerLimitW)
+{
+    [System.Text.Json.Serialization.JsonIgnore] public GpuPciAddress? PciAddress { get; init; }
+    [System.Text.Json.Serialization.JsonIgnore] public string? DeviceUuid { get; init; }
+}
+
+public readonly record struct GpuPciAddress(uint? Domain, uint Bus, uint Device, uint Function)
+{
+    public bool SameLocation(GpuPciAddress other) => Bus == other.Bus && Device == other.Device && Function == other.Function;
+
+    public static GpuPciAddress? FromNvml(string address)
+    {
+        var fields = address.Split(':', '.');
+        if (fields.Length != 4) return null;
+        var values = new uint[4];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            if (!uint.TryParse(fields[i], System.Globalization.NumberStyles.AllowHexSpecifier,
+                System.Globalization.CultureInfo.InvariantCulture, out values[i])) return null;
+        }
+
+        return values[1] <= 255 && values[2] <= 31 && values[3] <= 7 ? new(values[0], values[1], values[2], values[3]) : null;
+    }
+}
 
 /// <summary>Static facts about the machine, captured once per session. Contains no user or machine names.</summary>
 public sealed record HardwareInfo

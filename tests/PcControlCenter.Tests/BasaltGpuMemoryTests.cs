@@ -77,7 +77,7 @@ public class BasaltGpuMemoryTests
         var time = new ManualTime(T);
         var provider = new ScriptedGpuMemoryProvider(_ => Snapshot());
         var monitor = new GpuMemoryMonitor(() => provider, time);
-        var basalt = new BasaltContext(8080, "Basalt 실행 중");
+        var basalt = new BasaltContext(8080, "Basalt 실행 중", 20, Table()[20].StartTime, T);
         var vm = new GpuMemoryViewModel(monitor, Hub(time), () => new StrataContext(null, "꺼짐"), time, basalt: () => basalt);
         vm.IsVisible = true;
         vm.Refresh();

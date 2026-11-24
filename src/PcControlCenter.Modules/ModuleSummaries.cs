@@ -31,8 +31,10 @@ public sealed record LocalAiSummary
 /// <summary>Current power and electricity cost for the dashboard. Measured, estimated and session-accounted values stay apart.</summary>
 public sealed record EconomicsSummary
 {
-    /// <summary>Sum of the GPUs' board power in the newest shared reading (NVML measured); null when no GPU reported power.</summary>
+    /// <summary>Sum of the GPUs' board power in the newest shared reading (NVML measured); null unless every expected GPU reported power.</summary>
     public double? GpuBoardPowerW { get; init; }
+    public int PowerReadCount { get; init; }
+    public int GpuCount { get; init; }
 
     public bool PowerIsMock { get; init; }
     public DateTimeOffset? PowerMeasuredAt { get; init; }
@@ -124,10 +126,11 @@ public static class ModuleSummaries
     public static EconomicsSummary Economics(GpuEconomicsModule module, HardwareSnapshot? latest, DateTimeOffset now, TimeZoneInfo zone)
     {
         var power = latest?.Gpus.Where(g => g.PowerW is double p && double.IsFinite(p)).Select(g => g.PowerW!.Value).ToList();
-        var boardPower = power is { Count: > 0 } ? power.Sum() : (double?)null;
+        var count = Math.Max(latest?.Gpus.Count ?? 0, module.HubDeviceCount);
+        var boardPower = power is { Count: > 0 } && power.Count == count ? power.Sum() : (double?)null;
         if (module.Engine is not { } engine)
         {
-            return new EconomicsSummary { GpuBoardPowerW = boardPower, PowerIsMock = latest?.IsMock ?? false, PowerMeasuredAt = latest?.Timestamp, Problem = module.Status.Summary };
+            return new EconomicsSummary { PowerReadCount = power?.Count ?? 0, GpuCount = count, GpuBoardPowerW = boardPower, PowerIsMock = latest?.IsMock ?? false, PowerMeasuredAt = latest?.Timestamp, Problem = module.Status.Summary };
         }
 
         var profile = engine.Profile;
@@ -152,7 +155,7 @@ public static class ModuleSummaries
 
         return new EconomicsSummary
         {
-            GpuBoardPowerW = boardPower,
+            PowerReadCount = power?.Count ?? 0, GpuCount = count, GpuBoardPowerW = boardPower,
             PowerIsMock = latest?.IsMock ?? false,
             PowerMeasuredAt = latest?.Timestamp,
             RateKrwPerKwh = rate,

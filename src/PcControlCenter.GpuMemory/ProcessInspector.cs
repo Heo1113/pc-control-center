@@ -71,7 +71,7 @@ public static class ModelFiles
 
     private static readonly IReadOnlySet<string> Extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        ".gguf", ".ggml", ".safetensors", ".onnx", ".pt", ".pth", ".bin", ".engine", ".plan", ".tflite", ".ckpt",
+        ".basalt", ".gguf", ".ggml", ".safetensors", ".onnx", ".pt", ".pth", ".bin", ".engine", ".plan", ".tflite", ".ckpt",
     };
 
     /// <summary>Also used for caches and tiles: these need 64 MiB to count as a model.</summary>
@@ -106,6 +106,7 @@ public static class ModelFiles
 
     public static string FormatOf(string path, bool gguf) => gguf ? "GGUF" : Path.GetExtension(path).TrimStart('.').ToLowerInvariant() switch
     {
+        "basalt" => "Basalt 모델 팩",
         "safetensors" => "safetensors",
         "onnx" => "ONNX",
         "engine" or "plan" => "TensorRT",

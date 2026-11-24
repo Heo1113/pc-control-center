@@ -369,7 +369,7 @@ public sealed partial class ShellViewModel : ObservableObject
                 PcControlCenter.Basalt.BasaltState.Stopping => "끄는 중",
                 PcControlCenter.Basalt.BasaltState.Off => "꺼짐",
                 _ => status.Detail,
-            }}");
+            }}", status.Tree?.Owner?.Id, status.Tree?.Owner?.StartTime, status.CheckedAt);
     }
 
     /// <summary>The local AI module's latest Strata poll for the GPU memory page, or why there is none.</summary>
