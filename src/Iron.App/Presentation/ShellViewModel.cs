@@ -14,23 +14,29 @@ public sealed partial class ShellViewModel : ObservableObject
     public const double GpuBoardScaleW = 540; // RTX 5080 360 W + RTX 5060 Ti 180 W: the board power meter's full scale
 
     private readonly MockTelemetryProvider _mock;
+    private readonly ITelemetrySource _source;
     private readonly IUiScheduler _scheduler;
     private readonly AlertMonitor _alerts = new();
     private readonly History _nvmlPower = new();
     private readonly History _wireViewPower = new();
     private IDisposable? _flashEnd;
 
-    public ShellViewModel(MockTelemetryProvider mock, IUiScheduler scheduler)
+    /// <param name="source">Stage 2: the real readers; null = the mock values (Stage 1).</param>
+    /// <param name="identities">Stage 2: the real identity of a row; null = mock identities.</param>
+    public ShellViewModel(MockTelemetryProvider mock, IUiScheduler scheduler, ITelemetrySource? source = null, IProcessIdentityProvider? identities = null)
     {
         _mock = mock;
+        _source = source ?? mock;
         _scheduler = scheduler;
+        Processes = identities is null ? new ProcessListViewModel() : new ProcessListViewModel { IdentityProvider = identities };
         Gpus = new[] { new GpuCardViewModel(0), new GpuCardViewModel(1) }; // an array: XAML binds Gpus[0], Gpus[1]
         Cpu = new SystemTileViewModel("CPU (9800X3D)");
         Ram = new SystemTileViewModel("시스템 RAM");
         Ssd = new SystemTileViewModel("NVMe SSD");
         Board = new SystemTileViewModel("GPU 보드 전력");
         SystemTiles = [Cpu, Ram, Ssd, Board];
-        WireView = new WireViewViewModel(scheduler, () => _mock.State.WireViewPortBusy, Reevaluate);
+        // real data: IRON never opens the WireView USB port (HWiNFO reads it), so no other program can hold it "against" IRON
+        WireView = new WireViewViewModel(scheduler, () => _source.IsMock && _mock.State.WireViewPortBusy, Reevaluate);
         GpuTemperatureLimit = new NumericSetting("GPU 온도 UI 주의 기준", "°C", 55, 95, 72, 0, _ => Reevaluate());
         PinCurrentLimit = new NumericSetting("WireView 핀 전류 UI 주의 기준", "A", 4.0, 9.0, 7.0, 1, _ => Reevaluate());
         Tariff = new NumericSetting("전기요금 단가", "₩/kWh", 0, 2000, 185, 0, _ => Reevaluate());
@@ -53,7 +59,13 @@ public sealed partial class ShellViewModel : ObservableObject
     public SystemTileViewModel Ssd { get; }
     public SystemTileViewModel Board { get; }
     public IReadOnlyList<SystemTileViewModel> SystemTiles { get; }
-    public ProcessListViewModel Processes { get; } = new();
+    public ProcessListViewModel Processes { get; }
+
+    /// <summary>False with Stage 2's real readers: the mock switch panel then does nothing and is disabled.</summary>
+    public bool IsMockSource => _source.IsMock;
+
+    /// <summary>Tooltip of the title-bar data switch: the mock shortcuts, or the state of each real source.</summary>
+    public string SourceToolTip => _source.Describe();
     public WireViewViewModel WireView { get; }
     public FluxViewModel Flux { get; } = new();
 
@@ -92,7 +104,7 @@ public sealed partial class ShellViewModel : ObservableObject
     // Below 960 DIP the title bar keeps every switch by shortening the longest labels.
     public string PowerTabLabel => IsNarrow ? "전력" : "전력 · WireView";
     public string DevicesTabLabel => IsNarrow ? "장치" : "외부 장치";
-    public string MockButtonLabel => IsNarrow ? "모의" : "모의 데이터";
+    public string MockButtonLabel => _source.IsMock ? (IsNarrow ? "모의" : "모의 데이터") : (IsNarrow ? "실측" : "실측 데이터");
     public string StatusDisplayText => IsNarrow ? _statusShort : StatusText;
 
     private string _statusShort = StatusRules.LoadingText;
@@ -207,13 +219,20 @@ public sealed partial class ShellViewModel : ObservableObject
     }
 
     /// <summary>One reading of the sensors (the app's timer). Counts toward the 3-reading pin confirmation.</summary>
-    public void Tick() => Ingest(_mock.Next(_scheduler.Now), counts: true);
+    public void Tick()
+    {
+        Ingest(_source.Next(_scheduler.Now), counts: true);
+        if (!_source.IsMock)
+        {
+            OnPropertyChanged(nameof(SourceToolTip));
+        }
+    }
 
     /// <summary>
     /// Shows the effect of a switch at once (a mock state, the USB handover): a fresh reading of the same moment that
     /// does not count as one of the three readings that confirm a pin warning.
     /// </summary>
-    public void RefreshNow() => Ingest(_mock.Next(_scheduler.Now), counts: false);
+    public void RefreshNow() => Ingest(_source.Next(_scheduler.Now), counts: false);
 
     /// <summary>Re-applies the last reading (a threshold or the tariff changed): colors follow the new value at once.</summary>
     public void Reevaluate()

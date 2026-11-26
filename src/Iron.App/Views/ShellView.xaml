@@ -42,9 +42,10 @@
         </StackPanel>
 
         <!-- Stage 1: every value is simulated; this switch opens the mock state panel (also in 설정). -->
+        <!-- Stage 1: opens the mock state panel. Stage 2 (real data): disabled; its tooltip shows the state of each source. -->
         <ToggleButton x:Name="MockButton" Grid.Column="3" Style="{StaticResource Iron.Button.Bezel}" Margin="0,0,16,0" VerticalAlignment="Center"
                       Padding="9,3" BorderBrush="{StaticResource IronAccentAmber}" WindowChrome.IsHitTestVisibleInChrome="True"
-                      ToolTip="모의 데이터 (Stage 1) — 상태 전환: F5 정상 · F6 오류/불균형 · F7 미연결 · F8 로딩 · F9 USB 해제/재개 · Shift+F9 1.5초 플래시">
+                      IsEnabled="{Binding IsMockSource}" ToolTipService.ShowOnDisabled="True" ToolTip="{Binding SourceToolTip}">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="{Binding MockButtonLabel}" Foreground="{StaticResource IronAccentAmber}" FontFamily="{StaticResource IronDisplayFont}" FontSize="{DynamicResource Iron.FontSmall}" />
             <TextBlock Text=" ▾" Foreground="{StaticResource IronAccentAmber}" FontSize="{DynamicResource Iron.FontSmall}" />

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Tests of the Stage 2 readers: HWiNFO REST mapping and timing (fake HTTP handler), the frame composer (hand-made
+       readings). The real NVML / WDDM / HWiNFO paths are exercised by the probe on the Windows CI runner. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iron.Stage2.Tests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Iron.Stage2\Iron.Stage2.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\stage2-rc3\tests\fixtures\synthetic_full_read_v1.json" Link="fixtures\read.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\stage2-rc3\tests\fixtures\synthetic_full_sdb_v1.json" Link="fixtures\sdb.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

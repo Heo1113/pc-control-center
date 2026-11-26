@@ -604,13 +604,13 @@ $aborted = $null
 # 약 2초를 쓰므로, 5초 제한이면 끊긴 동안 요청 하나가 여러 주기를 붙잡는다. 놓친 주기는 따라잡지 않는다.
 $script:RequestTimeoutSec = [int][Math]::Min(5, [Math]::Max(1, [Math]::Ceiling(2.0 * $IntervalMs / 1000.0)))
 $start = $script:Clock.ElapsedMilliseconds
-$skippedLate = 0
+$lateCount = 0  # not $skippedLate: PowerShell names ignore case, that would be $script:SkippedLate (the message)
 try {
     for ($i = 1; $i -le $Samples; $i++) {
         $due = ($i - 1) * [long]$IntervalMs
         if (($script:Clock.ElapsedMilliseconds - $start) - $due -ge $IntervalMs) {
             # 이 샘플의 주기가 통째로 지났다: 요청하지 않고 빈칸으로 기록(밀린 샘플을 연달아 보내지 않음)
-            $skippedLate++
+            $lateCount++
             $writer.WriteLine(('{{"i":{0},"t0Ms":null,"t3Ms":null,"rttMs":null,"ok":false,"status":null,"error":{1},"cpuPct":null,"read":null}}' -f $i, (ConvertTo-Json -InputObject $script:SkippedLate -Compress)))
             if (($i % 10) -eq 0) { $writer.Flush(); Write-Host ("  {0}/{1}" -f $i, $Samples) }
             continue
@@ -651,7 +651,7 @@ try {
 finally { $writer.Dispose() }
 
 $manifest['finishedAtUtc'] = [DateTime]::UtcNow.ToString('o')
-$manifest['skippedLate'] = $skippedLate
+$manifest['skippedLate'] = $lateCount
 $manifest['requestTimeoutSec'] = $script:RequestTimeoutSec
 if ($aborted) { $manifest['aborted'] = $aborted }
 Write-Text (Join-Path $dir 'run_manifest.json') (ConvertTo-JsonText $manifest)

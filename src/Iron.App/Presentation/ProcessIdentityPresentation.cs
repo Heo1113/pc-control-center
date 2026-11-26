@@ -11,7 +11,7 @@ public sealed record ProcessIdentityView(string Name, string? Detail, string Ima
     bool IsInferred = false, bool IsSharedHost = false)
 {
     /// <summary>Small mark after an inferred name (dictionary, command-line heuristics, folder names): "~". Empty when confirmed.</summary>
-    public string InferredMark => IsInferred ? "\u2009~" : "";
+    public string InferredMark => IsInferred ? "~" : "";
 
     /// <summary>Letter mark in place of an icon: the first letter or digit of the executable name. Not the program's icon.</summary>
     public string Monogram { get; } = ImageName.FirstOrDefault(char.IsLetterOrDigit) is var c && c != default ? char.ToUpperInvariant(c).ToString() : "?";

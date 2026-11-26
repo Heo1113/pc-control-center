@@ -148,9 +148,11 @@
       </Grid>
       <!-- the executable name is left out (never half shown) when the column is too narrow for it; the tooltip keeps everything -->
       <c:NameDetailPanel Gap="10" VerticalAlignment="Center">
-        <!-- inferred name (dictionary, command line, folder names): a small "~" after it; the tooltip says why -->
-        <TextBlock Style="{StaticResource Iron.Cell}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold"><Run Text="{Binding Identity.Name, Mode=OneWay}" /><Run Text="{Binding Identity.InferredMark, Mode=OneWay}" FontWeight="Normal" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" /></TextBlock>
+        <TextBlock Text="{Binding Identity.Name, Mode=OneWay}" Style="{StaticResource Iron.Cell}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold" />
         <TextBlock Text="{Binding Identity.Detail, Mode=OneWay}" Style="{StaticResource Iron.CellMuted}" />
+        <!-- inferred name (dictionary, command line, folder names): a small "~" right after it; the tooltip says why -->
+        <TextBlock Text="{Binding Identity.InferredMark, Mode=OneWay}" FontFamily="{StaticResource IronDisplayFont}" FontSize="{DynamicResource Iron.FontSmall}"
+                   Foreground="{StaticResource IronInkBezelMuted}" VerticalAlignment="Center" />
       </c:NameDetailPanel>
     </DockPanel>
   </DataTemplate>

@@ -8,5 +8,8 @@
     <Project Path="src/Iron.ProcessIdentity/Iron.ProcessIdentity.csproj" />
     <Project Path="tests/Iron.ProcessIdentity.Tests/Iron.ProcessIdentity.Tests.csproj" />
     <Project Path="tools/Iron.ProcessIdentity.Bench/Iron.ProcessIdentity.Bench.csproj" />
+    <!-- Stage 2 real readers (NVML, Windows counters, HWiNFO REST, identity) and their tests. -->
+    <Project Path="src/Iron.Stage2/Iron.Stage2.csproj" />
+    <Project Path="tests/Iron.Stage2.Tests/Iron.Stage2.Tests.csproj" />
   </Folder>
 </Solution>

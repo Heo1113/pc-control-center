@@ -114,6 +114,16 @@ public sealed class ProcessIdentityResolver : IDisposable
 
     public bool TryGet(ProcessKey key, out ProcessIdentityInfo info) => Cache.TryGet(key, out info);
 
+    /// <summary>The identity of the process that has this PID in the last observed snapshot (never an earlier owner of the PID).</summary>
+    public bool TryGetByPid(int pid, out ProcessIdentityInfo info)
+    {
+        info = null!;
+        return _byPid.TryGetValue(pid, out var e) && Cache.TryGet(e.Key, out info);
+    }
+
+    /// <summary>The process list now (no process is opened). Stage 2's polling loop passes it to <see cref="Observe"/>.</summary>
+    public IReadOnlyList<ProcessEntry> TakeSnapshot() => _native.Snapshot();
+
     /// <summary>Called by the polling loop with the current process list. Never blocks.</summary>
     public void Observe(IReadOnlyList<ProcessEntry> snapshot)
     {

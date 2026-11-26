@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- IRON (product 1 of the split) — Stage 1: the real WPF window with mock data only. No reference to the existing
-       backend (PcControlCenter.*, modules), no sensor, no USB device, no registry or Run key: every device action,
-       USB release and auto start is simulated. See docs/IRON_STAGE1.md. -->
+  <!-- IRON (product 1 of the split). Stage 1: the real WPF window with mock data (default). Stage 2 (integration branch,
+       \-\-source real): real readings through Iron.Stage2 (NVML, Windows counters, HWiNFO REST, process identity). Still no USB
+       device, no FLUX output, no registry or Run key: device actions, USB release and auto start stay simulated.
+       See docs/IRON_STAGE1.md and docs/IRON_STAGE2.md. -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -30,6 +31,8 @@
   <ItemGroup>
     <!-- Process identity module (separate). Stage 1 uses only its mock path: no real process is looked up. -->
     <ProjectReference Include="..\Iron.ProcessIdentity\Iron.ProcessIdentity.csproj" />
+    <!-- Stage 2 real readers (used only with \-\-source real or \-\-probe-real). -->
+    <ProjectReference Include="..\Iron.Stage2\Iron.Stage2.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\iron.ico" />

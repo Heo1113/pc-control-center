@@ -65,8 +65,12 @@ public sealed partial class MockState : ObservableObject
 /// Simulated sensor readings for Stage 1 (the values of the design package's prototype, with a small random walk so the
 /// screen is alive). Nothing here touches a real sensor or device.
 /// </summary>
-public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = true)
+public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = true) : ITelemetrySource
 {
+    bool ITelemetrySource.IsMock => true;
+
+    string ITelemetrySource.Describe() => "모의 데이터 (Stage 1) — 상태 전환: F5 정상 · F6 오류/불균형 · F7 미연결 · F8 로딩 · F9 USB 해제/재개 · Shift+F9 1.5초 플래시";
+
     public static readonly double[] NormalPins = [1.31, 1.34, 1.29, 1.35, 1.32, 1.20];
     public static readonly double[] ImbalancedPins = [1.82, 2.15, 7.94, 5.10, 3.85, 3.33];
 

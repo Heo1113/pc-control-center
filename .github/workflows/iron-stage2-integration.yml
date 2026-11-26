@@ -48,6 +48,9 @@ jobs:
       - name: Identity tests (parsers, redaction, caches, resolver)
         run: dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
 
+      - name: Stage 2 tests (HWiNFO mapping and outage timing, frame composer)
+        run: dotnet test --project tests/Iron.Stage2.Tests -c Release --no-build
+
       - name: RC3.2 tests (conformance, relay, parser)
         working-directory: stage2-rc3
         run: python3 -I -m unittest discover -s tests -p "test_*.py" -v
@@ -79,6 +82,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Stage 1 tests failed' }
           dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
           if ($LASTEXITCODE -ne 0) { throw 'identity tests failed' }
+          dotnet test --project tests/Iron.Stage2.Tests -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Stage 2 tests failed' }
 
       - name: Publish this branch, the 187d533 baseline and the approved a9d69f4
         id: publish
@@ -120,6 +125,47 @@ jobs:
           foreach ($e in $report.bindingErrors) { "  binding: $e" }
           if ($p.ExitCode -ne 0) { throw "live smoke exit code $($p.ExitCode)" }
 
+      - name: Stage 2 - probe of the real readers (mock HWiNFO on 8764, a process with a secret in its command line)
+        id: probe
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          $py = (Get-Command python).Source
+          $hw = Join-Path (Split-Path $py) 'HWiNFO64.exe'
+          Copy-Item $py $hw -Force
+          New-Item -ItemType Directory -Force -Path C:\ironprobe\nightly, dist/stage2 | Out-Null
+          Set-Content C:\ironprobe\nightly\sleeper.py 'import time; time.sleep(120)'
+          $mock = Start-Process $hw -ArgumentList '-I', 'stage2-rc3/tests/mock_hwinfo_server.py', '--port', '8764', '--fixtures', 'stage2-rc3/tests/fixtures', '--log', 'dist/stage2/mock.log' -PassThru -WindowStyle Hidden
+          $sleeper = Start-Process $py -ArgumentList 'C:\ironprobe\nightly\sleeper.py', '--api-key=sk-ci-SECRET-9f8e7d6c' -PassThru -WindowStyle Hidden
+          Start-Sleep 3
+          try {
+            $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--probe-real', 'dist/stage2/probe', '--probe-seconds', '15' -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "probe exit $($p.ExitCode)" }
+            ./tools/ci/Check-Stage2Probe.ps1 -Probe dist/stage2/probe/probe.json -Secret 'sk-ci-SECRET-9f8e7d6c' -ExpectHwInfo -Label 'Windows 러너 · 관리자 계정'
+          } finally {
+            Stop-Process -Id $sleeper.Id, $mock.Id -ErrorAction SilentlyContinue
+          }
+
+      - name: Stage 2 - the window on real data (smoke walk; crashes and binding errors fail, layout findings are reported)
+        id: real-window
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          $py = (Get-Command python).Source
+          $hw = Join-Path (Split-Path $py) 'HWiNFO64.exe'
+          $mock = Start-Process $hw -ArgumentList '-I', 'stage2-rc3/tests/mock_hwinfo_server.py', '--port', '8764', '--fixtures', 'stage2-rc3/tests/fixtures', '--log', 'dist/stage2/mock2.log' -PassThru -WindowStyle Hidden
+          New-Item -ItemType Directory -Force -Path dist/stage2/live | Out-Null
+          try {
+            $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--source', 'real', '--smoke-test', 'dist/stage2/live' -PassThru
+            if (-not $p.WaitForExit(180000)) { $p.Kill(); throw 'real-data smoke test did not finish in time' }
+            $report = Get-Content dist/stage2/live/smoke-report.json -Raw | ConvertFrom-Json
+            "steps: $($report.steps.Count) · layout findings: $($report.issues) · binding errors: $($report.bindingErrors.Count) · exit $($p.ExitCode)"
+            foreach ($s in $report.steps) { "  $($s.step): layout=$($s.layout) status=$($s.status)"; foreach ($i in $s.issues) { "    $($i.Kind): '$($i.Text)'" }; if ($s.error) { "    ERROR $($s.error)" } }
+            foreach ($e in $report.bindingErrors) { "  binding: $e" }
+            if ($report.bindingErrors.Count -gt 0) { throw 'binding errors with real data' }
+            if ($p.ExitCode -notin 0, 4) { throw "real-data smoke exit code $($p.ExitCode)" }
+          } finally {
+            Stop-Process -Id $mock.Id -ErrorAction SilentlyContinue
+          }
+
       - name: Crash details (only when a step above failed)
         if: ${{ failure() }}
         run: |
@@ -134,6 +180,7 @@ jobs:
             dist/cmp/**/*.json
             dist/cmp/new/*.png
             dist/stage1/live/*.json
+            dist/stage2/**
           if-no-files-found: warn
           retention-days: 14
 
@@ -185,9 +232,9 @@ jobs:
           retention-days: 14
 
   measure:
-    name: Windows - standard-user measurement (identity module alone)
+    name: Windows - standard-user measurement (identity module, 20 min soak, Stage 2 probe as a standard user)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     defaults:
       run:
         shell: pwsh
@@ -202,7 +249,10 @@ jobs:
 
       - name: Build
         id: build
-        run: dotnet build tools/Iron.ProcessIdentity.Bench -c Release
+        run: |
+          dotnet build tools/Iron.ProcessIdentity.Bench -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'bench build failed' }
+          ./scripts/iron-publish.ps1 -OutputDir dist
 
       - name: Standard-user measurement (5 min baseline, 5 min with identity, before/after samples)
         id: measure
@@ -238,6 +288,18 @@ jobs:
           Invoke-AsUser $sampleArgs 'samples'
           & $dotnet $bench report --baseline "$w\out\baseline.json" --identity "$w\out\identity.json" --samples "$w\out\samples.json" --out "$w\out\report.md"
           Get-Content "$w\out\report.md" -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          # Stage 2 real readers as the standard user (no elevation, no driver), mock HWiNFO on 8764
+          $py = (Get-Command python).Source
+          $hw = Join-Path (Split-Path $py) 'HWiNFO64.exe'
+          Copy-Item $py $hw -Force
+          $mock = Start-Process $hw -ArgumentList '-I', 'stage2-rc3/tests/mock_hwinfo_server.py', '--port', '8764', '--fixtures', 'stage2-rc3/tests/fixtures', '--log', "$w\out\mock.log" -PassThru -WindowStyle Hidden
+          Copy-Item dist/Iron.App-win-x64/Iron.App.exe "$w\bench\Iron.App.exe"
+          $pp = Start-Process -FilePath "$w\bench\Iron.App.exe" -ArgumentList '--probe-real', "$w\out\probe", '--probe-seconds', '20' -Credential $cred -LoadUserProfile -WorkingDirectory "$w\bench" -PassThru -Wait
+          Stop-Process -Id $mock.Id -ErrorAction SilentlyContinue
+          if ($pp.ExitCode -ne 0) { throw "standard-user probe exit $($pp.ExitCode)" }
+          ./tools/ci/Check-Stage2Probe.ps1 -Probe "$w\out\probe\probe.json" -ExpectHwInfo -Label 'Windows 러너 · 일반 사용자'
+          # 20 min soak with process churn: handles by type, GDI, memory per minute, slopes per hour
+          Invoke-AsUser @($bench, 'soak', '--minutes', '20', '--churn-seconds', '5', '--out', "$w\out\soak.json") 'soak'
           New-Item -ItemType Directory -Force -Path dist/measure | Out-Null
           Copy-Item "$w\out\*" dist/measure
 

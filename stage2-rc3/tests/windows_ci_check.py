@@ -488,7 +488,8 @@ def p_live(env, suite, disconnect):
     port = 18790 if disconnect else 18789
     p = env.mock(env.base_py, port, tag="poc")
     out_dir = os.path.join(env.out, suite, "dotnet", "live_disconnect" if disconnect else "live_normal")
-    n = 16 if disconnect else 8
+    # RC3.2 does not catch up after the outage, so enough samples must follow the restart for "last 3 OK"
+    n = 20 if disconnect else 8
     proc = subprocess.Popen(["dotnet", env.poc, "live", f"http://127.0.0.1:{port}", str(n), out_dir, "--interval-ms", "500", "--root", ROOT], env=env.env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     try:
         if disconnect:

@@ -39,6 +39,20 @@ public sealed record AppOptions
     /// <summary>Opens the real window, walks the tabs and states, writes a report into this folder, then exits.</summary>
     public string? SmokeTestTo { get; init; }
 
+    /// <summary>Stage 2: "real" reads NVML, Windows counters and HWiNFO REST instead of the mock values (default "mock").</summary>
+    public bool RealData { get; init; }
+
+    /// <summary>HWiNFO REST address for the real source (loopback only); "off" = not used.</summary>
+    public string HwInfoUrl { get; init; } = "http://127.0.0.1:8764/";
+
+    /// <summary>Starts the real readers without a window, writes what they read (redacted) into this folder, then exits.</summary>
+    public string? ProbeRealTo { get; init; }
+
+    public int ProbeSeconds { get; init; } = 12;
+
+    /// <summary>Long runs (12 h on the user's PC): every minute one line with IRON's own memory, handles, GDI/USER and source states.</summary>
+    public string? SoakLog { get; init; }
+
     public IReadOnlyList<string> Errors { get; init; } = [];
 
     public const string Usage = """
@@ -51,6 +65,10 @@ public sealed record AppOptions
           --no-jitter                                        모의 값 흔들림 없음 (설계 값 그대로)
           --render-screens DIR [--render-size 2194x1186,1097x1186] [--render-scale 1.75]
           --smoke-test DIR
+          --source mock|real                                 Stage 2: real = NVML·Windows 카운터·HWiNFO REST (기본 mock)
+          --hwinfo-url URL|off                               HWiNFO REST 주소 (루프백만, 기본 http://127.0.0.1:8764/)
+          --probe-real DIR [--probe-seconds 12]               창 없이 실제 읽기 결과(민감정보 제거)를 DIR에 기록하고 종료
+          --soak-log FILE                                    1분마다 IRON 자신의 메모리·핸들·GDI·소스 상태를 FILE(CSV)에 추가
         """;
 
     public static AppOptions Parse(IReadOnlyList<string> args)
@@ -118,6 +136,29 @@ public sealed record AppOptions
                     break;
                 case "--smoke-test":
                     options = Next() is { } smoke ? options with { SmokeTestTo = smoke } : options;
+                    break;
+                case "--source":
+                    options = Next()?.ToLowerInvariant() switch
+                    {
+                        "real" => options with { RealData = true },
+                        "mock" => options with { RealData = false },
+                        _ => Fail(options, errors, arg),
+                    };
+                    break;
+                case "--hwinfo-url":
+                    options = Next() is { } url && (url.Equals("off", StringComparison.OrdinalIgnoreCase)
+                                                    || (Uri.TryCreate(url, UriKind.Absolute, out var u) && u.IsLoopback && u.Port != 8080))
+                        ? options with { HwInfoUrl = url }
+                        : Fail(options, errors, arg);
+                    break;
+                case "--probe-real":
+                    options = Next() is { } probe ? options with { ProbeRealTo = probe, RealData = true } : options;
+                    break;
+                case "--soak-log":
+                    options = Next() is { } soak ? options with { SoakLog = soak } : options;
+                    break;
+                case "--probe-seconds":
+                    options = Next() is { } secs && int.TryParse(secs, out var n) && n is >= 3 and <= 600 ? options with { ProbeSeconds = n } : Fail(options, errors, arg);
                     break;
                 default:
                     errors.Add($"알 수 없는 옵션: {arg}");

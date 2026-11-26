@@ -5,6 +5,8 @@
 //   samples --work <dir> --python <venv python.exe> --node <node.exe> --out <file.json>
 //                                                                     starts its own test processes and records identity before/after
 //   report  --baseline <b.json> --identity <i.json> --samples <s.json> --out <report.md>
+//   soak    --minutes 720 --out <file.json> [--churn-seconds 5]          long run with the resolver while short processes come
+//                                                                     and go; handles by type, GDI, memory every minute, slopes per hour
 //
 // Only processes this tool started are stopped; nothing else is touched. Command lines appear only redacted.
 using System.Diagnostics;
@@ -49,6 +51,7 @@ internal static class Program
             "measure" => Measure(Opt("--mode") ?? "baseline", double.Parse(Opt("--minutes") ?? "5", CultureInfo.InvariantCulture), Opt("--out")!),
             "samples" => Samples(Opt("--work")!, Opt("--python"), Opt("--node"), Opt("--out")!),
             "report" => Report(Opt("--baseline")!, Opt("--identity")!, Opt("--samples")!, Opt("--out")!),
+            "soak" => Soak(double.Parse(Opt("--minutes") ?? "20", CultureInfo.InvariantCulture), Opt("--out")!, int.Parse(Opt("--churn-seconds") ?? "5", CultureInfo.InvariantCulture)),
             _ => 1,
         };
     }
@@ -93,6 +96,7 @@ internal static class Program
         var startCpu = me.TotalProcessorTime;
         TimeSpan? cpuAt30 = null;
         double? allIdentifiedAt = null;
+        SortedDictionary<string, int>? typesAt30 = null;
         while (sw.Elapsed < end)
         {
             var snap = query.Snapshot(); // the polling loop's own work in both modes
@@ -119,6 +123,7 @@ internal static class Program
             {
                 me.Refresh();
                 cpuAt30 = me.TotalProcessorTime;
+                typesAt30 = HandleCensus.Take();
             }
 
             if (sw.Elapsed >= nextSample)
@@ -142,6 +147,7 @@ internal static class Program
         }
 
         var steady = samples.Where(s => s.T >= 30).ToList();
+        var typesEnd = HandleCensus.Take();
         me.Refresh();
         var cpuEnd = me.TotalProcessorTime;
         var elapsed = sw.Elapsed;
@@ -173,12 +179,129 @@ internal static class Program
                 warmupCpuPctFirst30s = Math.Round(warmupCpu, 3),
                 allIdentifiedAtS = allIdentifiedAt,
             },
+            // which kinds of handles changed between 30 s and the end (the increase seen in run 3-10: +17 to +18 in 5 min)
+            handleTypes = new
+            {
+                at30s = typesAt30,
+                end = typesEnd,
+                change = typesEnd.Keys.Union(typesAt30?.Keys ?? Enumerable.Empty<string>())
+                    .Select(k => (k, d: typesEnd.GetValueOrDefault(k) - (typesAt30?.GetValueOrDefault(k) ?? 0))).Where(x => x.d != 0)
+                    .ToDictionary(x => x.k, x => x.d),
+                threads = me.Threads.Count,
+            },
             resolver = resolver?.Stats,
             fileCache = resolver is null ? null : new { resolver.Files.Count, resolver.Files.Capacity, resolver.Files.Hits, resolver.Files.Evictions, resolver.Files.Reloads },
             samples,
         };
         File.WriteAllText(outPath, JsonSerializer.Serialize(result, Json));
         Console.WriteLine($"[{mode}] {minutes} 분 · 평균 CPU {result.summary.avgCpuPct}% · 평균 Private {result.summary.avgPrivateMb} MB · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} (최대 {result.summary.gdiMax})");
+        return 0;
+    }
+
+    private sealed record SoakSample(double Minute, int Handles, int Threads, uint Gdi, uint User, double PrivateMb, double ManagedMb, double CpuPct, int Processes,
+        int Identified, long Started, SortedDictionary<string, int> Types);
+
+    /// <summary>
+    /// Long run: the identity resolver on the 1 Hz process list while this tool starts a short process every few seconds
+    /// (new keys, evictions, file cache, service refreshes). Every minute: handles by type, threads, GDI/USER, memory.
+    /// Slopes per hour are fitted after a 2-minute warm-up; a leak shows as a steady slope, a plateau as ~0.
+    /// </summary>
+    private static int Soak(double minutes, string outPath, int churnSeconds)
+    {
+        using var query = new WindowsProcessQuery();
+        using var resolver = new ProcessIdentityResolver(new WindowsProcessQuery(), new ResolverOptions { Workers = 1 });
+        var me = Process.GetCurrentProcess();
+        var sw = Stopwatch.StartNew();
+        var end = TimeSpan.FromMinutes(minutes);
+        var samples = new List<SoakSample>();
+        var nextSample = TimeSpan.Zero;
+        var nextChurn = TimeSpan.FromSeconds(churnSeconds);
+        var lastCpu = me.TotalProcessorTime;
+        var lastT = TimeSpan.Zero;
+        long started = 0;
+        var tick = 0;
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        while (sw.Elapsed < end)
+        {
+            var snap = query.Snapshot();
+            resolver.Observe(snap);
+            if (churnSeconds > 0 && sw.Elapsed >= nextChurn)
+            {
+                // alternately a process that exits at once and one that lives ~2 s (seen, resolved, then evicted)
+                using var p = Process.Start(new ProcessStartInfo(cmd, started % 2 == 0 ? "/c exit 0" : "/c ping -n 3 127.0.0.1 >nul")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+                started++;
+                nextChurn += TimeSpan.FromSeconds(churnSeconds);
+            }
+
+            if (sw.Elapsed >= nextSample)
+            {
+                me.Refresh();
+                var cpu = me.TotalProcessorTime;
+                var now = sw.Elapsed;
+                var pct = now > lastT ? (cpu - lastCpu).TotalMilliseconds / (now - lastT).TotalMilliseconds / Environment.ProcessorCount * 100 : 0;
+                var identified = snap.Count(e => resolver.TryGet(e.Key, out _));
+                samples.Add(new SoakSample(Math.Round(now.TotalMinutes, 2), me.HandleCount, me.Threads.Count, GetGuiResources(me.Handle, 0), GetGuiResources(me.Handle, 1),
+                    Mb(me.PrivateMemorySize64), Mb(GC.GetTotalMemory(false)), Math.Round(pct, 3), snap.Count, identified, started, HandleCensus.Take()));
+                Console.WriteLine($"[soak] {now.TotalMinutes,6:F1} 분 · 핸들 {me.HandleCount} · 스레드 {me.Threads.Count} · GDI {samples[^1].Gdi} · Private {samples[^1].PrivateMb} MB · 시작한 프로세스 {started}");
+                lastCpu = cpu;
+                lastT = now;
+                nextSample += TimeSpan.FromMinutes(1);
+            }
+
+            tick++;
+            var wait = TimeSpan.FromSeconds(tick) - sw.Elapsed;
+            if (wait > TimeSpan.Zero)
+            {
+                Thread.Sleep(wait);
+            }
+        }
+
+        var after = samples.Where(s => s.Minute >= 2).ToList();
+        double PerHour(Func<SoakSample, double> f) => Math.Round(HandleCensus.Slope(after.Select(s => (s.Minute, f(s))).ToList()) * 60, 2);
+        var types = after.SelectMany(s => s.Types.Keys).Distinct().OrderBy(k => k, StringComparer.Ordinal)
+            .Select(k => new { type = k, first = after.First().Types.GetValueOrDefault(k), last = after.Last().Types.GetValueOrDefault(k), perHour = PerHour(s => s.Types.GetValueOrDefault(k)) })
+            .Where(t => t.first != t.last || t.perHour != 0).ToList();
+        var handlesPerHour = PerHour(s => s.Handles);
+        var result = new
+        {
+            mode = "soak",
+            minutes,
+            churnSeconds,
+            environment = Environment_(),
+            summary = new
+            {
+                processesStarted = started,
+                handlesFirst = after.FirstOrDefault()?.Handles,
+                handlesLast = after.LastOrDefault()?.Handles,
+                handlesMax = after.Count > 0 ? after.Max(s => s.Handles) : 0,
+                handlesPerHour,
+                threadsFirst = after.FirstOrDefault()?.Threads,
+                threadsLast = after.LastOrDefault()?.Threads,
+                gdiFirst = after.FirstOrDefault()?.Gdi,
+                gdiLast = after.LastOrDefault()?.Gdi,
+                gdiPerHour = PerHour(s => s.Gdi),
+                privateMbFirst = after.FirstOrDefault()?.PrivateMb,
+                privateMbLast = after.LastOrDefault()?.PrivateMb,
+                privateMbPerHour = PerHour(s => s.PrivateMb),
+                avgCpuPct = after.Count > 0 ? Math.Round(after.Average(s => s.CpuPct), 3) : 0,
+                note = "2분 이후 1분 표본의 최소제곱 기울기(시간당). 누수는 꾸준한 양의 기울기로, 안정 상태는 0 근처로 나타남.",
+            },
+            handleTypes = types,
+            resolver = resolver.Stats,
+            fileCache = new { resolver.Files.Count, resolver.Files.Capacity, resolver.Files.Hits, resolver.Files.Evictions, resolver.Files.Reloads },
+            samples = samples.Select(s => new { s.Minute, s.Handles, s.Threads, s.Gdi, s.User, s.PrivateMb, s.ManagedMb, s.CpuPct, s.Processes, s.Identified, s.Started }),
+        };
+        File.WriteAllText(outPath, JsonSerializer.Serialize(result, Json));
+        Console.WriteLine($"[soak] {minutes} 분 · 핸들 기울기 {handlesPerHour}/시간 · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} · Private 기울기 {result.summary.privateMbPerHour} MB/시간");
+        foreach (var t in types)
+        {
+            Console.WriteLine($"[soak]   {t.type}: {t.first} → {t.last} ({t.perHour}/시간)");
+        }
+
         return 0;
     }
 
@@ -385,6 +508,17 @@ internal static class Program
         Row("GDI 객체(최대)", "gdiMax", 0);
         Row("핸들(처음)", "handlesFirst", 0);
         Row("핸들(마지막)", "handlesLast", 0);
+        foreach (var (label, doc) in new[] { ("기준선", b), ("식별 포함", i) })
+        {
+            if (doc.RootElement.TryGetProperty("handleTypes", out var ht) && ht.TryGetProperty("change", out var ch))
+            {
+                var parts = ch.EnumerateObject().Select(x => $"{x.Name} {x.Value.GetInt32():+0;-0}").ToList();
+                sb.AppendLine().Append($"- 핸들 종류별 변화(30초→끝, {label}): ").Append(parts.Count == 0 ? "변화 없음" : string.Join(", ", parts))
+                  .Append($" · 스레드 {ht.GetProperty("threads").GetInt32()}개");
+            }
+        }
+
+        sb.AppendLine();
         sb.AppendLine().AppendLine($"- 식별된 프로세스: {isum.GetProperty("identified").GetInt32()} / {isum.GetProperty("processes").GetInt32()}"
                                    + (isum.GetProperty("allIdentifiedAtS") is { ValueKind: JsonValueKind.Number } at ? $" · 전부 식별까지 {at.GetDouble():0.0}초" : ""));
         sb.AppendLine("- CPU 시간은 Windows에서 약 15.6 ms 단위로 늘어나므로 5초 표본 값은 해상도 한계 근처입니다. 비교는 '정밀' 행을 보십시오.");

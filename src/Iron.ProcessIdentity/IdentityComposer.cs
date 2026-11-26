@@ -44,6 +44,16 @@ public static class IdentityComposer
         return Build(new ProcessKey(pid, 0), imageName, IdentitySource.Mock, null, classified, dict, mockCommandLine, null, null, []);
     }
 
+    /// <summary>A real process not resolved yet: its executable name only (the resolver fills in the rest within seconds).</summary>
+    public static ProcessIdentityInfo ComposePending(int pid, string imageName) => new()
+    {
+        Key = new ProcessKey(pid, 0),
+        ImageName = imageName,
+        Source = IdentitySource.Native,
+        Title = new IdentityText(imageName, IdentityConfidence.Confirmed, "실행 파일 이름"),
+        Notes = ["식별 중"],
+    };
+
     private static ProcessIdentityInfo Build(ProcessKey key, string imageName, IdentitySource source, FileIdentityInfo? file, ClassifyResult c, RoleDictionary dict,
         string? rawCommandLine, string? package, string? aumid, IReadOnlyList<string> notes)
     {

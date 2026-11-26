@@ -44,7 +44,7 @@ def timeline(lines, t_kill, t_restart):
             dur = x.get("rttMs") if x.get("rttMs") is not None else ((x.get("t3Ms") or x["t0Ms"]) - x["t0Ms"])
         else:
             start, dur = None, None
-        err = (x.get("error") or "")
+        err = str(x.get("error") or "")
         kind = "ok" if x["ok"] else ("skip" if err.startswith("SKIPPED_LATE") else "fail")
         rows.append({"i": x["i"], "plannedMs": planned, "startMs": None if start is None else round(start), "durMs": None if dur is None else round(dur),
                      "result": kind, "error": err.split(":")[0][:40] if kind == "fail" else ""})

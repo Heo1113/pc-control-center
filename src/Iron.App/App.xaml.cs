@@ -21,6 +21,7 @@ public partial class App : Application
     private TrayPopup? _popup;
     private MainWindow? _window;
     private DispatcherTimer? _timer;
+    private Iron.Stage2.Stage2Collector? _collector;
 
     public App()
     {
@@ -38,7 +39,7 @@ public partial class App : Application
     {
         var text = $"{DateTimeOffset.Now:O}{Environment.NewLine}{ex}";
         var args = Environment.GetCommandLineArgs();
-        var at = Array.FindIndex(args, a => a is "--render-screens" or "--smoke-test");
+        var at = Array.FindIndex(args, a => a is "--render-screens" or "--smoke-test" or "--probe-real");
         if (at >= 0 && at + 1 < args.Length)
         {
             try
@@ -84,6 +85,21 @@ public partial class App : Application
             return;
         }
 
+        if (options.ProbeRealTo is not null)
+        {
+            try
+            {
+                Shutdown(RealProbe.Run(options));
+            }
+            catch (Exception ex)
+            {
+                Report(ex);
+                Shutdown(5);
+            }
+
+            return;
+        }
+
         if (options.SmokeTestTo is null && !TakeInstance())
         {
             Shutdown(0);
@@ -93,7 +109,18 @@ public partial class App : Application
         var scheduler = new DispatcherScheduler(Dispatcher);
         var mock = new MockTelemetryProvider(jitter: !options.NoJitter);
         mock.State.Apply(options.Preset);
-        var vm = new ShellViewModel(mock, scheduler) { Tab = options.Tab };
+        ITelemetrySource? real = null;
+        IProcessIdentityProvider? identities = null;
+        if (options.RealData)
+        {
+            // Stage 2: the real readers on their own threads; the UI timer only takes their newest values
+            var collector = _collector = new Iron.Stage2.Stage2Collector(RealProbe.OptionsOf(options));
+            collector.Start();
+            real = new RealTelemetrySource(collector.Latest);
+            identities = new RealProcessIdentityProvider(pid => collector.Resolver is { } r && r.TryGetByPid(pid, out var info) ? info : null);
+        }
+
+        var vm = new ShellViewModel(mock, scheduler, real, identities) { Tab = options.Tab };
         if (options.UsbReleased)
         {
             vm.WireView.SetPortImmediately(PortState.Released);
@@ -110,6 +137,25 @@ public partial class App : Application
         _timer.Tick += (_, _) => vm.Tick();
         vm.IntervalChanged += interval => _timer.Interval = interval;
         _timer.Start();
+        if (options.SoakLog is { } soakLog)
+        {
+            // long-run check (12 h on the user's PC): one line a minute; a write error never stops IRON
+            var soak = new DispatcherTimer(DispatcherPriority.Background, Dispatcher) { Interval = TimeSpan.FromMinutes(1) };
+            void Write()
+            {
+                try
+                {
+                    RealProbe.AppendSoakLine(soakLog, vm.SourceToolTip);
+                }
+                catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+                {
+                }
+            }
+
+            soak.Tick += (_, _) => Write();
+            Write();
+            soak.Start();
+        }
 
         if (!options.StartInTray || options.SmokeTestTo is not null)
         {
@@ -125,6 +171,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         _timer?.Stop();
+        _collector?.Dispose();
         _tray?.Dispose();
         _showWait?.Unregister(null);
         _showSignal?.Dispose();
