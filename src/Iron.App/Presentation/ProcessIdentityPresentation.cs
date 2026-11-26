@@ -7,13 +7,22 @@ namespace Iron.App.Presentation;
 /// program name and, in small muted text, the executable name — and what its tooltip shows (<see cref="Text"/>: role,
 /// launcher target, hosted items, basis, confirmed/inferred marks).
 /// </summary>
-public sealed record ProcessIdentityView(string Name, string? Detail, string ImageName, string Text, IconPixels? Icon, IdentitySource Source)
+public sealed record ProcessIdentityView(string Name, string? Detail, string ImageName, string Text, IconPixels? Icon, IdentitySource Source,
+    bool IsInferred = false, bool IsSharedHost = false)
 {
+    /// <summary>Small mark after an inferred name (dictionary, command-line heuristics, folder names): "~". Empty when confirmed.</summary>
+    public string InferredMark => IsInferred ? "\u2009~" : "";
+
     /// <summary>Letter mark in place of an icon: the first letter or digit of the executable name. Not the program's icon.</summary>
     public string Monogram { get; } = ImageName.FirstOrDefault(char.IsLetterOrDigit) is var c && c != default ? char.ToUpperInvariant(c).ToString() : "?";
 
     public static ProcessIdentityView From(ProcessIdentityInfo info) =>
-        new(info.CellName, info.CellDetail, info.ImageName, info.ToToolTipText(), info.Icon, info.Source);
+        new(info.CellName, info.CellDetail, info.ImageName, info.ToToolTipText(), info.Icon, info.Source,
+            IsInferred: info.Title.Confidence != IdentityConfidence.Confirmed, IsSharedHost: info.IsSharedHost);
+
+    /// <summary>Search: the identified name (and what the cell shows after it) besides the executable name and PID.</summary>
+    public bool Matches(string search) =>
+        Name.Contains(search, StringComparison.CurrentCultureIgnoreCase) || (Detail?.Contains(search, StringComparison.CurrentCultureIgnoreCase) ?? false);
 }
 
 /// <summary>Gives the identity of a process row.</summary>

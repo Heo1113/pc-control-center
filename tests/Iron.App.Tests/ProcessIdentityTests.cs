@@ -45,6 +45,51 @@ public class ProcessIdentityTests
     }
 
     [Fact]
+    public void SearchFindsTheIdentifiedNameBesidesExeAndPid()
+    {
+        var rig = Rig.Create();
+        rig.Readings(2);
+        var p = rig.Vm.Processes;
+        p.Search = "창 관리자"; // identified name only (dwm.exe)
+        Assert.Equal(["dwm.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "웹 브라우저";
+        Assert.Equal(["chrome.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "visual studio"; // case-insensitive
+        Assert.Equal(["Code.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "2028"; // PID still works
+        Assert.Equal(["dwm.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "chrome.exe"; // exe name still works
+        Assert.Equal(["chrome.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "공유 호스트"; // the shared-host label in the cell
+        Assert.Equal(["msedgewebview2.exe"], p.Rows.Select(r => r.Name));
+        p.Search = "";
+        Assert.True(p.Rows.Count > 10);
+    }
+
+    [Fact]
+    public void InferredNamesCarryTheMarkAndSharedHostsTheBadgeFlag()
+    {
+        var rig = Rig.Create();
+        rig.Readings(2);
+        foreach (var row in rig.Vm.Processes.Rows)
+        {
+            Assert.True(row.Identity!.IsInferred); // Stage 1 mock: nothing is read from the system
+            Assert.EndsWith("~", row.Identity.InferredMark, StringComparison.Ordinal);
+            Assert.Equal(row.Name == "msedgewebview2.exe", row.Identity.IsSharedHost);
+        }
+
+        var confirmed = ProcessIdentityView.From(new ProcessIdentityInfo
+        {
+            Key = new ProcessKey(1, 1),
+            ImageName = "cmd.exe",
+            Source = IdentitySource.Native,
+            Title = new IdentityText("Windows 명령 처리기", IdentityConfidence.Confirmed, "버전 정보"),
+        });
+        Assert.False(confirmed.IsInferred);
+        Assert.Equal("", confirmed.InferredMark);
+    }
+
+    [Fact]
     public void MockSharedHostShowsNoticeAndNothingIsConfirmed()
     {
         var id = IdentityComposer.ComposeMock(7716, "msedgewebview2.exe", @"C:\Program Files (x86)\Microsoft\EdgeWebView\Application\msedgewebview2.exe --type=gpu-process");

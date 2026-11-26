@@ -138,10 +138,18 @@
         </Border>
         <Image Source="{Binding Identity.Icon, Converter={StaticResource IconPixelsToImage}}" RenderOptions.BitmapScalingMode="HighQuality"
                Visibility="{Binding Identity.Icon, Converter={StaticResource VisibleWhen}}" />
+        <!-- shared host (svchost, dllhost, WebView2 ...): a small "stacked" badge on the icon, so it shows at any width -->
+        <Border Width="9" Height="9" CornerRadius="2" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,-4,-4"
+                Background="{StaticResource IronChassisBg}" BorderBrush="{StaticResource IronInkBezel}" BorderThickness="1"
+                Visibility="{Binding Identity.IsSharedHost, Converter={StaticResource VisibleWhen}}">
+          <Path Data="M0.5,2.5 H4.5 V6.5 H0.5 Z M2.5,0.5 H6.5 V4.5" Stroke="{StaticResource IronInkBezel}" StrokeThickness="1"
+                Width="7" Height="7" Stretch="None" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
       </Grid>
       <!-- the executable name is left out (never half shown) when the column is too narrow for it; the tooltip keeps everything -->
       <c:NameDetailPanel Gap="10" VerticalAlignment="Center">
-        <TextBlock Text="{Binding Identity.Name, Mode=OneWay}" Style="{StaticResource Iron.Cell}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold" />
+        <!-- inferred name (dictionary, command line, folder names): a small "~" after it; the tooltip says why -->
+        <TextBlock Style="{StaticResource Iron.Cell}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold"><Run Text="{Binding Identity.Name, Mode=OneWay}" /><Run Text="{Binding Identity.InferredMark, Mode=OneWay}" FontWeight="Normal" FontSize="{DynamicResource Iron.FontSmall}" Foreground="{StaticResource IronInkBezelMuted}" /></TextBlock>
         <TextBlock Text="{Binding Identity.Detail, Mode=OneWay}" Style="{StaticResource Iron.CellMuted}" />
       </c:NameDetailPanel>
     </DockPanel>

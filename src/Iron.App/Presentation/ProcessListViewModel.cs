@@ -170,7 +170,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
         var search = Search.Trim();
         var full = byAdapter.Where(p => ShowSoftwareAdapter || !p.IsSoftwareAdapter)
             .Where(p => search.Length == 0 || p.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
-                                           || p.Pid.ToString(System.Globalization.CultureInfo.InvariantCulture).Contains(search, StringComparison.Ordinal))
+                                           || p.Pid.ToString(System.Globalization.CultureInfo.InvariantCulture).Contains(search, StringComparison.Ordinal)
+                                           || IdentityProvider.Identify(p).Matches(search))
             .ToList();
 
         var selectedPid = Selected?.Pid;
