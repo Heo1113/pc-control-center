@@ -200,7 +200,24 @@ internal static class Program
     }
 
     private sealed record SoakSample(double Minute, int Handles, int Threads, uint Gdi, uint User, double PrivateMb, double ManagedMb, double CpuPct, int Processes,
-        int Identified, long Started, SortedDictionary<string, int> Types);
+        int Identified, long Started, SortedDictionary<string, int> Types, int Gen2 = 0, double CommittedMb = 0, int ProcessCache = 0, int FileCache = 0);
+
+    /// <summary>Memory after a forced full, compacting collection: what is still referenced (managed) and what the process keeps.</summary>
+    private sealed record GcCheckpoint(double Minute, double PrivateBeforeMb, double ManagedBeforeMb, double PrivateAfterMb, double ManagedAfterMb, int ProcessCache, int FileCache);
+
+    private static GcCheckpoint ForcedGc(Process me, TimeSpan now, ProcessIdentityResolver resolver)
+    {
+        me.Refresh();
+        var privateBefore = Mb(me.PrivateMemorySize64);
+        var managedBefore = Mb(GC.GetTotalMemory(false));
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        Thread.Sleep(1000);
+        me.Refresh();
+        return new GcCheckpoint(Math.Round(now.TotalMinutes, 2), privateBefore, managedBefore, Mb(me.PrivateMemorySize64), Mb(GC.GetTotalMemory(false)), resolver.Cache.Count, resolver.Files.Count);
+    }
 
     /// <summary>
     /// Long run: the identity resolver on the 1 Hz process list while this tool starts a short process every few seconds
@@ -224,6 +241,11 @@ internal static class Program
         long started = 0;
         var tick = 0;
         var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        // One forced full GC at the end of the warm-up and one at the end: the managed memory still referenced after each tells
+        // a leak (it grows between the two) from garbage the GC has not collected yet (CI runs 4 and 5 of the same code: Private
+        // flat at ~29 MB vs. rising 39 -> 67 MB over minutes 9-19).
+        var checkpoints = new List<GcCheckpoint>();
+        var checkpointAt = TimeSpan.FromMinutes(Math.Min(warmupMinutes, minutes / 2));
         while (sw.Elapsed < end)
         {
             var snap = query.Snapshot();
@@ -248,11 +270,20 @@ internal static class Program
                 var pct = now > lastT ? (cpu - lastCpu).TotalMilliseconds / (now - lastT).TotalMilliseconds / Environment.ProcessorCount * 100 : 0;
                 var identified = snap.Count(e => resolver.TryGet(e.Key, out _));
                 samples.Add(new SoakSample(Math.Round(now.TotalMinutes, 2), me.HandleCount, me.Threads.Count, GetGuiResources(me.Handle, 0), GetGuiResources(me.Handle, 1),
-                    Mb(me.PrivateMemorySize64), Mb(GC.GetTotalMemory(false)), Math.Round(pct, 3), snap.Count, identified, started, HandleCensus.Take()));
-                Console.WriteLine($"[soak] {now.TotalMinutes,6:F1} 분 · 핸들 {me.HandleCount} · 스레드 {me.Threads.Count} · GDI {samples[^1].Gdi} · Private {samples[^1].PrivateMb} MB · 시작한 프로세스 {started}");
+                    Mb(me.PrivateMemorySize64), Mb(GC.GetTotalMemory(false)), Math.Round(pct, 3), snap.Count, identified, started, HandleCensus.Take(),
+                    GC.CollectionCount(2), Mb(GC.GetGCMemoryInfo().TotalCommittedBytes), resolver.Cache.Count, resolver.Files.Count));
+                var sm = samples[^1];
+                Console.WriteLine($"[soak] {now.TotalMinutes,6:F1} 분 · 핸들 {sm.Handles} · 스레드 {sm.Threads} · GDI {sm.Gdi} · Private {sm.PrivateMb} MB · 관리 힙 {sm.ManagedMb} MB"
+                    + $" (GC 확보 {sm.CommittedMb} MB, 2세대 GC {sm.Gen2}회) · 캐시 프로세스 {sm.ProcessCache}/파일 {sm.FileCache} · 실행 중 {sm.Processes} · 시작한 프로세스 {started}");
                 lastCpu = cpu;
                 lastT = now;
                 nextSample += TimeSpan.FromMinutes(1);
+            }
+
+            if (checkpoints.Count == 0 && sw.Elapsed >= checkpointAt)
+            {
+                checkpoints.Add(ForcedGc(me, sw.Elapsed, resolver));
+                PrintCheckpoint(checkpoints[^1]);
             }
 
             tick++;
@@ -263,8 +294,13 @@ internal static class Program
             }
         }
 
+        checkpoints.Add(ForcedGc(me, sw.Elapsed, resolver));
+        PrintCheckpoint(checkpoints[^1]);
+        static void PrintCheckpoint(GcCheckpoint c) => Console.WriteLine(
+            $"[soak] 강제 전체 GC {c.Minute:F1} 분: Private {c.PrivateBeforeMb} → {c.PrivateAfterMb} MB · 관리 힙 {c.ManagedBeforeMb} → {c.ManagedAfterMb} MB (GC 후 남은 것 = 참조 중) · 캐시 프로세스 {c.ProcessCache}/파일 {c.FileCache}");
         var warmup = Math.Min(warmupMinutes, minutes / 2);
-        var after = samples.Where(s => s.Minute >= warmup).ToList();
+        // strictly after the warm-up: the sample at the warm-up minute is taken just before the forced GC checkpoint
+        var after = samples.Where(s => s.Minute > warmup).ToList();
         double PerHour(Func<SoakSample, double> f) => Math.Round(HandleCensus.Slope(after.Select(s => (s.Minute, f(s))).ToList()) * 60, 2);
         var types = after.SelectMany(s => s.Types.Keys).Distinct().OrderBy(k => k, StringComparer.Ordinal)
             .Select(k => new { type = k, first = after.First().Types.GetValueOrDefault(k), last = after.Last().Types.GetValueOrDefault(k), perHour = PerHour(s => s.Types.GetValueOrDefault(k)) })
@@ -291,17 +327,28 @@ internal static class Program
                 privateMbFirst = after.FirstOrDefault()?.PrivateMb,
                 privateMbLast = after.LastOrDefault()?.PrivateMb,
                 privateMbPerHour = PerHour(s => s.PrivateMb),
+                managedMbPerHour = PerHour(s => s.ManagedMb),
+                // the decisive leak number: managed memory still referenced after a full GC, end vs. end of warm-up
+                managedAfterGcFirstMb = checkpoints.Count > 1 ? checkpoints[0].ManagedAfterMb : (double?)null,
+                managedAfterGcLastMb = checkpoints[^1].ManagedAfterMb,
+                privateAfterGcFirstMb = checkpoints.Count > 1 ? checkpoints[0].PrivateAfterMb : (double?)null,
+                privateAfterGcLastMb = checkpoints[^1].PrivateAfterMb,
                 avgCpuPct = after.Count > 0 ? Math.Round(after.Average(s => s.CpuPct), 3) : 0,
                 warmupMinutes = warmup,
-                note = $"{warmup}분 이후 1분 표본의 최소제곱 기울기(시간당). 누수는 꾸준한 양의 기울기로, 안정 상태는 0 근처로 나타남.",
+                note = $"{warmup}분(강제 GC 지점) 이후 1분 표본의 최소제곱 기울기(시간당). 누수는 꾸준한 양의 기울기로, 안정 상태는 0 근처로 나타남. 메모리 판단은 강제 GC 후 남은 관리 힙(처음 → 끝)으로 함.",
             },
             handleTypes = types,
             resolver = resolver.Stats,
             fileCache = new { resolver.Files.Count, resolver.Files.Capacity, resolver.Files.Hits, resolver.Files.Evictions, resolver.Files.Reloads },
-            samples = samples.Select(s => new { s.Minute, s.Handles, s.Threads, s.Gdi, s.User, s.PrivateMb, s.ManagedMb, s.CpuPct, s.Processes, s.Identified, s.Started }),
+            gcCheckpoints = checkpoints,
+            samples = samples.Select(s => new { s.Minute, s.Handles, s.Threads, s.Gdi, s.User, s.PrivateMb, s.ManagedMb, s.CommittedMb, s.Gen2, s.ProcessCache, s.FileCache, s.CpuPct, s.Processes, s.Identified, s.Started }),
         };
         File.WriteAllText(outPath, JsonSerializer.Serialize(result, Json));
-        Console.WriteLine($"[soak] {minutes} 분 ({warmup}분 이후 기울기) · 핸들 기울기 {handlesPerHour}/시간 · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} · Private 기울기 {result.summary.privateMbPerHour} MB/시간");
+        Console.WriteLine($"[soak] {minutes} 분 ({warmup}분 이후 기울기) · 핸들 기울기 {handlesPerHour}/시간 · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} · Private 기울기 {result.summary.privateMbPerHour} MB/시간 · 관리 힙 기울기 {result.summary.managedMbPerHour} MB/시간");
+        if (checkpoints.Count > 1)
+        {
+            Console.WriteLine($"[soak] 강제 GC 후 남은 메모리: 관리 힙 {checkpoints[0].ManagedAfterMb} → {checkpoints[^1].ManagedAfterMb} MB · Private {checkpoints[0].PrivateAfterMb} → {checkpoints[^1].PrivateAfterMb} MB ({checkpoints[0].Minute:F0}분 → {checkpoints[^1].Minute:F0}분)");
+        }
         foreach (var t in types)
         {
             Console.WriteLine($"[soak]   {t.type}: {t.first} → {t.last} ({t.perHour}/시간)");

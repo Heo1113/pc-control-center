@@ -151,12 +151,27 @@ internal static partial class RealProbe
             GetGuiResources(me.Handle, 0).ToString(System.Globalization.CultureInfo.InvariantCulture),
             GetGuiResources(me.Handle, 1).ToString(System.Globalization.CultureInfo.InvariantCulture),
             me.TotalProcessorTime.TotalSeconds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture),
+            GC.CollectionCount(2).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            HeapAfterLastFullGcMb().ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
             "\"" + sources.Replace("\"", "'", StringComparison.Ordinal).Replace("\n", " | ", StringComparison.Ordinal) + "\"");
         if (!File.Exists(file))
         {
-            File.AppendAllText(file, "time,privateMb,workingSetMb,managedMb,handles,threads,gdi,user,cpuSeconds,sources" + Environment.NewLine);
+            File.AppendAllText(file, "time,privateMb,workingSetMb,managedMb,handles,threads,gdi,user,cpuSeconds,gen2,heapAfterFullGcMb,sources" + Environment.NewLine);
         }
 
         File.AppendAllText(file, line + Environment.NewLine);
+    }
+
+    /// <summary>
+    /// Managed heap left by the most recent full (gen 2) collection, blocking or background; 0 before the first one. Read from
+    /// the GC's own record, so the soak log never forces a collection. A leak grows this; garbage the GC has not reached yet
+    /// raises only Private and managedMb.
+    /// </summary>
+    internal static double HeapAfterLastFullGcMb()
+    {
+        var blocking = GC.GetGCMemoryInfo(GCKind.FullBlocking);
+        var background = GC.GetGCMemoryInfo(GCKind.Background);
+        var last = background.Index > blocking.Index ? background : blocking;
+        return last.Index == 0 ? 0 : (last.HeapSizeBytes - last.FragmentedBytes) / 1048576.0;
     }
 }

@@ -261,6 +261,56 @@ jobs:
             ${{ runner.temp }}/tl
           retention-days: 14
 
+  window-soak:
+    name: Windows - IRON window on real data for 20 min (--soak-log, Analyze-SoakLog.ps1)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish
+        id: publish
+        run: ./scripts/iron-publish.ps1 -OutputDir dist
+
+      - name: IRON window, real data, 20 min with the soak log (the 12 h user-PC run, shortened; mock HWiNFO on 8764)
+        id: soak
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        timeout-minutes: 28
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/window-soak | Out-Null
+          $py = (Get-Command python).Source
+          $hw = Join-Path (Split-Path $py) 'HWiNFO64.exe'
+          Copy-Item $py $hw -Force
+          $mock = Start-Process $hw -ArgumentList '-I', 'stage2-rc3/tests/mock_hwinfo_server.py', '--port', '8764', '--fixtures', 'stage2-rc3/tests/fixtures', '--log', 'dist/window-soak/mock.log' -PassThru -WindowStyle Hidden
+          $csv = Join-Path (Resolve-Path dist/window-soak) 'soak.csv'
+          try {
+            $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--source', 'real', '--soak-log', $csv -PassThru
+            if ($p.WaitForExit(20.5 * 60 * 1000)) { throw "IRON exited during the soak (exit $($p.ExitCode))" }
+            Stop-Process -Id $p.Id
+          } finally {
+            Stop-Process -Id $mock.Id -ErrorAction SilentlyContinue
+          }
+          Get-Content $csv | ForEach-Object { ($_ -replace ',"[^"]*"$', '') }   # without the sources text
+          ./stage2-verify/Analyze-SoakLog.ps1 -Csv $csv -WarmupMinutes 5
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-stage2-integration-window-soak
+          path: dist/window-soak/**
+          if-no-files-found: warn
+          retention-days: 14
+
   measure:
     name: Windows - standard-user measurement (identity module, 20 min soak, Stage 2 probe as a standard user)
     runs-on: windows-latest
