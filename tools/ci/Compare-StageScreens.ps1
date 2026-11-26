@@ -11,6 +11,10 @@
 #>
 param(
     [string]$Root = 'dist/cmp',
+    # renders compared against: 'base' (187d533, the gate) or another set such as 'prev' (report only)
+    [string]$Base = 'base',
+    [string]$BaseLabel = '187d533',
+    [switch]$ReportOnly,
     [int]$Runs = 4,
     [string]$CropScreen = '2194x1186-processes-normal.png',
     # The old name text's glyphs can reach past its cell (the "W" of WindowsTerminal.exe starts 1 px left of the column):
@@ -109,7 +113,7 @@ function PathOf([string]$dir, [string]$name) { (Resolve-Path -LiteralPath (Join-
 function HashOf([string]$dir, [string]$name) { (Get-FileHash -LiteralPath (Join-Path $Root $dir $name)).Hash }
 
 $rn = Get-Content (Join-Path $Root 'new/layout-report.json') -Raw | ConvertFrom-Json
-$rb = Get-Content (Join-Path $Root 'base/layout-report.json') -Raw | ConvertFrom-Json
+$rb = Get-Content (Join-Path $Root "$Base/layout-report.json") -Raw | ConvertFrom-Json
 $cellsByFile = @{}; $procsByFile = @{}
 foreach ($s in $rn.screens) {
     [int[]]$flat = @()
@@ -119,9 +123,9 @@ foreach ($s in $rn.screens) {
 }
 
 $script:pictures = 0
-$runsB = @('base') + @(2..$Runs | ForEach-Object { "base$_" })
+$runsB = @($Base) + @(2..$Runs | ForEach-Object { "$Base$_" })
 $runsN = @('new') + @(2..$Runs | ForEach-Object { "new$_" })
-$files = Get-ChildItem (Join-Path $Root 'base') -Filter *.png | Sort-Object Name
+$files = Get-ChildItem (Join-Path $Root $Base) -Filter *.png | Sort-Object Name
 $rows = foreach ($f in $files) {
     $name = $f.Name
     $cells = $cellsByFile[$name]; if ($null -eq $cells) { $cells = [int[]]@() }
@@ -129,12 +133,12 @@ $rows = foreach ($f in $files) {
     $hn = @($runsN | ForEach-Object { HashOf $_ $name })
     $whole = $hb[0] -eq $hn[0]
     $d = [long[]]@(0, 0, 0, 0, 0, 0)
-    if (-not $whole) { $d = [ScreenDiff]::Masked((PathOf 'base' $name), (PathOf 'new' $name), $cells) }
-    # Outside the cells, does any render of this branch match 187d533? (a difference only some runs show is run-to-run
+    if (-not $whole) { $d = [ScreenDiff]::Masked((PathOf $Base $name), (PathOf 'new' $name), $cells) }
+    # Outside the cells, does any render of this branch match the baseline? (a difference only some runs show is run-to-run
     # variation of this branch, reported separately; a difference every run shows is a real change and fails)
     $bestOutside = [long]$d[0]
     for ($k = 1; $k -lt $runsN.Count -and $bestOutside -ne 0; $k++) {
-        $o = if ($hn[$k] -eq $hb[0]) { 0 } else { [ScreenDiff]::Masked((PathOf 'base' $name), (PathOf $runsN[$k] $name), $cells)[0] }
+        $o = if ($hn[$k] -eq $hb[0]) { 0 } else { [ScreenDiff]::Masked((PathOf $Base $name), (PathOf $runsN[$k] $name), $cells)[0] }
         if ($o -ge 0 -and $o -lt $bestOutside) { $bestOutside = $o }
     }
     $box = ''
@@ -151,23 +155,23 @@ $rows = foreach ($f in $files) {
 }
 
 foreach ($r in $rows) {
-    if ($r.Whole) { $state = 'identical to 187d533' }
+    if ($r.Whole) { $state = "identical to $BaseLabel" }
     elseif ($r.Outside -eq 0) { $state = "changed only inside name cells ($($r.Inside) px)" }
     elseif ($r.Outside -lt 0) { $state = 'SIZE DIFFERS' }
-    elseif ($r.BestOutside -eq 0) { $state = "changed inside name cells ($($r.Inside) px); outside them run 1 differs by $($r.Outside) px at $($r.Box) but another run of this branch matches 187d533 there (run-to-run variation)" }
+    elseif ($r.BestOutside -eq 0) { $state = "changed inside name cells ($($r.Inside) px); outside them run 1 differs by $($r.Outside) px at $($r.Box) but another run of this branch matches $BaseLabel there (run-to-run variation)" }
     else { $state = "OUTSIDE name cells: $($r.Outside) px at $($r.Box), in every run (inside: $($r.Inside) px)" }
-    $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: 187d533 $($r.BaseVariants), branch $($r.BranchVariants)"
+    $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: $BaseLabel $($r.BaseVariants), branch $($r.BranchVariants)"
     if ($r.BranchSelfOutside -gt 0) { $line += " (branch vs itself outside name cells: $($r.BranchSelfOutside) px)" }
     $line
     if ($r.Outside -gt 0) {
-        '    sample (187d533 vs this branch): ' + [ScreenDiff]::OutsideSample((PathOf 'base' $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
+        "    sample ($BaseLabel vs this branch): " + [ScreenDiff]::OutsideSample((PathOf $Base $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
         if ($r.Box -match '^(\d+),(\d+)-') {
             $bx = [int]$Matches[1]; $by = [int]$Matches[2]; $cl = $cellsByFile[$r.File]; $pr = $procsByFile[$r.File]
             for ($i = 0; $i + 3 -lt $cl.Count; $i += 4) {
                 if ($by -ge $cl[$i + 1] -and $by -le $cl[$i + 3]) { "    row of cell $($i / 4) ($($pr[$i / 4])): cell $($cl[$i]),$($cl[$i + 1])-$($cl[$i + 2]),$($cl[$i + 3])" }
             }
             if ($script:pictures -eq 0) {
-                foreach ($dir in 'new', 'base') {
+                foreach ($dir in 'new', $Base) {
                     "=====CROP $dir-outside $($r.File) $($bx - 12),$($by - 24)-$($bx + 60),$($by + 30) scale 1====="
                     $b64 = [ScreenDiff]::Crop((PathOf $dir $r.File), $bx - 12, $by - 24, $bx + 60, $by + 30, 1.0)
                     for ($i = 0; $i -lt $b64.Length; $i += 2000) { $b64.Substring($i, [Math]::Min(2000, $b64.Length - $i)) }
@@ -175,8 +179,8 @@ foreach ($r in $rows) {
                 }
             }
             if ($script:pictures++ -lt 0) {
-                "    this branch around $bx,$by (X = differs from 187d533; luminance ' ' dark .. '#' light):"
-                [ScreenDiff]::Around((PathOf 'base' $r.File), (PathOf 'new' $r.File), $bx + 30, $by, 80, 24)
+                "    this branch around $bx,$by (X = differs from $BaseLabel; luminance ' ' dark .. '#' light):"
+                [ScreenDiff]::Around((PathOf $Base $r.File), (PathOf 'new' $r.File), $bx + 30, $by, 80, 24)
             }
         }
     }
@@ -185,21 +189,21 @@ foreach ($r in $rows) {
 $outsideScreens = @($rows | Where-Object { $_.BestOutside -ne 0 })
 $jitterScreens = @($rows | Where-Object { $_.Outside -ne 0 -and $_.BestOutside -eq 0 })
 $insideOnly = @($rows | Where-Object { -not $_.Whole -and $_.BestOutside -eq 0 })
-$summary = "screens: $($rows.Count) (name cells counted $CellMarginPx px wider on each side) · identical to 187d533: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
+$summary = "screens: $($rows.Count) (name cells counted $CellMarginPx px wider on each side) · identical to $BaseLabel: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
     "($(($rows | Measure-Object Cells -Sum).Sum) cells) · changed outside the name cells in every run: $($outsideScreens.Count) · " +
     "outside the name cells only in some runs of this branch: $($jitterScreens.Count) · " +
-    "screens varying across $Runs runs: 187d533 $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
+    "screens varying across $Runs runs: $BaseLabel $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
     "(outside name cells: $(@($rows | Where-Object { $_.BranchSelfOutside -gt 0 }).Count)) · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · " +
     "binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
 $summary
 if ($env:GITHUB_STEP_SUMMARY) { "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
 
-# crops of the name column (first rows) for a look at the change, from this branch and from 187d533
+# crops of the name column (first rows) for a look at the change, from this branch and from $BaseLabel
 $c = $cellsByFile[$CropScreen]
 if ($c -and $c.Count -ge 4) {
     $n = [Math]::Min($CropRows, $c.Count / 4)
     $x0 = $c[0]; $y0 = $c[1]; $y1 = $c[($n - 1) * 4 + 3]; $x1 = [Math]::Min($c[2], $x0 + 900)
-    foreach ($dir in 'new', 'base') {
+    foreach ($dir in 'new', $Base) {
         "=====CROP $dir $CropScreen $x0,$y0-$x1,$y1 scale 0.5====="
         $b64 = [ScreenDiff]::Crop((PathOf $dir $CropScreen), $x0, $y0, $x1, $y1, 0.5)
         for ($i = 0; $i -lt $b64.Length; $i += 2000) { $b64.Substring($i, [Math]::Min(2000, $b64.Length - $i)) }
@@ -207,6 +211,7 @@ if ($c -and $c.Count -ge 4) {
     }
 }
 
+if ($ReportOnly) { return }
 if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
-if ($outsideScreens.Count -gt 0) { throw 'screens differ from 187d533 outside the process-name cells (see above)' }
+if ($outsideScreens.Count -gt 0) { throw "screens differ from $BaseLabel outside the process-name cells (see above)" }
 if (($rows | Measure-Object Cells -Sum).Sum -eq 0) { throw 'no process-name cells reported: the masked comparison would compare nothing' }

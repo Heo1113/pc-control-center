@@ -1,0 +1,251 @@
+name: IRON Stage 2 integration
+
+# Integration branch (feat/iron-stage2-integration): process identity on a9d69f4 + HWiNFO REST RC3.2 + Stage 2 real data
+# connection. Isolated: runs only on this branch, uses the Windows runner (no NVIDIA GPU, no HWiNFO, no WireView) and a mock
+# HWiNFO server. main, feat/iron-ui-stage1, feat/iron-process-identity and rc3/windows-ci-check are not changed.
+on:
+  push:
+    branches:
+      - "feat/iron-stage2-integration"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iron-stage2-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  PYTHONUTF8: "1"
+  STAGE1_BASE: "187d5339a2dda4bfdf811b6dc8d3ead5944878e0"
+  IDENTITY_APPROVED: "a9d69f48d7049cb80fb3be8707e733df7f89f768"
+  RC3_BASE: "ed8883d21adb04e327524478e55f72cccea3e46c"
+
+jobs:
+  linux:
+    name: Linux - build, Stage 1 + identity tests, RC3 tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Stage 1 screen logic tests (48 existing + process identity)
+        run: dotnet test --project tests/Iron.App.Tests -c Release --no-build
+
+      - name: Identity tests (parsers, redaction, caches, resolver)
+        run: dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
+
+      - name: RC3.2 tests (conformance, relay, parser)
+        working-directory: stage2-rc3
+        run: python3 -I -m unittest discover -s tests -p "test_*.py" -v
+
+  windows:
+    name: Windows - tests, Stage 1 regression vs 187d533
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        id: build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Tests (Stage 1 screen logic, identity incl. Windows native)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          dotnet test --project tests/Iron.App.Tests -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Stage 1 tests failed' }
+          dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'identity tests failed' }
+
+      - name: Publish this branch, the 187d533 baseline and the approved a9d69f4
+        id: publish
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./scripts/iron-publish.ps1 -OutputDir dist
+          git fetch --no-tags --depth=1 origin $env:STAGE1_BASE
+          git worktree add base FETCH_HEAD
+          ./base/scripts/iron-publish.ps1 -OutputDir dist-base
+          git fetch --no-tags --depth=1 origin $env:IDENTITY_APPROVED
+          git worktree add prev FETCH_HEAD
+          ./prev/scripts/iron-publish.ps1 -OutputDir dist-prev
+
+      - name: Stage 1 regression - screens vs 187d533 (gate) and a9d69f4 (report), name cells apart
+        id: screens
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          $runs = @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'), @('dist-prev/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/prev'))
+          foreach ($k in 2..4) { $runs += ,@('dist/Iron.App-win-x64/Iron.App.exe', "dist/cmp/new$k"); $runs += ,@('dist-base/Iron.App-win-x64/Iron.App.exe', "dist/cmp/base$k"); $runs += ,@('dist-prev/Iron.App-win-x64/Iron.App.exe', "dist/cmp/prev$k") }
+          foreach ($pair in $runs) {
+            $p = Start-Process $pair[0] -ArgumentList '--render-screens', $pair[1] -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
+          }
+          "### vs a9d69f4 (approved identity build): report only — the ~ mark and the shared-host badge are inside the name cells"
+          ./tools/ci/Compare-StageScreens.ps1 -Root dist/cmp -Runs 4 -Base prev -BaseLabel a9d69f4 -ReportOnly -CropRows 8
+          "### vs 187d533 (Stage 1): the gate — outside the name cells nothing may change"
+          ./tools/ci/Compare-StageScreens.ps1 -Root dist/cmp -Runs 4
+
+      - name: Stage 1 regression - live window (tabs, states, USB handover, half width, tray)
+        id: live
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/stage1/live | Out-Null
+          $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--smoke-test', 'dist/stage1/live' -PassThru
+          if (-not $p.WaitForExit(150000)) { $p.Kill(); throw 'live smoke test did not finish in time' }
+          $report = Get-Content dist/stage1/live/smoke-report.json -Raw | ConvertFrom-Json
+          "steps: $($report.steps.Count) · issues: $($report.issues) · binding errors: $($report.bindingErrors.Count)"
+          foreach ($s in $report.steps) { "  $($s.step): layout=$($s.layout) status=$($s.status)"; foreach ($i in $s.issues) { "    $($i.Kind): '$($i.Text)'" }; if ($s.error) { "    ERROR $($s.error)" } }
+          foreach ($e in $report.bindingErrors) { "  binding: $e" }
+          if ($p.ExitCode -ne 0) { throw "live smoke exit code $($p.ExitCode)" }
+
+      - name: Crash details (only when a step above failed)
+        if: ${{ failure() }}
+        run: |
+          Get-ChildItem dist -Recurse -Filter crash.txt -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName }
+
+      - name: Upload screens, reports and measurement
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-stage2-integration-screens
+          path: |
+            dist/cmp/**/*.json
+            dist/cmp/new/*.png
+            dist/stage1/live/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  hwinfo:
+    name: Windows - HWiNFO REST RC3.2 (mock server) - collector, PoC, outage timeline before/after
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build PoC RC3.2 (this branch) and RC3 (ed8883d, before the fix)
+        run: |
+          Set-Culture ko-KR
+          dotnet build stage2-rc3/poc/HWiNfoRestPoC.csproj -c Release -o "${{ runner.temp }}/poc"
+          if ($LASTEXITCODE -ne 0) { throw 'PoC build failed' }
+          git fetch --no-tags origin $env:RC3_BASE
+          git worktree add rc3base FETCH_HEAD
+          dotnet build rc3base/stage2-rc3/poc/HWiNfoRestPoC.csproj -c Release -o "${{ runner.temp }}/poc-rc3"
+          if ($LASTEXITCODE -ne 0) { throw 'RC3 PoC build failed' }
+
+      - name: RC3 Windows suite on RC3.2 (PS 5.1 + 7, PoC selftest/live, normal/error/disconnect/reconnect)
+        working-directory: stage2-rc3
+        run: python -I tests/windows_ci_check.py --suite main --out "${{ runner.temp }}/ci-out" --poc "${{ runner.temp }}/poc/HWiNfoRestPoC.dll"
+
+      - name: Outage timeline - RC3 (before) and RC3.2 (after), same scenario
+        if: ${{ !cancelled() }}
+        working-directory: stage2-rc3
+        run: |
+          python -I tests/disconnect_timeline.py --out "${{ runner.temp }}/tl" --label rc3 --poc "${{ runner.temp }}/poc-rc3/HWiNfoRestPoC.dll" --collector ../rc3base/stage2-rc3/poc/Collect-HWiNfoRest.ps1
+          python -I tests/disconnect_timeline.py --out "${{ runner.temp }}/tl" --label rc3.2 --poc "${{ runner.temp }}/poc/HWiNfoRestPoC.dll" --collector poc/Collect-HWiNfoRest.ps1 --probe
+
+      - name: Upload results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-stage2-integration-hwinfo
+          path: |
+            ${{ runner.temp }}/ci-out
+            ${{ runner.temp }}/tl
+          retention-days: 14
+
+  measure:
+    name: Windows - standard-user measurement (identity module alone)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        id: build
+        run: dotnet build tools/Iron.ProcessIdentity.Bench -c Release
+
+      - name: Standard-user measurement (5 min baseline, 5 min with identity, before/after samples)
+        id: measure
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 30
+        run: |
+          $w = 'C:\ironbench'
+          New-Item -ItemType Directory -Force -Path "$w\bench", "$w\out", "$w\work" | Out-Null
+          Copy-Item tools/Iron.ProcessIdentity.Bench/bin/Release/net10.0/* "$w\bench" -Recurse
+          python -m venv "$w\work\ml-lab\.venv"
+          $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+          "node: $node"
+          # A throwaway local standard user (Users group only) for this runner; the password is never printed.
+          # 14 characters: net user asks an interactive question for longer passwords.
+          $pw = 'Ib!' + [guid]::NewGuid().ToString('N').Substring(0, 9) + 'x9'
+          net user ironbench $pw /add /expires:never
+          if ($LASTEXITCODE -ne 0) { throw 'could not create the standard user' }
+          icacls $w /grant 'ironbench:(OI)(CI)M' /T /Q | Out-Null
+          Start-Service seclogon -ErrorAction SilentlyContinue
+          $cred = [pscredential]::new('ironbench', (ConvertTo-SecureString $pw -AsPlainText -Force))
+          $dotnet = (Get-Command dotnet).Source
+          function Invoke-AsUser([string[]]$argList, [string]$name) {
+            $p = Start-Process -FilePath $dotnet -ArgumentList $argList -Credential $cred -LoadUserProfile -WorkingDirectory "$w\bench" `
+                   -RedirectStandardOutput "$w\out\$name.out.txt" -RedirectStandardError "$w\out\$name.err.txt" -PassThru -Wait
+            Get-Content "$w\out\$name.out.txt", "$w\out\$name.err.txt" -ErrorAction SilentlyContinue
+            if ($p.ExitCode -ne 0) { throw "$name exit $($p.ExitCode)" }
+          }
+          $bench = "$w\bench\Iron.ProcessIdentity.Bench.dll"
+          Invoke-AsUser @($bench, 'measure', '--mode', 'baseline', '--minutes', '5', '--out', "$w\out\baseline.json") 'baseline'
+          Invoke-AsUser @($bench, 'measure', '--mode', 'identity', '--minutes', '5', '--out', "$w\out\identity.json") 'identity'
+          $sampleArgs = @($bench, 'samples', '--work', "$w\work\samples", '--python', "$w\work\ml-lab\.venv\Scripts\python.exe", '--out', "$w\out\samples.json")
+          if ($node) { $sampleArgs += @('--node', "`"$node`"") }  # quoted: the path has a space
+          Invoke-AsUser $sampleArgs 'samples'
+          & $dotnet $bench report --baseline "$w\out\baseline.json" --identity "$w\out\identity.json" --samples "$w\out\samples.json" --out "$w\out\report.md"
+          Get-Content "$w\out\report.md" -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          New-Item -ItemType Directory -Force -Path dist/measure | Out-Null
+          Copy-Item "$w\out\*" dist/measure
+
+      - name: Upload measurement
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-stage2-integration-measurement
+          path: dist/measure/**
+          if-no-files-found: warn
+          retention-days: 14
