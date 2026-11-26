@@ -5,7 +5,7 @@
 //   samples --work <dir> --python <venv python.exe> --node <node.exe> --out <file.json>
 //                                                                     starts its own test processes and records identity before/after
 //   report  --baseline <b.json> --identity <i.json> --samples <s.json> --out <report.md>
-//   soak    --minutes 720 --out <file.json> [--churn-seconds 5]          long run with the resolver while short processes come
+//   soak    --minutes 720 --out <file.json> [--churn-seconds 5] [--warmup-minutes 10]  long run with the resolver while short processes come
 //                                                                     and go; handles by type, GDI, memory every minute, slopes per hour
 //
 // Only processes this tool started are stopped; nothing else is touched. Command lines appear only redacted.
@@ -51,7 +51,8 @@ internal static class Program
             "measure" => Measure(Opt("--mode") ?? "baseline", double.Parse(Opt("--minutes") ?? "5", CultureInfo.InvariantCulture), Opt("--out")!),
             "samples" => Samples(Opt("--work")!, Opt("--python"), Opt("--node"), Opt("--out")!),
             "report" => Report(Opt("--baseline")!, Opt("--identity")!, Opt("--samples")!, Opt("--out")!),
-            "soak" => Soak(double.Parse(Opt("--minutes") ?? "20", CultureInfo.InvariantCulture), Opt("--out")!, int.Parse(Opt("--churn-seconds") ?? "5", CultureInfo.InvariantCulture)),
+            "soak" => Soak(double.Parse(Opt("--minutes") ?? "20", CultureInfo.InvariantCulture), Opt("--out")!, int.Parse(Opt("--churn-seconds") ?? "5", CultureInfo.InvariantCulture),
+                double.Parse(Opt("--warmup-minutes") ?? "10", CultureInfo.InvariantCulture)),
             _ => 1,
         };
     }
@@ -204,9 +205,11 @@ internal static class Program
     /// <summary>
     /// Long run: the identity resolver on the 1 Hz process list while this tool starts a short process every few seconds
     /// (new keys, evictions, file cache, service refreshes). Every minute: handles by type, threads, GDI/USER, memory.
-    /// Slopes per hour are fitted after a 2-minute warm-up; a leak shows as a steady slope, a plateau as ~0.
+    /// Slopes per hour are fitted after the warm-up (10 min by default, as Analyze-SoakLog.ps1 does for the IRON window; at most
+    /// half of a short run): the file and icon caches fill during the first minutes (CI run 4: Private 20 -> 28.5 MB from
+    /// minute 2 to 5, then flat), which a 2-minute warm-up counted as growth. A leak shows as a steady slope, a plateau as ~0.
     /// </summary>
-    private static int Soak(double minutes, string outPath, int churnSeconds)
+    private static int Soak(double minutes, string outPath, int churnSeconds, double warmupMinutes)
     {
         using var query = new WindowsProcessQuery();
         using var resolver = new ProcessIdentityResolver(new WindowsProcessQuery(), new ResolverOptions { Workers = 1 });
@@ -260,7 +263,8 @@ internal static class Program
             }
         }
 
-        var after = samples.Where(s => s.Minute >= 2).ToList();
+        var warmup = Math.Min(warmupMinutes, minutes / 2);
+        var after = samples.Where(s => s.Minute >= warmup).ToList();
         double PerHour(Func<SoakSample, double> f) => Math.Round(HandleCensus.Slope(after.Select(s => (s.Minute, f(s))).ToList()) * 60, 2);
         var types = after.SelectMany(s => s.Types.Keys).Distinct().OrderBy(k => k, StringComparer.Ordinal)
             .Select(k => new { type = k, first = after.First().Types.GetValueOrDefault(k), last = after.Last().Types.GetValueOrDefault(k), perHour = PerHour(s => s.Types.GetValueOrDefault(k)) })
@@ -288,7 +292,8 @@ internal static class Program
                 privateMbLast = after.LastOrDefault()?.PrivateMb,
                 privateMbPerHour = PerHour(s => s.PrivateMb),
                 avgCpuPct = after.Count > 0 ? Math.Round(after.Average(s => s.CpuPct), 3) : 0,
-                note = "2분 이후 1분 표본의 최소제곱 기울기(시간당). 누수는 꾸준한 양의 기울기로, 안정 상태는 0 근처로 나타남.",
+                warmupMinutes = warmup,
+                note = $"{warmup}분 이후 1분 표본의 최소제곱 기울기(시간당). 누수는 꾸준한 양의 기울기로, 안정 상태는 0 근처로 나타남.",
             },
             handleTypes = types,
             resolver = resolver.Stats,
@@ -296,7 +301,7 @@ internal static class Program
             samples = samples.Select(s => new { s.Minute, s.Handles, s.Threads, s.Gdi, s.User, s.PrivateMb, s.ManagedMb, s.CpuPct, s.Processes, s.Identified, s.Started }),
         };
         File.WriteAllText(outPath, JsonSerializer.Serialize(result, Json));
-        Console.WriteLine($"[soak] {minutes} 분 · 핸들 기울기 {handlesPerHour}/시간 · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} · Private 기울기 {result.summary.privateMbPerHour} MB/시간");
+        Console.WriteLine($"[soak] {minutes} 분 ({warmup}분 이후 기울기) · 핸들 기울기 {handlesPerHour}/시간 · GDI {result.summary.gdiFirst}→{result.summary.gdiLast} · Private 기울기 {result.summary.privateMbPerHour} MB/시간");
         foreach (var t in types)
         {
             Console.WriteLine($"[soak]   {t.type}: {t.first} → {t.last} ({t.perHour}/시간)");
