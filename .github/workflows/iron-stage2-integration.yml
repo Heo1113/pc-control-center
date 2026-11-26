@@ -264,7 +264,7 @@ jobs:
   measure:
     name: Windows - standard-user measurement (identity module, 20 min soak, Stage 2 probe as a standard user)
     runs-on: windows-latest
-    timeout-minutes: 70
+    timeout-minutes: 90
     defaults:
       run:
         shell: pwsh
@@ -287,7 +287,8 @@ jobs:
       - name: Standard-user measurement (5 min baseline, 5 min with identity, before/after samples)
         id: measure
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 30
+        # 5 + 5 min measurement, samples, 20 s probe, 20 min soak, plus process start-up: about 33 min of work
+        timeout-minutes: 55
         run: |
           $w = 'C:\ironbench'
           New-Item -ItemType Directory -Force -Path "$w\bench", "$w\out", "$w\work" | Out-Null
@@ -334,8 +335,13 @@ jobs:
           ./tools/ci/Check-Stage2Probe.ps1 -Probe "$w\out\probe\probe.json" -ExpectHwInfo -Label 'Windows 러너 · 일반 사용자'
           # 20 min soak with process churn: handles by type, GDI, memory per minute, slopes per hour
           Invoke-AsUser @($bench, 'soak', '--minutes', '20', '--churn-seconds', '5', '--out', "$w\out\soak.json") 'soak'
+
+      - name: Collect measurement output (also after a failure or timeout, so the per-minute soak lines are kept)
+        if: always()
+        run: |
           New-Item -ItemType Directory -Force -Path dist/measure | Out-Null
-          Copy-Item "$w\out\*" dist/measure
+          if (Test-Path 'C:\ironbench\out') { Copy-Item 'C:\ironbench\out\*' dist/measure -Recurse -Force }
+          if (Test-Path dist/measure/soak.out.txt) { Get-Content dist/measure/soak.out.txt -Tail 40 }
 
       - name: Upload measurement
         if: always()
