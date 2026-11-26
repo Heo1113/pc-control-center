@@ -324,7 +324,11 @@ jobs:
           Copy-Item $py $hw -Force
           $mock = Start-Process $hw -ArgumentList '-I', 'stage2-rc3/tests/mock_hwinfo_server.py', '--port', '8764', '--fixtures', 'stage2-rc3/tests/fixtures', '--log', "$w\out\mock.log" -PassThru -WindowStyle Hidden
           Copy-Item dist/Iron.App-win-x64/Iron.App.exe "$w\bench\Iron.App.exe"
-          $pp = Start-Process -FilePath "$w\bench\Iron.App.exe" -ArgumentList '--probe-real', "$w\out\probe", '--probe-seconds', '20' -Credential $cred -LoadUserProfile -WorkingDirectory "$w\bench" -PassThru -Wait
+          # The single-file app unpacks its native WPF libraries into a temp folder; Start-Process -Credential passes this
+          # runner's TEMP (not writable for ironbench), so give that user its own folders (a user starting IRON has them).
+          New-Item -ItemType Directory -Force -Path "$w\tmp", "$w\extract" | Out-Null
+          $pp = Start-Process -FilePath "$w\bench\Iron.App.exe" -ArgumentList '--probe-real', "$w\out\probe", '--probe-seconds', '20' -Credential $cred -LoadUserProfile -WorkingDirectory "$w\bench" -PassThru -Wait `
+                  -Environment @{ TEMP = "$w\tmp"; TMP = "$w\tmp"; DOTNET_BUNDLE_EXTRACT_BASE_DIR = "$w\extract" }
           Stop-Process -Id $mock.Id -ErrorAction SilentlyContinue
           if ($pp.ExitCode -ne 0) { throw "standard-user probe exit $($pp.ExitCode)" }
           ./tools/ci/Check-Stage2Probe.ps1 -Probe "$w\out\probe\probe.json" -ExpectHwInfo -Label 'Windows 러너 · 일반 사용자'
