@@ -24,6 +24,7 @@
 | `Views/ProcessesView.xaml` | 검사 패널 제목의 툴팁 1곳 → `Identity` |
 | `Hosting/Converters.cs`, `Theme/IronControls.xaml` | 아이콘 픽셀 → 고정된(Freeze) `BitmapSource` 변환기 등록 |
 | `Iron.App.csproj`, `Iron.App.Tests.csproj`, `Iron.slnx` | 새 모듈 참조·프로젝트 추가 |
+| `Controls/NameDetailPanel.cs` (새 파일) | 이름 셀 한 줄 배치: 식별 이름을 먼저 두고, 흐린 실행 파일 이름은 **다 들어갈 때만** 표시(반쯤 잘린 글자를 만들지 않음). 좁은 화면(절반 너비 개요 등)에서는 이름만 보이고 나머지는 툴팁에 있습니다 |
 | `Hosting/ScreenRenderer.cs` (CI 렌더링 모드만) | `layout-report.json`의 각 화면에 이름 셀의 픽셀 사각형(`nameCells`)을 추가. 창 동작에는 영향이 없습니다 |
 
 다른 열·열 너비·행 높이·창 배치·계측 방식은 그대로입니다. 행 데이터의 `Name`(실행 파일 이름)도 그대로이며, 검색·정렬은 여전히 이 값을 씁니다. 그래서 셀에 실행 파일 이름을 흐리게 함께 남겼습니다. 회귀 확인 방법은 7장에 적었습니다.

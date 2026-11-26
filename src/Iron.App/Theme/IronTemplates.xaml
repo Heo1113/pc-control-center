@@ -127,7 +127,7 @@
   </DataTemplate>
 
   <!-- Process-name cell: program icon (a letter mark when no icon is known — Stage 1 mock rows read no files), the identified
-       program name, then the executable name in muted text. The row height, the other columns and the data are unchanged. -->
+       program name, then the executable name in muted text when it fits. The row height, the other columns and the data are unchanged. -->
   <DataTemplate x:Key="Iron.ProcessNameCell">
     <DockPanel VerticalAlignment="Center" ToolTip="{Binding Identity}">
       <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
@@ -139,7 +139,11 @@
         <Image Source="{Binding Identity.Icon, Converter={StaticResource IconPixelsToImage}}" RenderOptions.BitmapScalingMode="HighQuality"
                Visibility="{Binding Identity.Icon, Converter={StaticResource VisibleWhen}}" />
       </Grid>
-      <TextBlock Style="{StaticResource Iron.Cell}"><Run Text="{Binding Identity.Name, Mode=OneWay}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold" /><Run Text="  " /><Run Text="{Binding Identity.Detail, Mode=OneWay}" Foreground="{StaticResource IronInkBezelMuted}" /></TextBlock>
+      <!-- the executable name is left out (never half shown) when the column is too narrow for it; the tooltip keeps everything -->
+      <c:NameDetailPanel Gap="10" VerticalAlignment="Center">
+        <TextBlock Text="{Binding Identity.Name, Mode=OneWay}" Style="{StaticResource Iron.Cell}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold" />
+        <TextBlock Text="{Binding Identity.Detail, Mode=OneWay}" Style="{StaticResource Iron.CellMuted}" />
+      </c:NameDetailPanel>
     </DockPanel>
   </DataTemplate>
 
