@@ -532,6 +532,12 @@ def write_report(env, suite):
 
 
 def main():
+    # python -I 는 PYTHONUTF8 환경 변수를 무시하므로 콘솔(cp1252)에서 한글 출력이 실패하지 않게 직접 맞춘다
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--suite", choices=["main", "culture"], default="main")
     ap.add_argument("--out", required=True)
