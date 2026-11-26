@@ -153,7 +153,15 @@ foreach ($r in $rows) {
             for ($i = 0; $i + 3 -lt $cl.Count; $i += 4) {
                 if ($by -ge $cl[$i + 1] -and $by -le $cl[$i + 3]) { "    row of cell $($i / 4) ($($pr[$i / 4])): cell $($cl[$i]),$($cl[$i + 1])-$($cl[$i + 2]),$($cl[$i + 3])" }
             }
-            if ($script:pictures++ -lt 3) {
+            if ($script:pictures -eq 0) {
+                foreach ($dir in 'new', 'base') {
+                    "=====CROP $dir-outside $($r.File) $($bx - 12),$($by - 24)-$($bx + 60),$($by + 30) scale 1====="
+                    $b64 = [ScreenDiff]::Crop((PathOf $dir $r.File), $bx - 12, $by - 24, $bx + 60, $by + 30, 1.0)
+                    for ($i = 0; $i -lt $b64.Length; $i += 2000) { $b64.Substring($i, [Math]::Min(2000, $b64.Length - $i)) }
+                    '=====END CROP====='
+                }
+            }
+            if ($script:pictures++ -lt 0) {
                 "    this branch around $bx,$by (X = differs from 187d533; luminance ' ' dark .. '#' light):"
                 [ScreenDiff]::Around((PathOf 'base' $r.File), (PathOf 'new' $r.File), $bx + 30, $by, 80, 24)
             }
