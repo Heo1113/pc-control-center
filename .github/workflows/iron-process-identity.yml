@@ -86,27 +86,56 @@ jobs:
         id: screens
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         run: |
-          foreach ($pair in @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base2'))) {
+          foreach ($pair in @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new2'),
+                              @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base2'))) {
             $p = Start-Process $pair[0] -ArgumentList '--render-screens', $pair[1] -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
           }
+          Add-Type -AssemblyName System.Drawing
+          Add-Type -ReferencedAssemblies ([System.Drawing.Bitmap].Assembly.Location), ([System.Drawing.Rectangle].Assembly.Location) -TypeDefinition @"
+          using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
+          public static class PixelDiff {
+            // "count x0,y0-x1,y1" of differing pixels, or "size" when the images differ in size
+            public static string Compare(string a, string b) {
+              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
+                if (x.Width != y.Width || x.Height != y.Height) return "size";
+                var r = new Rectangle(0, 0, x.Width, x.Height);
+                var dx = x.LockBits(r, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                var dy = y.LockBits(r, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                try {
+                  int n = dx.Stride * dx.Height; var bx = new byte[n]; var by = new byte[n];
+                  Marshal.Copy(dx.Scan0, bx, 0, n); Marshal.Copy(dy.Scan0, by, 0, n);
+                  long c = 0; int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+                  for (int i = 0; i < n; i += 4) {
+                    if (bx[i] != by[i] || bx[i+1] != by[i+1] || bx[i+2] != by[i+2] || bx[i+3] != by[i+3]) {
+                      c++; int py = i / dx.Stride, px = (i % dx.Stride) / 4;
+                      x0 = Math.Min(x0, px); y0 = Math.Min(y0, py); x1 = Math.Max(x1, px); y1 = Math.Max(y1, py);
+                    }
+                  }
+                  return c == 0 ? "0" : c + " px at " + x0 + "," + y0 + "-" + x1 + "," + y1 + " of " + x.Width + "x" + x.Height;
+                } finally { x.UnlockBits(dx); y.UnlockBits(dy); }
+              }
+            }
+          }
+          "@
           $files = Get-ChildItem dist/cmp/base -Filter *.png | Sort-Object Name
-          $same = 0; $diff = @(); $baseNoise = 0
+          $same = 0; $diff = @(); $baseNoise = 0; $newNoise = 0
           foreach ($f in $files) {
             $h0 = (Get-FileHash $f.FullName).Hash
             $h1 = (Get-FileHash (Join-Path 'dist/cmp/new' $f.Name)).Hash
             $h2 = (Get-FileHash (Join-Path 'dist/cmp/base2' $f.Name)).Hash
-            if ($h0 -ne $h2) { $baseNoise++ }
-            if ($h0 -eq $h1) { $same++ } else { $diff += $f.Name }
+            $h3 = (Get-FileHash (Join-Path 'dist/cmp/new2' $f.Name)).Hash
+            if ($h0 -ne $h2) { $baseNoise++; "  187d533 vs 187d533 $($f.Name): " + [PixelDiff]::Compare($f.FullName, (Resolve-Path (Join-Path 'dist/cmp/base2' $f.Name)).Path) }
+            if ($h1 -ne $h3) { $newNoise++; "  branch vs branch $($f.Name): " + [PixelDiff]::Compare((Resolve-Path (Join-Path 'dist/cmp/new' $f.Name)).Path, (Resolve-Path (Join-Path 'dist/cmp/new2' $f.Name)).Path) }
+            if ($h0 -eq $h1) { $same++ } else { $diff += $f.Name; "  branch vs 187d533 $($f.Name): " + [PixelDiff]::Compare($f.FullName, (Resolve-Path (Join-Path 'dist/cmp/new' $f.Name)).Path) }
           }
           $rn = Get-Content dist/cmp/new/layout-report.json -Raw | ConvertFrom-Json
           $rb = Get-Content dist/cmp/base/layout-report.json -Raw | ConvertFrom-Json
-          $summary = "screens: $($files.Count) · byte-identical to 187d533: $same · different: $($diff.Count) · 187d533 vs itself different: $baseNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
+          $summary = "screens: $($files.Count) · byte-identical to 187d533: $same · different: $($diff.Count) · 187d533 vs itself different: $baseNoise · branch vs itself different: $newNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
           $summary
           "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-          foreach ($d in $diff) { "  different: $d" }
-          if ($diff.Count -gt 0 -and $baseNoise -eq 0) { throw 'screens differ from the 187d533 baseline' }
           if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
+          if ($diff.Count -gt 0) { throw 'screens differ from the 187d533 baseline (see pixel ranges above)' }
 
       - name: Stage 1 regression - live window (tabs, states, USB handover, half width, tray)
         id: live
@@ -124,7 +153,7 @@ jobs:
       - name: Standard-user measurement (5 min baseline, 5 min with identity, before/after samples)
         id: measure
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 25
+        timeout-minutes: 30
         run: |
           $w = 'C:\ironbench'
           New-Item -ItemType Directory -Force -Path "$w\bench", "$w\out", "$w\work" | Out-Null
@@ -132,8 +161,10 @@ jobs:
           python -m venv "$w\work\ml-lab\.venv"
           $node = (Get-Command node -ErrorAction SilentlyContinue).Source
           # A throwaway local standard user (Users group only) for this runner; the password is never printed.
-          $pw = 'Ib!' + [guid]::NewGuid().ToString('N') + 'x9'
-          net user ironbench $pw /add /expires:never | Out-Null
+          # 14 characters: net user asks an interactive question for longer passwords.
+          $pw = 'Ib!' + [guid]::NewGuid().ToString('N').Substring(0, 9) + 'x9'
+          net user ironbench $pw /add /expires:never
+          if ($LASTEXITCODE -ne 0) { throw 'could not create the standard user' }
           icacls $w /grant 'ironbench:(OI)(CI)M' /T /Q | Out-Null
           Start-Service seclogon -ErrorAction SilentlyContinue
           $cred = [pscredential]::new('ironbench', (ConvertTo-SecureString $pw -AsPlainText -Force))
