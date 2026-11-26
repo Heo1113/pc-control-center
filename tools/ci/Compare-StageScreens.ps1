@@ -13,6 +13,9 @@ param(
     [string]$Root = 'dist/cmp',
     [int]$Runs = 4,
     [string]$CropScreen = '2194x1186-processes-normal.png',
+    # The old name text's glyphs can reach past its cell (the "W" of WindowsTerminal.exe starts 1 px left of the column):
+    # that ink belongs to the changed cell too, so each cell counts this many device pixels wider on both sides.
+    [int]$CellMarginPx = 2,
     [int]$CropRows = 6
 )
 $ErrorActionPreference = 'Stop'
@@ -32,10 +35,11 @@ public static class ScreenDiff {
       finally { bmp.UnlockBits(d); }
     }
   }
+  public static int Margin = 0;
   static bool[] Mask(int w, int h, int[] cells) {
     var m = new bool[w * h];
     for (int i = 0; i + 3 < cells.Length; i += 4) {
-      int x0 = Math.Max(0, cells[i]), y0 = Math.Max(0, cells[i + 1]), x1 = Math.Min(w - 1, cells[i + 2]), y1 = Math.Min(h - 1, cells[i + 3]);
+      int x0 = Math.Max(0, cells[i] - Margin), y0 = Math.Max(0, cells[i + 1]), x1 = Math.Min(w - 1, cells[i + 2] + Margin), y1 = Math.Min(h - 1, cells[i + 3]);
       for (int y = y0; y <= y1; y++) for (int x = x0; x <= x1; x++) m[y * w + x] = true;
     }
     return m;
@@ -100,6 +104,7 @@ public static class ScreenDiff {
 }
 "@
 
+[ScreenDiff]::Margin = $CellMarginPx
 function PathOf([string]$dir, [string]$name) { (Resolve-Path -LiteralPath (Join-Path $Root $dir $name)).Path }
 function HashOf([string]$dir, [string]$name) { (Get-FileHash -LiteralPath (Join-Path $Root $dir $name)).Hash }
 
@@ -155,7 +160,7 @@ foreach ($r in $rows) {
     if ($r.BranchSelfOutside -gt 0) { $line += " (branch vs itself outside name cells: $($r.BranchSelfOutside) px)" }
     $line
     if ($r.Outside -gt 0) {
-        '    sample: ' + [ScreenDiff]::OutsideSample((PathOf 'base' $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
+        '    sample (187d533 vs this branch): ' + [ScreenDiff]::OutsideSample((PathOf 'base' $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
         if ($r.Box -match '^(\d+),(\d+)-') {
             $bx = [int]$Matches[1]; $by = [int]$Matches[2]; $cl = $cellsByFile[$r.File]; $pr = $procsByFile[$r.File]
             for ($i = 0; $i + 3 -lt $cl.Count; $i += 4) {
@@ -180,7 +185,7 @@ foreach ($r in $rows) {
 $outsideScreens = @($rows | Where-Object { $_.BestOutside -ne 0 })
 $jitterScreens = @($rows | Where-Object { $_.Outside -ne 0 -and $_.BestOutside -eq 0 })
 $insideOnly = @($rows | Where-Object { -not $_.Whole -and $_.BestOutside -eq 0 })
-$summary = "screens: $($rows.Count) · identical to 187d533: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
+$summary = "screens: $($rows.Count) (name cells counted $CellMarginPx px wider on each side) · identical to 187d533: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
     "($(($rows | Measure-Object Cells -Sum).Sum) cells) · changed outside the name cells in every run: $($outsideScreens.Count) · " +
     "outside the name cells only in some runs of this branch: $($jitterScreens.Count) · " +
     "screens varying across $Runs runs: 187d533 $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
