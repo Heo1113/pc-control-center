@@ -86,8 +86,9 @@ jobs:
         id: screens
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         run: |
-          foreach ($pair in @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new2'),
-                              @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base2'))) {
+          $runs = @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'))
+          foreach ($k in 2..4) { $runs += ,@('dist/Iron.App-win-x64/Iron.App.exe', "dist/cmp/new$k"); $runs += ,@('dist-base/Iron.App-win-x64/Iron.App.exe', "dist/cmp/base$k") }
+          foreach ($pair in $runs) {
             $p = Start-Process $pair[0] -ArgumentList '--render-screens', $pair[1] -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
           }
@@ -119,22 +120,59 @@ jobs:
                 } finally { x.UnlockBits(dx); y.UnlockBits(dy); }
               }
             }
+            // Text picture of the area around (cx, cy): luminance as characters, '#' dark ... ' ' light; differing pixels as 'X'.
+            public static string Around(string a, string b, int cx, int cy, int w, int h) {
+              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
+                var sb = new System.Text.StringBuilder(); const string ramp = "#%@*+=-:. ";
+                for (int py = Math.Max(0, cy - h / 2); py < Math.Min(x.Height, cy + h / 2); py++) {
+                  for (int px = Math.Max(0, cx - w / 2); px < Math.Min(x.Width, cx + w / 2); px++) {
+                    var p = x.GetPixel(px, py); var q = y.GetPixel(px, py);
+                    if (p != q) { sb.Append('X'); continue; }
+                    int lum = (p.R * 3 + p.G * 6 + p.B) / 10; sb.Append(ramp[Math.Min(9, lum * 10 / 256)]);
+                  }
+                  sb.Append('\n');
+                }
+                return sb.ToString();
+              }
+            }
+            public static string Pixels(string a, string b, int x0, int y0, int x1, int y1) {
+              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
+                var sb = new System.Text.StringBuilder();
+                for (int py = y0; py <= y1; py++) for (int px = x0; px <= x1; px++) {
+                  var p = x.GetPixel(px, py); var q = y.GetPixel(px, py);
+                  if (p != q) sb.Append(px + "," + py + ": " + p.Name + " vs " + q.Name + "; ");
+                }
+                return sb.ToString();
+              }
+            }
           }
           "@
           $files = Get-ChildItem dist/cmp/base -Filter *.png | Sort-Object Name
           $same = 0; $diff = @(); $baseNoise = 0; $newNoise = 0
+          function H($dir, $name) { (Get-FileHash (Join-Path $dir $name)).Hash }
           foreach ($f in $files) {
-            $h0 = (Get-FileHash $f.FullName).Hash
-            $h1 = (Get-FileHash (Join-Path 'dist/cmp/new' $f.Name)).Hash
-            $h2 = (Get-FileHash (Join-Path 'dist/cmp/base2' $f.Name)).Hash
-            $h3 = (Get-FileHash (Join-Path 'dist/cmp/new2' $f.Name)).Hash
-            if ($h0 -ne $h2) { $baseNoise++; "  187d533 vs 187d533 $($f.Name): " + [PixelDiff]::Compare($f.FullName, (Resolve-Path (Join-Path 'dist/cmp/base2' $f.Name)).Path) }
-            if ($h1 -ne $h3) { $newNoise++; "  branch vs branch $($f.Name): " + [PixelDiff]::Compare((Resolve-Path (Join-Path 'dist/cmp/new' $f.Name)).Path, (Resolve-Path (Join-Path 'dist/cmp/new2' $f.Name)).Path) }
-            if ($h0 -eq $h1) { $same++ } else { $diff += $f.Name; "  branch vs 187d533 $($f.Name): " + [PixelDiff]::Compare($f.FullName, (Resolve-Path (Join-Path 'dist/cmp/new' $f.Name)).Path) }
+            $b = @('base', 'base2', 'base3', 'base4' | ForEach-Object { H "dist/cmp/$_" $f.Name })
+            $n = @('new', 'new2', 'new3', 'new4' | ForEach-Object { H "dist/cmp/$_" $f.Name })
+            $bv = ($b | Select-Object -Unique).Count; $nv = ($n | Select-Object -Unique).Count
+            if ($bv -gt 1) { $baseNoise++ }
+            if ($nv -gt 1) { $newNoise++ }
+            "  $($f.Name): 187d533 variants $bv/4 · branch variants $nv/4 · branch run1 = 187d533 run1: $($b[0] -eq $n[0])" | Where-Object { $bv -gt 1 -or $nv -gt 1 -or $b[0] -ne $n[0] }
+            if ($b[0] -eq $n[0]) { $same++ } else {
+              $diff += $f.Name
+              $pa = (Resolve-Path "dist/cmp/base/$($f.Name)").Path; $pb = (Resolve-Path "dist/cmp/new/$($f.Name)").Path
+              $c = [PixelDiff]::Compare($pa, $pb); "    branch vs 187d533: $c"
+              if ($c -match 'at (\d+),(\d+)-(\d+),(\d+)') {
+                "    pixels: " + [PixelDiff]::Pixels($pa, $pb, [int]$Matches[1], [int]$Matches[2], [int]$Matches[3], [int]$Matches[4])
+                "    187d533 around (X = differs):"
+                [PixelDiff]::Around($pa, $pb, [int]$Matches[1], [int]$Matches[2], 120, 40)
+              }
+            }
           }
+          # 187d533 renders identical in all runs while this branch varies → timing sensitivity, not a layout change; report both
+          $allBaseSame = $baseNoise -eq 0
           $rn = Get-Content dist/cmp/new/layout-report.json -Raw | ConvertFrom-Json
           $rb = Get-Content dist/cmp/base/layout-report.json -Raw | ConvertFrom-Json
-          $summary = "screens: $($files.Count) · byte-identical to 187d533: $same · different: $($diff.Count) · 187d533 vs itself different: $baseNoise · branch vs itself different: $newNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
+          $summary = "screens: $($files.Count) · byte-identical to 187d533 (run 1): $same · different: $($diff.Count) · screens varying across 4 runs: 187d533 $baseNoise, branch $newNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
           $summary
           "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
@@ -183,7 +221,7 @@ jobs:
           Invoke-AsUser @($bench, 'measure', '--mode', 'baseline', '--minutes', '5', '--out', "$w\out\baseline.json") 'baseline'
           Invoke-AsUser @($bench, 'measure', '--mode', 'identity', '--minutes', '5', '--out', "$w\out\identity.json") 'identity'
           $sampleArgs = @($bench, 'samples', '--work', "$w\work\samples", '--python', "$w\work\ml-lab\.venv\Scripts\python.exe", '--out', "$w\out\samples.json")
-          if ($node) { $sampleArgs += @('--node', $node) }
+          if ($node) { $sampleArgs += @('--node', "`"$node`"") }  # quoted: the path has a space
           Invoke-AsUser $sampleArgs 'samples'
           & $dotnet $bench report --baseline "$w\out\baseline.json" --identity "$w\out\identity.json" --samples "$w\out\samples.json" --out "$w\out\report.md"
           Get-Content "$w\out\report.md" -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
