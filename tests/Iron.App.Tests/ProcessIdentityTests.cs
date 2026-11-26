@@ -4,7 +4,8 @@ using Iron.ProcessIdentity;
 namespace Iron.App.Tests;
 
 /// <summary>
-/// The process-identity tooltip in Stage 1: mock rows only, no real process lookup, name / search / sort unchanged.
+/// Process identity in Stage 1: the name cell shows the icon (letter mark for mock rows) and the identified program name,
+/// the tooltip keeps role and basis; mock rows only, no real process lookup, data / search / sort unchanged.
 /// </summary>
 public class ProcessIdentityTests
 {
@@ -20,9 +21,21 @@ public class ProcessIdentityTests
             Assert.NotNull(row.Identity);
             Assert.Equal(IdentitySource.Mock, row.Identity!.Source);
             Assert.Contains("Stage 1 모의", row.Identity.Text, StringComparison.Ordinal);
-            Assert.Equal(row.Reading.Name, row.Name); // the shown name is not replaced
-            Assert.Null(row.Identity.Icon); // no file is read for a mock row
+            Assert.Equal(row.Reading.Name, row.Name); // the row's data keeps the executable name
+            Assert.Equal(row.Reading.Name, row.Identity.ImageName);
+            Assert.False(string.IsNullOrWhiteSpace(row.Identity.Name));
+            Assert.True(row.Identity.Detail is null || row.Identity.Detail.EndsWith(row.Reading.Name, StringComparison.Ordinal)); // the exe name stays visible
+            Assert.Contains("근거: ", row.Identity.Text, StringComparison.Ordinal);
+            Assert.Null(row.Identity.Icon); // no file is read for a mock row: the cell shows a letter mark
+            Assert.Matches("^[A-Z0-9?]$", row.Identity.Monogram);
         }
+
+        var dwm = p.Rows.Single(r => r.Name == "dwm.exe").Identity!;
+        Assert.Equal("데스크톱 창 관리자", dwm.Name);
+        Assert.Equal("dwm.exe", dwm.Detail);
+        Assert.Equal("D", dwm.Monogram);
+        var webview = p.Rows.Single(r => r.Name == "msedgewebview2.exe").Identity!;
+        Assert.Equal("공유 호스트 · msedgewebview2.exe", webview.Detail); // shared host is marked in the cell itself
 
         // Order is still by dedicated memory, then name; search still matches the executable name.
         var order = p.Rows.Select(r => r.Reading).ToList();

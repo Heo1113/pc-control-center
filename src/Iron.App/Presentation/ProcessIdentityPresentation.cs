@@ -2,8 +2,19 @@ using Iron.ProcessIdentity;
 
 namespace Iron.App.Presentation;
 
-/// <summary>What the existing process-name tooltip shows: the identity text and, when known, the program's icon.</summary>
-public sealed record ProcessIdentityView(string Text, IconPixels? Icon, IdentitySource Source);
+/// <summary>
+/// What the existing process-name cell shows — the program's icon (or a letter mark when no icon is known), the identified
+/// program name and, in small muted text, the executable name — and what its tooltip shows (<see cref="Text"/>: role,
+/// launcher target, hosted items, basis, confirmed/inferred marks).
+/// </summary>
+public sealed record ProcessIdentityView(string Name, string? Detail, string ImageName, string Text, IconPixels? Icon, IdentitySource Source)
+{
+    /// <summary>Letter mark in place of an icon: the first letter or digit of the executable name. Not the program's icon.</summary>
+    public string Monogram { get; } = ImageName.FirstOrDefault(char.IsLetterOrDigit) is var c && c != default ? char.ToUpperInvariant(c).ToString() : "?";
+
+    public static ProcessIdentityView From(ProcessIdentityInfo info) =>
+        new(info.CellName, info.CellDetail, info.ImageName, info.ToToolTipText(), info.Icon, info.Source);
+}
 
 /// <summary>Gives the identity of a process row.</summary>
 public interface IProcessIdentityProvider
@@ -36,6 +47,6 @@ public sealed class MockProcessIdentityProvider : IProcessIdentityProvider
         }
 
         var info = IdentityComposer.ComposeMock(reading.Pid, reading.Name, reading.CommandLine);
-        return _cache[key] = new ProcessIdentityView(info.ToToolTipText(), info.Icon, info.Source);
+        return _cache[key] = ProcessIdentityView.From(info);
     }
 }

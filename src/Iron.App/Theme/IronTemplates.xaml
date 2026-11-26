@@ -117,13 +117,30 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
-  <!-- Content of the existing process-name tooltip: identity text and, when known, the program icon (Stage 1 mock: text only). -->
+  <!-- Content of the process-name tooltip: role, launcher target, hosted items, basis, confirmed/inferred marks, and the icon when known. -->
   <DataTemplate DataType="{x:Type p:ProcessIdentityView}">
     <StackPanel Orientation="Horizontal" MaxWidth="560">
       <Image Source="{Binding Icon, Converter={StaticResource IconPixelsToImage}}" Width="32" Height="32" Margin="0,2,10,0" VerticalAlignment="Top"
              Visibility="{Binding Icon, Converter={StaticResource VisibleWhen}}" />
       <TextBlock Text="{Binding Text}" TextWrapping="Wrap" MaxWidth="510" />
     </StackPanel>
+  </DataTemplate>
+
+  <!-- Process-name cell: program icon (a letter mark when no icon is known — Stage 1 mock rows read no files), the identified
+       program name, then the executable name in muted text. The row height, the other columns and the data are unchanged. -->
+  <DataTemplate x:Key="Iron.ProcessNameCell">
+    <DockPanel VerticalAlignment="Center" ToolTip="{Binding Identity}">
+      <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+        <Border CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource IronInkBezelMuted}"
+                Visibility="{Binding Identity.Icon, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
+          <TextBlock Text="{Binding Identity.Monogram, Mode=OneWay}" FontFamily="{StaticResource IronDisplayFont}" FontSize="10" FontWeight="SemiBold"
+                     Foreground="{StaticResource IronInkBezelMuted}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+        <Image Source="{Binding Identity.Icon, Converter={StaticResource IconPixelsToImage}}" RenderOptions.BitmapScalingMode="HighQuality"
+               Visibility="{Binding Identity.Icon, Converter={StaticResource VisibleWhen}}" />
+      </Grid>
+      <TextBlock Style="{StaticResource Iron.Cell}"><Run Text="{Binding Identity.Name, Mode=OneWay}" FontFamily="{StaticResource IronDisplayFont}" FontWeight="Bold" /><Run Text="  " /><Run Text="{Binding Identity.Detail, Mode=OneWay}" Foreground="{StaticResource IronInkBezelMuted}" /></TextBlock>
+    </DockPanel>
   </DataTemplate>
 
   <DataTemplate x:Key="Iron.ProcessRow">
@@ -135,7 +152,7 @@
         <ColumnDefinition Width="{DynamicResource Iron.ColShr}" />
         <ColumnDefinition Width="{DynamicResource Iron.ColUtil}" />
       </Grid.ColumnDefinitions>
-      <TextBlock Text="{Binding Name}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" ToolTip="{Binding Identity}" />
+      <ContentPresenter x:Name="ProcessNameCell" Content="{Binding}" ContentTemplate="{StaticResource Iron.ProcessNameCell}" />
       <TextBlock Grid.Column="1" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" />
       <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right"
                  Foreground="{Binding IsHeavy, Converter={StaticResource BoolBrush}, ConverterParameter=IronInkHeavyOnBezel|IronInkBezel}" />
@@ -155,7 +172,7 @@
         <ColumnDefinition Width="{DynamicResource Iron.ColUtil}" />
         <ColumnDefinition Width="{DynamicResource Iron.ColEngine}" />
       </Grid.ColumnDefinitions>
-      <TextBlock Text="{Binding Name}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" ToolTip="{Binding Identity}" />
+      <ContentPresenter x:Name="ProcessNameCell" Content="{Binding}" ContentTemplate="{StaticResource Iron.ProcessNameCell}" />
       <TextBlock Grid.Column="1" Text="{Binding PidText}" Style="{StaticResource Iron.CellMuted}" Visibility="{Binding DataContext.IsNarrow, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
       <TextBlock Grid.Column="2" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" ToolTip="{Binding Adapter}" />
       <TextBlock Grid.Column="3" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right"

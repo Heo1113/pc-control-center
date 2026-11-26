@@ -39,7 +39,7 @@ jobs:
       - name: Build
         run: dotnet build Iron.slnx -c Release
 
-      - name: Stage 1 screen logic tests (48 existing + identity tooltip)
+      - name: Stage 1 screen logic tests (48 existing + process identity)
         run: dotnet test --project tests/Iron.App.Tests -c Release --no-build
 
       - name: Identity tests (parsers, redaction, caches, resolver)
@@ -82,7 +82,7 @@ jobs:
           git worktree add base FETCH_HEAD
           ./base/scripts/iron-publish.ps1 -OutputDir dist-base
 
-      - name: Stage 1 regression - screens of this branch vs 187d533 (same mock data, same clock)
+      - name: Stage 1 regression - screens vs 187d533, process-name cells compared apart (same mock data, same clock)
         id: screens
         if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
         run: |
@@ -92,91 +92,7 @@ jobs:
             $p = Start-Process $pair[0] -ArgumentList '--render-screens', $pair[1] -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
           }
-          Add-Type -AssemblyName System.Drawing
-          $probe = [System.Drawing.Bitmap]::new(1, 1); $probe.Dispose()
-          # .NET 10 splits System.Drawing over several assemblies (GdiPlus, Primitives): reference every loaded one.
-          $refs = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { -not $_.IsDynamic -and $_.Location -and $_.GetName().Name -match '^System\.(Drawing|Private\.Windows)' } | ForEach-Object Location
-          Add-Type -ReferencedAssemblies $refs -TypeDefinition @"
-          using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
-          public static class PixelDiff {
-            // "count x0,y0-x1,y1" of differing pixels, or "size" when the images differ in size
-            public static string Compare(string a, string b) {
-              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
-                if (x.Width != y.Width || x.Height != y.Height) return "size";
-                var r = new Rectangle(0, 0, x.Width, x.Height);
-                var dx = x.LockBits(r, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                var dy = y.LockBits(r, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-                try {
-                  int n = dx.Stride * dx.Height; var bx = new byte[n]; var by = new byte[n];
-                  Marshal.Copy(dx.Scan0, bx, 0, n); Marshal.Copy(dy.Scan0, by, 0, n);
-                  long c = 0; int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
-                  for (int i = 0; i < n; i += 4) {
-                    if (bx[i] != by[i] || bx[i+1] != by[i+1] || bx[i+2] != by[i+2] || bx[i+3] != by[i+3]) {
-                      c++; int py = i / dx.Stride, px = (i % dx.Stride) / 4;
-                      x0 = Math.Min(x0, px); y0 = Math.Min(y0, py); x1 = Math.Max(x1, px); y1 = Math.Max(y1, py);
-                    }
-                  }
-                  return c == 0 ? "0" : c + " px at " + x0 + "," + y0 + "-" + x1 + "," + y1 + " of " + x.Width + "x" + x.Height;
-                } finally { x.UnlockBits(dx); y.UnlockBits(dy); }
-              }
-            }
-            // Text picture of the area around (cx, cy): luminance as characters, '#' dark ... ' ' light; differing pixels as 'X'.
-            public static string Around(string a, string b, int cx, int cy, int w, int h) {
-              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
-                var sb = new System.Text.StringBuilder(); const string ramp = "#%@*+=-:. ";
-                for (int py = Math.Max(0, cy - h / 2); py < Math.Min(x.Height, cy + h / 2); py++) {
-                  for (int px = Math.Max(0, cx - w / 2); px < Math.Min(x.Width, cx + w / 2); px++) {
-                    var p = x.GetPixel(px, py); var q = y.GetPixel(px, py);
-                    if (p != q) { sb.Append('X'); continue; }
-                    int lum = (p.R * 3 + p.G * 6 + p.B) / 10; sb.Append(ramp[Math.Min(9, lum * 10 / 256)]);
-                  }
-                  sb.Append('\n');
-                }
-                return sb.ToString();
-              }
-            }
-            public static string Pixels(string a, string b, int x0, int y0, int x1, int y1) {
-              using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
-                var sb = new System.Text.StringBuilder();
-                for (int py = y0; py <= y1; py++) for (int px = x0; px <= x1; px++) {
-                  var p = x.GetPixel(px, py); var q = y.GetPixel(px, py);
-                  if (p != q) sb.Append(px + "," + py + ": " + p.Name + " vs " + q.Name + "; ");
-                }
-                return sb.ToString();
-              }
-            }
-          }
-          "@
-          $files = Get-ChildItem dist/cmp/base -Filter *.png | Sort-Object Name
-          $same = 0; $diff = @(); $baseNoise = 0; $newNoise = 0
-          function H($dir, $name) { (Get-FileHash (Join-Path $dir $name)).Hash }
-          foreach ($f in $files) {
-            $b = @('base', 'base2', 'base3', 'base4' | ForEach-Object { H "dist/cmp/$_" $f.Name })
-            $n = @('new', 'new2', 'new3', 'new4' | ForEach-Object { H "dist/cmp/$_" $f.Name })
-            $bv = ($b | Select-Object -Unique).Count; $nv = ($n | Select-Object -Unique).Count
-            if ($bv -gt 1) { $baseNoise++ }
-            if ($nv -gt 1) { $newNoise++ }
-            "  $($f.Name): 187d533 variants $bv/4 · branch variants $nv/4 · branch run1 = 187d533 run1: $($b[0] -eq $n[0])" | Where-Object { $bv -gt 1 -or $nv -gt 1 -or $b[0] -ne $n[0] }
-            if ($b[0] -eq $n[0]) { $same++ } else {
-              $diff += $f.Name
-              $pa = (Resolve-Path "dist/cmp/base/$($f.Name)").Path; $pb = (Resolve-Path "dist/cmp/new/$($f.Name)").Path
-              $c = [PixelDiff]::Compare($pa, $pb); "    branch vs 187d533: $c"
-              if ($c -match 'at (\d+),(\d+)-(\d+),(\d+)') {
-                "    pixels: " + [PixelDiff]::Pixels($pa, $pb, [int]$Matches[1], [int]$Matches[2], [int]$Matches[3], [int]$Matches[4])
-                "    187d533 around (X = differs):"
-                [PixelDiff]::Around($pa, $pb, [int]$Matches[1], [int]$Matches[2], 120, 40)
-              }
-            }
-          }
-          # 187d533 renders identical in all runs while this branch varies → timing sensitivity, not a layout change; report both
-          $allBaseSame = $baseNoise -eq 0
-          $rn = Get-Content dist/cmp/new/layout-report.json -Raw | ConvertFrom-Json
-          $rb = Get-Content dist/cmp/base/layout-report.json -Raw | ConvertFrom-Json
-          $summary = "screens: $($files.Count) · byte-identical to 187d533 (run 1): $same · different: $($diff.Count) · screens varying across 4 runs: 187d533 $baseNoise, branch $newNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
-          $summary
-          "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
-          if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
-          if ($diff.Count -gt 0) { throw 'screens differ from the 187d533 baseline (see pixel ranges above)' }
+          ./tools/ci/Compare-StageScreens.ps1 -Root dist/cmp -Runs 4
 
       - name: Stage 1 regression - live window (tabs, states, USB handover, half width, tray)
         id: live

@@ -217,3 +217,44 @@ public class ClassifierTests
         Assert.False(C("notepad.exe", "notepad.exe").IsSharedHost);
     }
 }
+
+/// <summary>What the process-name cell shows (name + small detail) and the basis line of the tooltip.</summary>
+public class CellTextTests
+{
+    private static ProcessIdentityInfo Info(string image, IdentityText title, IdentityText? executor = null, bool shared = false) => new()
+    {
+        Key = new ProcessKey(100, 1),
+        ImageName = image,
+        Source = IdentitySource.Native,
+        Title = title,
+        Executor = executor,
+        IsSharedHost = shared,
+    };
+
+    [Fact]
+    public void LauncherShowsWhatItRuns()
+    {
+        var i = Info("cmd.exe", new("Windows 명령 처리기", IdentityConfidence.Confirmed, "버전 정보"),
+            new("배치 파일 deploy.bat · 부모 explorer.exe", IdentityConfidence.Inferred, "명령줄"));
+        Assert.Equal("Windows 명령 처리기 · 배치 파일 deploy.bat", i.CellName);
+        Assert.Equal("cmd.exe", i.CellDetail);
+        Assert.Contains("근거: 버전 정보 · 명령줄", i.ToToolTipText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SharedHostShowsOnlyItsOwnIdentityAndIsMarked()
+    {
+        var i = Info("svchost.exe", new("Windows Update 외 2개", IdentityConfidence.Confirmed, "서비스 관리자"),
+            new("그룹 netsvcs", IdentityConfidence.Confirmed, "명령줄"), shared: true);
+        Assert.Equal("Windows Update 외 2개", i.CellName); // what it hosts stays in the tooltip
+        Assert.Equal("공유 호스트 · svchost.exe", i.CellDetail);
+    }
+
+    [Fact]
+    public void UnknownProgramKeepsTheFileNameOnce()
+    {
+        var i = Info("basalt-server.exe", new("basalt-server.exe", IdentityConfidence.Confirmed, "실행 파일 이름"));
+        Assert.Equal("basalt-server.exe", i.CellName);
+        Assert.Null(i.CellDetail);
+    }
+}

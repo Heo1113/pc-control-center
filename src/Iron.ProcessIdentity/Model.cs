@@ -97,6 +97,30 @@ public sealed record ProcessIdentityInfo
 
     public const string SharedHostNotice = "공유 호스트: CPU·메모리·VRAM은 이 프로세스 전체 값이며, 아래 서비스·확장 각각의 사용량이 아닙니다.";
 
+    /// <summary>Label put before the file name in the cell of a shared host.</summary>
+    public const string SharedHostLabel = "공유 호스트";
+
+    /// <summary>
+    /// Name for the process-name cell: the identified program; a generic launcher adds the first part of what it runs
+    /// ("Python · train.py"). A shared host shows only its own identity — what it hosts stays in the tooltip, so the
+    /// row's CPU/memory/VRAM are never read as one hosted item's use.
+    /// </summary>
+    public string CellName => Executor is { } e && !IsSharedHost ? Title.Text + " · " + Head(e.Text) : Title.Text;
+
+    /// <summary>
+    /// Small text after the cell name: the executable name (the name the row showed before), prefixed with
+    /// <see cref="SharedHostLabel"/> for a shared host; null when the cell name already is the executable name.
+    /// </summary>
+    public string? CellDetail => IsSharedHost
+        ? SharedHostLabel + " · " + ImageName
+        : string.Equals(CellName, ImageName, StringComparison.OrdinalIgnoreCase) ? null : ImageName;
+
+    private static string Head(string text)
+    {
+        var at = text.IndexOf(" · ", StringComparison.Ordinal);
+        return at > 0 ? text[..at] : text;
+    }
+
     /// <summary>Multi-line Korean text for the existing name tooltip.</summary>
     public string ToToolTipText()
     {
@@ -140,6 +164,8 @@ public sealed record ProcessIdentityInfo
             sb.Append(SharedHostNotice).Append('\n');
         }
 
+        var basis = new[] { Title, Role, Executor }.OfType<IdentityText>().Select(t => t.Basis).Distinct().ToList();
+        sb.Append("근거: ").Append(string.Join(" · ", basis)).Append('\n');
         sb.Append(ImageName).Append(" · PID ").Append(Key.Pid);
         if (Source == IdentitySource.Mock)
         {

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -59,7 +60,8 @@ internal static class ScreenRenderer
                 Render(view, width, height, options.RenderScale, file);
                 var issues = LayoutAudit.Check(view);
                 total += issues.Count;
-                screens.Add(new { file = Path.GetFileName(file), width, height, scale = options.RenderScale, layout = vm.Layout.ToString(), status = vm.StatusText, issues });
+                screens.Add(new { file = Path.GetFileName(file), width, height, scale = options.RenderScale, layout = vm.Layout.ToString(), status = vm.StatusText, issues,
+                    nameCells = NameCells(view, options.RenderScale) });
             }
 
             // the tray popup (its own window, fixed 320 DIP wide)
@@ -132,6 +134,52 @@ internal static class ScreenRenderer
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = File.Create(file);
         encoder.Save(stream);
+    }
+
+    /// <summary>
+    /// Device-pixel rectangles [left, top, right, bottom] (inclusive) of the process-name cells shown on screen, cut to the
+    /// visible part of a scrolling list. CI compares screens with these areas apart from the rest of the screen, since the
+    /// name cell is the one area changed on purpose (icon and identified program name).
+    /// </summary>
+    internal static List<int[]> NameCells(FrameworkElement root, double scale)
+    {
+        var cells = new List<int[]>();
+        var stack = new Stack<DependencyObject>();
+        stack.Push(root);
+        while (stack.Count > 0)
+        {
+            var d = stack.Pop();
+            if (d is UIElement { Visibility: not Visibility.Visible })
+            {
+                continue;
+            }
+
+            if (d is FrameworkElement { Name: "ProcessNameCell" } cell && cell.ActualWidth > 0 && cell.ActualHeight > 0)
+            {
+                var r = cell.TransformToAncestor(root).TransformBounds(new Rect(0, 0, cell.ActualWidth, cell.ActualHeight));
+                for (var a = VisualTreeHelper.GetParent(cell); a is not null && a != root; a = VisualTreeHelper.GetParent(a))
+                {
+                    if (a is ScrollContentPresenter viewport)
+                    {
+                        r.Intersect(viewport.TransformToAncestor(root).TransformBounds(new Rect(0, 0, viewport.ActualWidth, viewport.ActualHeight)));
+                    }
+                }
+
+                if (!r.IsEmpty && r.Width > 0 && r.Height > 0)
+                {
+                    cells.Add([(int)Math.Floor(r.Left * scale), (int)Math.Floor(r.Top * scale), (int)Math.Ceiling(r.Right * scale) - 1, (int)Math.Ceiling(r.Bottom * scale) - 1]);
+                }
+
+                continue;
+            }
+
+            for (var i = VisualTreeHelper.GetChildrenCount(d) - 1; i >= 0; i--)
+            {
+                stack.Push(VisualTreeHelper.GetChild(d, i));
+            }
+        }
+
+        return cells;
     }
 
     public static string Describe(double w, double h) => string.Create(CultureInfo.InvariantCulture, $"{w:0}x{h:0}");
