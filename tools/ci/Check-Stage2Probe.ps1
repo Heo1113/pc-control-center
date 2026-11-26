@@ -1,4 +1,4 @@
-<#
+﻿<#
   Checks one probe.json of "Iron.App.exe --probe-real" (Stage 2 real readers) and prints what was read.
     - the secret planted in a test process's command line appears nowhere in the file (only the redacted form)
     - CPU load and RAM are read; with the mock HWiNFO server: CPU Tctl 64.8 °C, NVMe 48 °C, WireView 6 pins (fixture values)
