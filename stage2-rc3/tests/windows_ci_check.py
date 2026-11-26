@@ -384,7 +384,8 @@ def s_disconnect(env, suite, ed):
     p = env.mock(hw, HW_PORT, tag="disc1")
     root = os.path.join(env.out, suite, ed, "disconnect")
     os.makedirs(root, exist_ok=True)
-    proc = subprocess.Popen(ps_cmd(ed) + ["-OutRoot", root, "-Mode", "Collect", "-Samples", "24", "-IntervalMs", "500"], env=env.env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    logf = open(os.path.join(env.out, f"disconnect_{ed}.log"), "wb")
+    proc = subprocess.Popen(ps_cmd(ed) + ["-OutRoot", root, "-Mode", "Collect", "-Samples", "24", "-IntervalMs", "500"], env=env.env(), stdout=logf, stderr=subprocess.STDOUT)
     timeline = {}
     try:
         t0 = time.time()
@@ -402,12 +403,25 @@ def s_disconnect(env, suite, ed):
         time.sleep(4.0)
         p2 = env.mock(hw, HW_PORT, tag="disc2")
         timeline["restartAt_s"] = round(time.time() - t0, 1)
-        out = proc.communicate(timeout=180)[0].decode("utf-8", errors="replace")
+        # 수집기가 도는 동안 디스크에 보이는 완성 줄 수(10샘플마다 Flush) — 중간 종료 시 데이터 보존 확인
+        seen = []
+        while proc.poll() is None and time.time() - t0 < 180:
+            f = newest(root, "run_G1_*")
+            n = complete_lines(os.path.join(f, "samples_all.jsonl")) if f else 0
+            if not seen or seen[-1][1] != n:
+                seen.append((round(time.time() - t0, 1), n))
+            time.sleep(0.2)
+        proc.wait(30)
         rc = proc.returncode
+        timeline["visibleWhileRunning"] = seen
+        timeline["exit_s"] = round(time.time() - t0, 1)
         env.stop(p2, HW_PORT)
     finally:
         if proc.poll() is None:
             proc.kill()
+        logf.close()
+    with open(os.path.join(env.out, f"disconnect_{ed}.log"), "rb") as f:
+        out = f.read().decode("utf-8", errors="replace")
     sc.info["timeline"] = timeline
     sc.check("종료 코드 4", rc == 4, out[-600:])
     d = newest(root, "run_G1_*")
@@ -421,8 +435,11 @@ def s_disconnect(env, suite, ed):
         sc.check("처음 3개 성공", all(oks[:3]), sc.info["okPattern"])
         sc.check("끊긴 동안 실패 기록(1개 이상, 오류 문구 포함)", any((not x["ok"]) and x["error"] for x in lines), sc.info["okPattern"])
         sc.check("재연결 후 마지막 3개 성공", all(oks[-3:]), sc.info["okPattern"])
+        sc.check("실행 중 10샘플 단위 기록이 디스크에 보임(Flush)", max([n for _, n in timeline.get("visibleWhileRunning", [])] or [0]) >= 10, timeline.get("visibleWhileRunning"))
         analyze_and_compare(env, sc, d)
     sc.done()
+    # 연결 해제 시나리오는 통과해도 패턴과 시간표를 남긴다(보고용)
+    print("   info: " + json.dumps({"okPattern": sc.info.get("okPattern"), "timeline": timeline}, ensure_ascii=False))
 
 
 def s_wireview_client(env, suite, ed):
