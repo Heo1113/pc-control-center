@@ -1,0 +1,817 @@
+{
+ "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+ "source": "SYNTHETIC",
+ "sdb": "synthetic_full_sdb_v1.json",
+ "clock": {
+  "pingT": 1795464600000.0,
+  "t0": 1795464596980.0,
+  "t3": 1795464597020.0
+ },
+ "expect": "시계 오프셋 +3000 ms 보정 후 측정 나이 8050~9050 ms > 6000 → 매 프레임 STALE (타임스탬프는 계속 증가)",
+ "frames": [
+  {
+   "i": 0,
+   "receivedAtMs": 1795464597150,
+   "read": {
+    "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+    "Version": 1,
+    "Timestamp": "synthetic",
+    "Timestamp RS ms": 1795464591990.0,
+    "Timestamp ms": 1795464592100.0,
+    "Timestamp RE ms": 1795464592125.0,
+    "System: Synthetic Test": {
+     "Physical Memory Used": {
+      "8": {
+       "Value": "36,864"
+      }
+     },
+     "Physical Memory Available": {
+      "8": {
+       "Value": "94,208"
+      }
+     },
+     "Physical Memory Load": {
+      "7": {
+       "Value": "28.1"
+      }
+     }
+    },
+    "CPU [#0]: AMD Ryzen 7 9800X3D": {
+     "CPU (Tctl/Tdie)": {
+      "1": {
+       "Value": "64.8"
+      }
+     },
+     "Total CPU Usage": {
+      "7": {
+       "Value": "41.2"
+      }
+     },
+     "CPU Package Power": {
+      "5": {
+       "Value": "86.4"
+      }
+     },
+     "Core Clocks (avg)": {
+      "6": {
+       "Value": "5,125.3"
+      }
+     }
+    },
+    "GPU [#0]: NVIDIA GeForce RTX 5080": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "66.5"
+      }
+     },
+     "GPU Hot Spot Temperature": {
+      "1": {
+       "Value": "78.9"
+      }
+     },
+     "GPU Memory Junction Temperature": {
+      "1": {
+       "Value": "70.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "332.5"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "97.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "12,450"
+      }
+     },
+     "GPU Clock": {
+      "6": {
+       "Value": "2,805"
+      }
+     }
+    },
+    "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "44.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "61.2"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "12.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "1.5"
+      }
+     }
+    },
+    "DDR5 DIMM [#0] (SPD)": {
+     "SPD Hub Temperature": {
+      "1": {
+       "Value": "46.5"
+      }
+     }
+    },
+    "S.M.A.R.T.: Samsung SSD 990 PRO 2TB": {
+     "Drive Temperature": {
+      "1": {
+       "Value": "48"
+      }
+     },
+     "Drive Remaining Life": {
+      "7": {
+       "Value": "99"
+      }
+     }
+    },
+    "Thermal Grizzly WireView Pro II": {
+     "Total Power": {
+      "5": {
+       "Value": "334.8"
+      }
+     },
+     "Connector Temperature": {
+      "1": {
+       "Value": "41.5"
+      }
+     },
+     "Pin 1 Current": {
+      "4": {
+       "Value": "4.62"
+      }
+     },
+     "Pin 1 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 2 Current": {
+      "4": {
+       "Value": "4.71"
+      }
+     },
+     "Pin 2 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     },
+     "Pin 3 Current": {
+      "4": {
+       "Value": "4.55"
+      }
+     },
+     "Pin 3 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 4 Current": {
+      "4": {
+       "Value": "4.80"
+      }
+     },
+     "Pin 4 Voltage": {
+      "2": {
+       "Value": "12.06"
+      }
+     },
+     "Pin 5 Current": {
+      "4": {
+       "Value": "4.49"
+      }
+     },
+     "Pin 5 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 6 Current": {
+      "4": {
+       "Value": "4.66"
+      }
+     },
+     "Pin 6 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     }
+    }
+   }
+  },
+  {
+   "i": 1,
+   "receivedAtMs": 1795464598150,
+   "read": {
+    "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+    "Version": 1,
+    "Timestamp": "synthetic",
+    "Timestamp RS ms": 1795464591990.0,
+    "Timestamp ms": 1795464592100.0,
+    "Timestamp RE ms": 1795464592125.0,
+    "System: Synthetic Test": {
+     "Physical Memory Used": {
+      "8": {
+       "Value": "36,864"
+      }
+     },
+     "Physical Memory Available": {
+      "8": {
+       "Value": "94,208"
+      }
+     },
+     "Physical Memory Load": {
+      "7": {
+       "Value": "28.1"
+      }
+     }
+    },
+    "CPU [#0]: AMD Ryzen 7 9800X3D": {
+     "CPU (Tctl/Tdie)": {
+      "1": {
+       "Value": "64.8"
+      }
+     },
+     "Total CPU Usage": {
+      "7": {
+       "Value": "41.2"
+      }
+     },
+     "CPU Package Power": {
+      "5": {
+       "Value": "86.4"
+      }
+     },
+     "Core Clocks (avg)": {
+      "6": {
+       "Value": "5,125.3"
+      }
+     }
+    },
+    "GPU [#0]: NVIDIA GeForce RTX 5080": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "66.5"
+      }
+     },
+     "GPU Hot Spot Temperature": {
+      "1": {
+       "Value": "78.9"
+      }
+     },
+     "GPU Memory Junction Temperature": {
+      "1": {
+       "Value": "70.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "332.5"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "97.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "12,450"
+      }
+     },
+     "GPU Clock": {
+      "6": {
+       "Value": "2,805"
+      }
+     }
+    },
+    "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "44.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "61.2"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "12.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "1.5"
+      }
+     }
+    },
+    "DDR5 DIMM [#0] (SPD)": {
+     "SPD Hub Temperature": {
+      "1": {
+       "Value": "46.5"
+      }
+     }
+    },
+    "S.M.A.R.T.: Samsung SSD 990 PRO 2TB": {
+     "Drive Temperature": {
+      "1": {
+       "Value": "48"
+      }
+     },
+     "Drive Remaining Life": {
+      "7": {
+       "Value": "99"
+      }
+     }
+    },
+    "Thermal Grizzly WireView Pro II": {
+     "Total Power": {
+      "5": {
+       "Value": "334.8"
+      }
+     },
+     "Connector Temperature": {
+      "1": {
+       "Value": "41.5"
+      }
+     },
+     "Pin 1 Current": {
+      "4": {
+       "Value": "4.62"
+      }
+     },
+     "Pin 1 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 2 Current": {
+      "4": {
+       "Value": "4.71"
+      }
+     },
+     "Pin 2 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     },
+     "Pin 3 Current": {
+      "4": {
+       "Value": "4.55"
+      }
+     },
+     "Pin 3 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 4 Current": {
+      "4": {
+       "Value": "4.80"
+      }
+     },
+     "Pin 4 Voltage": {
+      "2": {
+       "Value": "12.06"
+      }
+     },
+     "Pin 5 Current": {
+      "4": {
+       "Value": "4.49"
+      }
+     },
+     "Pin 5 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 6 Current": {
+      "4": {
+       "Value": "4.66"
+      }
+     },
+     "Pin 6 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     }
+    }
+   }
+  },
+  {
+   "i": 2,
+   "receivedAtMs": 1795464599150,
+   "read": {
+    "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+    "Version": 1,
+    "Timestamp": "synthetic",
+    "Timestamp RS ms": 1795464593990.0,
+    "Timestamp ms": 1795464594100.0,
+    "Timestamp RE ms": 1795464594125.0,
+    "System: Synthetic Test": {
+     "Physical Memory Used": {
+      "8": {
+       "Value": "36,864"
+      }
+     },
+     "Physical Memory Available": {
+      "8": {
+       "Value": "94,208"
+      }
+     },
+     "Physical Memory Load": {
+      "7": {
+       "Value": "28.1"
+      }
+     }
+    },
+    "CPU [#0]: AMD Ryzen 7 9800X3D": {
+     "CPU (Tctl/Tdie)": {
+      "1": {
+       "Value": "64.8"
+      }
+     },
+     "Total CPU Usage": {
+      "7": {
+       "Value": "41.2"
+      }
+     },
+     "CPU Package Power": {
+      "5": {
+       "Value": "86.4"
+      }
+     },
+     "Core Clocks (avg)": {
+      "6": {
+       "Value": "5,125.3"
+      }
+     }
+    },
+    "GPU [#0]: NVIDIA GeForce RTX 5080": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "66.5"
+      }
+     },
+     "GPU Hot Spot Temperature": {
+      "1": {
+       "Value": "78.9"
+      }
+     },
+     "GPU Memory Junction Temperature": {
+      "1": {
+       "Value": "70.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "332.5"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "97.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "12,450"
+      }
+     },
+     "GPU Clock": {
+      "6": {
+       "Value": "2,805"
+      }
+     }
+    },
+    "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "44.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "61.2"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "12.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "1.5"
+      }
+     }
+    },
+    "DDR5 DIMM [#0] (SPD)": {
+     "SPD Hub Temperature": {
+      "1": {
+       "Value": "46.5"
+      }
+     }
+    },
+    "S.M.A.R.T.: Samsung SSD 990 PRO 2TB": {
+     "Drive Temperature": {
+      "1": {
+       "Value": "48"
+      }
+     },
+     "Drive Remaining Life": {
+      "7": {
+       "Value": "99"
+      }
+     }
+    },
+    "Thermal Grizzly WireView Pro II": {
+     "Total Power": {
+      "5": {
+       "Value": "334.8"
+      }
+     },
+     "Connector Temperature": {
+      "1": {
+       "Value": "41.5"
+      }
+     },
+     "Pin 1 Current": {
+      "4": {
+       "Value": "4.62"
+      }
+     },
+     "Pin 1 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 2 Current": {
+      "4": {
+       "Value": "4.71"
+      }
+     },
+     "Pin 2 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     },
+     "Pin 3 Current": {
+      "4": {
+       "Value": "4.55"
+      }
+     },
+     "Pin 3 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 4 Current": {
+      "4": {
+       "Value": "4.80"
+      }
+     },
+     "Pin 4 Voltage": {
+      "2": {
+       "Value": "12.06"
+      }
+     },
+     "Pin 5 Current": {
+      "4": {
+       "Value": "4.49"
+      }
+     },
+     "Pin 5 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 6 Current": {
+      "4": {
+       "Value": "4.66"
+      }
+     },
+     "Pin 6 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     }
+    }
+   }
+  },
+  {
+   "i": 3,
+   "receivedAtMs": 1795464600150,
+   "read": {
+    "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+    "Version": 1,
+    "Timestamp": "synthetic",
+    "Timestamp RS ms": 1795464593990.0,
+    "Timestamp ms": 1795464594100.0,
+    "Timestamp RE ms": 1795464594125.0,
+    "System: Synthetic Test": {
+     "Physical Memory Used": {
+      "8": {
+       "Value": "36,864"
+      }
+     },
+     "Physical Memory Available": {
+      "8": {
+       "Value": "94,208"
+      }
+     },
+     "Physical Memory Load": {
+      "7": {
+       "Value": "28.1"
+      }
+     }
+    },
+    "CPU [#0]: AMD Ryzen 7 9800X3D": {
+     "CPU (Tctl/Tdie)": {
+      "1": {
+       "Value": "64.8"
+      }
+     },
+     "Total CPU Usage": {
+      "7": {
+       "Value": "41.2"
+      }
+     },
+     "CPU Package Power": {
+      "5": {
+       "Value": "86.4"
+      }
+     },
+     "Core Clocks (avg)": {
+      "6": {
+       "Value": "5,125.3"
+      }
+     }
+    },
+    "GPU [#0]: NVIDIA GeForce RTX 5080": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "66.5"
+      }
+     },
+     "GPU Hot Spot Temperature": {
+      "1": {
+       "Value": "78.9"
+      }
+     },
+     "GPU Memory Junction Temperature": {
+      "1": {
+       "Value": "70.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "332.5"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "97.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "12,450"
+      }
+     },
+     "GPU Clock": {
+      "6": {
+       "Value": "2,805"
+      }
+     }
+    },
+    "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+     "GPU Temperature": {
+      "1": {
+       "Value": "44.0"
+      }
+     },
+     "GPU Power": {
+      "5": {
+       "Value": "61.2"
+      }
+     },
+     "GPU Core Load": {
+      "7": {
+       "Value": "12.0"
+      }
+     },
+     "GPU Memory Allocated": {
+      "8": {
+       "Value": "1.5"
+      }
+     }
+    },
+    "DDR5 DIMM [#0] (SPD)": {
+     "SPD Hub Temperature": {
+      "1": {
+       "Value": "46.5"
+      }
+     }
+    },
+    "S.M.A.R.T.: Samsung SSD 990 PRO 2TB": {
+     "Drive Temperature": {
+      "1": {
+       "Value": "48"
+      }
+     },
+     "Drive Remaining Life": {
+      "7": {
+       "Value": "99"
+      }
+     }
+    },
+    "Thermal Grizzly WireView Pro II": {
+     "Total Power": {
+      "5": {
+       "Value": "334.8"
+      }
+     },
+     "Connector Temperature": {
+      "1": {
+       "Value": "41.5"
+      }
+     },
+     "Pin 1 Current": {
+      "4": {
+       "Value": "4.62"
+      }
+     },
+     "Pin 1 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 2 Current": {
+      "4": {
+       "Value": "4.71"
+      }
+     },
+     "Pin 2 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     },
+     "Pin 3 Current": {
+      "4": {
+       "Value": "4.55"
+      }
+     },
+     "Pin 3 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 4 Current": {
+      "4": {
+       "Value": "4.80"
+      }
+     },
+     "Pin 4 Voltage": {
+      "2": {
+       "Value": "12.06"
+      }
+     },
+     "Pin 5 Current": {
+      "4": {
+       "Value": "4.49"
+      }
+     },
+     "Pin 5 Voltage": {
+      "2": {
+       "Value": "12.08"
+      }
+     },
+     "Pin 6 Current": {
+      "4": {
+       "Value": "4.66"
+      }
+     },
+     "Pin 6 Voltage": {
+      "2": {
+       "Value": "12.07"
+      }
+     }
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "iron.rc3.run/1",
+  "source": "SYNTHETIC",
+  "sourceReason": "응답에 SYNTHETIC 표시(_notice)가 있음 — 모의 서버",
+  "collector": "Collect-HWiNfoRest.ps1 (RC3)",
+  "gate": "G1",
+  "url": "http://127.0.0.1:18764",
+  "startedAtUtc": "2026-11-24T23:16:46.1021936Z",
+  "samplesRequested": 8,
+  "intervalMs": 500,
+  "endpointOwner": {
+    "pid": null,
+    "name": null,
+    "path": null,
+    "version": null
+  },
+  "operatorAttestation": null,
+  "evidence": {
+    "wireViewInSdb": true,
+    "wireViewClientProcesses": [],
+    "wireViewClientChecks": 0,
+    "pnp": [],
+    "ports": {
+      "basalt": [],
+      "relay": []
+    }
+  },
+  "baselineFile": null,
+  "logicalProcessors": 4,
+  "powershell": "7.5.4",
+  "finishedAtUtc": "2026-11-24T23:16:49.7356103Z"
+}

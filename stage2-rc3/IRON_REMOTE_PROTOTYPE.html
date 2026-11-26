@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#090B0F" />
+  <title>IRON Remote RC3 — HWiNFO REST 원격 프로토타입</title>
+  <style>
+    :root {
+      --bg-obsidian: #090B0F;
+      --bg-panel: #11151D;
+      --bg-sub: #0D1118;
+      --bg-elevated: #171D28;
+      --border-steel: #232C3D;
+      --border-soft: #1B2332;
+      --text-primary: #E8EEF8;
+      --text-secondary: #B8C4D9;
+      --text-muted: #8494AE;
+      --cyan: #38BDF8;
+      --indigo: #818CF8;
+      --amber: #F59E0B;
+      --crimson: #EF4444;
+      --emerald: #10B981;
+      --slate: #64748B;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: var(--bg-obsidian);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+      min-height: 100vh;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 78px);
+      overflow-x: hidden;
+    }
+    @media (min-width: 768px) { body { padding-bottom: 32px; } }
+    .tabular { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .container { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+    header {
+      position: sticky; top: 0; z-index: 30;
+      background: rgba(9, 11, 15, 0.94);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border-steel);
+    }
+    .header-inner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 12px 16px; max-width: 1240px; margin: 0 auto;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-icon {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: linear-gradient(145deg, #273246, #111620);
+      border: 1px solid #35435C; display: flex; align-items: center; justify-content: center;
+      color: var(--cyan); flex-shrink: 0;
+    }
+    .brand-title { font-size: 16px; font-weight: 800; letter-spacing: 0.06em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .brand-title .accent { color: var(--cyan); font-weight: 600; }
+    .status-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 2px; flex-wrap: wrap; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-sim { background: var(--emerald); }
+    .dot-live { background: var(--cyan); }
+    .dot-stale { background: var(--amber); }
+    .dot-offline { background: var(--crimson); }
+    .badge {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+      padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border-steel);
+      background: #18202E; color: var(--text-secondary); white-space: nowrap;
+    }
+    .badge-sim { background: rgba(16,185,129,0.14); color: #6EE7B7; border-color: rgba(16,185,129,0.4); }
+    .badge-live { background: rgba(56,189,248,0.14); color: #7DD3FC; border-color: rgba(56,189,248,0.4); }
+    .badge-stale { background: rgba(245,158,11,0.16); color: #FCD34D; border-color: rgba(245,158,11,0.45); }
+    .badge-offline { background: rgba(239,68,68,0.16); color: #FCA5A5; border-color: rgba(239,68,68,0.45); }
+    .badge-warn { background: rgba(245,158,11,0.15); color: #FCD34D; border-color: rgba(245,158,11,0.4); }
+    .badge-na { background: rgba(100,116,139,0.18); color: #94A3B8; border-color: rgba(100,116,139,0.4); }
+
+    .desktop-nav { display: none; gap: 6px; }
+    @media (min-width: 768px) { .desktop-nav { display: flex; } }
+    .nav-btn {
+      background: transparent; color: var(--text-secondary); border: 1px solid transparent;
+      border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: 0.15s;
+    }
+    .nav-btn:hover { color: #fff; background: rgba(255,255,255,0.04); }
+    .nav-btn.active { color: var(--cyan); background: rgba(56,189,248,0.12); border-color: rgba(56,189,248,0.35); }
+
+    .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    select, input[type="text"], input[type="password"] {
+      background: #0B0E14; border: 1px solid var(--border-steel); color: var(--text-primary);
+      border-radius: 8px; padding: 7px 10px; font-size: 12px; outline: none;
+    }
+    select:focus, input:focus { border-color: var(--cyan); }
+    .btn {
+      background: var(--bg-elevated); border: 1px solid var(--border-steel); color: var(--text-primary);
+      border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600;
+      cursor: pointer; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn:hover { background: #1E2736; }
+    .btn-primary { background: var(--cyan); color: #06121C; border-color: var(--cyan); font-weight: 700; }
+    .btn-primary:hover { background: #60CEF9; }
+    .btn-sm { padding: 5px 10px; min-height: 30px; font-size: 11px; }
+    .btn-active { background: rgba(56,189,248,0.18); color: #7DD3FC; border-color: rgba(56,189,248,0.45); }
+
+    main { padding: 16px 0; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .stack { display: flex; flex-direction: column; gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    @media (min-width: 1024px) { .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 960px) { .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .grid-6 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    @media (min-width: 640px) { .grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+    .card {
+      background: linear-gradient(180deg, #131822 0%, #0F131B 100%);
+      border: 1px solid var(--border-steel); border-radius: 14px; padding: 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.03);
+    }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+    .card-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+    .card-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+    .card-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .kpi-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .kpi-val { font-size: 24px; font-weight: 800; color: #F1F5F9; }
+    @media (min-width: 640px) { .kpi-val { font-size: 28px; } }
+    .kpi-sub { font-size: 12px; font-weight: 700; }
+    .bar-track { height: 6px; background: #1B2230; border-radius: 999px; overflow: hidden; margin: 10px 0; }
+    .bar-fill { height: 100%; border-radius: 999px; transition: width 0.25s ease; background: var(--cyan); }
+    .meta-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; }
+
+    .sub-box { background: var(--bg-sub); border: 1px solid var(--border-soft); border-radius: 10px; padding: 10px 12px; }
+    .metric-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; }
+    .chart-wrap { position: relative; width: 100%; height: 240px; }
+    .chart-wrap-sm { position: relative; width: 100%; height: 200px; }
+    canvas { width: 100%; height: 100%; display: block; }
+
+    /* RC3: 경보 배너 없음 — Stage 1과 같이 해당 값만 적색으로 표시 */
+    .toast {
+      position: fixed; top: 76px; right: 16px; z-index: 60; display: none;
+      max-width: 340px; background: #121824; border: 1px solid rgba(56,189,248,0.5);
+      color: var(--text-primary); border-radius: 10px; padding: 10px 14px; font-size: 12px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+    }
+    .toast.show { display: block; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+    th { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+    .text-right { text-align: right; }
+    .scroll-x { overflow-x: auto; }
+    .scroll-y { max-height: 250px; overflow-y: auto; }
+    .form-group { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+    .form-group label { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+    .row-wrap { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    .mobile-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 30;
+      background: rgba(12, 15, 22, 0.96); backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border-steel);
+      padding-bottom: env(safe-area-inset-bottom);
+      display: grid; grid-template-columns: repeat(4, 1fr); height: calc(60px + env(safe-area-inset-bottom));
+    }
+    @media (min-width: 768px) { .mobile-nav { display: none; } }
+    .m-tab {
+      background: transparent; border: none; color: var(--text-muted);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+      font-size: 11px; font-weight: 600; cursor: pointer; min-height: 44px;
+    }
+    .m-tab.active { color: var(--cyan); }
+    .c-cyan { color: var(--cyan); }
+    .c-amber { color: var(--amber); }
+    .c-red { color: var(--crimson); }
+    .c-green { color: var(--emerald); }
+    .c-muted { color: var(--text-muted); }
+    .pin-card { border-radius: 10px; padding: 11px; border: 1px solid var(--border-steel); background: var(--bg-sub); }
+    .pin-card.warn { border-color: rgba(245,158,11,0.65); background: rgba(120,53,15,0.22); }
+    .pin-card.crit { border-color: rgba(239,68,68,0.75); background: rgba(127,29,29,0.28); }
+    .badge-snap { background: rgba(129,140,248,0.16); color: #C7D2FE; border-color: rgba(129,140,248,0.45); }
+    .dot-snap { background: var(--indigo); }
+    .src-note { font-size: 11px; color: var(--text-muted); }
+    .err-text { font-size: 11px; color: var(--crimson); min-height: 14px; }
+    .kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; font-size: 12px; }
+    .kv span:nth-child(2n) { text-align: right; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+            <rect x="9" y="9" width="6" height="6"></rect>
+            <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"></path>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-title">
+            <span>IRON <span class="accent">REMOTE</span></span>
+            <span class="badge">STAGE 2 RC3 · ZERO-CDN</span>
+            <span id="stateBadge" class="badge badge-sim">SIMULATION</span>
+          </div>
+          <div class="status-row">
+            <span id="statusDot" class="dot dot-sim"></span>
+            <span id="statusText" class="tabular">SIMULATION · 합성 데이터</span>
+            <span>|</span>
+            <span id="lastUpdate" class="tabular" title="HWiNFO가 측정한 시각(Timestamp ms)">--:--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="desktop-nav" aria-label="주 메뉴">
+        <button data-view="overview" class="nav-btn active">개요</button>
+        <button data-view="gpus" class="nav-btn">듀얼 GPU · VRAM</button>
+        <button data-view="wireview" class="nav-btn">WireView Pro II</button>
+        <button data-view="connect" class="nav-btn">연결 · JSON 검증</button>
+      </nav>
+
+      <div class="controls">
+        <select id="scenarioSelect" aria-label="시뮬레이션 시나리오">
+          <option value="gaming">모의: 게이밍 (5080 부하)</option>
+          <option value="idle">모의: 유휴 (Idle)</option>
+          <option value="ai">모의: 듀얼 GPU AI (5080+5060Ti)</option>
+          <option value="imbalance">모의: 핀 3 기준 초과(래치 시험)</option>
+        </select>
+        <button id="togglePollBtn" class="btn">일시정지</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <main class="container">
+    <!-- VIEW 1: OVERVIEW -->
+    <section id="view-overview" class="section active">
+      <div class="stack">
+        <div class="grid-4">
+          <div class="card">
+            <div class="card-head">
+              <span id="cpuCardTitle" class="card-label">CPU</span>
+              <span id="cpuSrcBadge" class="badge badge-sim">SIM</span>
+            </div>
+            <div class="kpi-row">
+              <span id="cpuTemp" class="kpi-val tabular">N/A</span>
+              <span id="cpuLoad" class="kpi-sub tabular c-cyan">N/A</span>
+            </div>
+            <div class="bar-track"><div id="cpuBar" class="bar-fill" style="width:0%"></div></div>
+            <div class="meta-row tabular">
+              <span class="src-note">Tctl/Tdie</span>
+              <span id="cpuPower">N/A</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-label">RAM · DIMM</span>
+              <span id="ramSrcBadge" class="badge badge-sim">SIM</span>
+            </div>
+            <div class="kpi-row">
+              <span id="ramUsed" class="kpi-val tabular">N/A</span>
+              <span id="ramPct" class="kpi-sub tabular" style="color:var(--indigo)">N/A</span>
+            </div>
+            <div class="bar-track"><div id="ramBar" class="bar-fill" style="width:0%;background:var(--indigo)"></div></div>
+            <div class="meta-row tabular">
+              <span id="dimmSummary">DIMM: N/A</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-label">Dual GPU 전력 합계</span>
+              <span id="gpuSrcBadge" class="badge badge-sim">SIM</span>
+            </div>
+            <div class="kpi-row">
+              <span id="gpuTotalPower" class="kpi-val tabular">N/A</span>
+              <span id="gpuCoreMax" class="kpi-sub tabular">N/A</span>
+            </div>
+            <div class="bar-track"><div id="gpuPowerBar" class="bar-fill" style="width:0%;background:var(--amber)"></div></div>
+            <div class="meta-row tabular">
+              <span id="gpuMiniSummary">핫스팟: N/A</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-label">WireView Pro II</span>
+              <span id="wvBadge" class="badge badge-na">N/A</span>
+            </div>
+            <div class="kpi-row">
+              <span id="wvTotalW" class="kpi-val tabular">N/A</span>
+              <span id="wvMaxPin" class="kpi-sub tabular">N/A</span>
+            </div>
+            <div class="bar-track"><div id="wvBar" class="bar-fill" style="width:0%;background:var(--emerald)"></div></div>
+            <div class="meta-row tabular">
+              <span id="wvConnTemp">온도: N/A</span>
+              <span id="wvOwnerText" title="REST 센서 노출만으로는 USB 소유권을 확정하지 않습니다.">소유권: 미확정</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">온도 · 전력 추이 (모드별 이력 분리)</div>
+              <div id="chartSubtitle" class="card-sub">SIMULATION 이력</div>
+            </div>
+            <div class="row-wrap">
+              <button data-chart-mode="temp" class="btn btn-sm btn-active chart-mode-btn">코어 온도 (°C)</button>
+              <button data-chart-mode="power" class="btn btn-sm chart-mode-btn">전력 (W)</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="telemetryCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">NVMe SSD (S.M.A.R.T.)</span>
+              <span id="nvmeCountBadge" class="badge">0 Drives</span>
+            </div>
+            <div id="nvmeList" class="stack" style="gap:8px;"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">공급자 경계 · 장치 소유권 (RC3 사실 확인 반영)</span>
+              <span class="badge">Read-Only Remote</span>
+            </div>
+            <div class="stack" style="gap:8px;font-size:12px;">
+              <div class="sub-box meta-row">
+                <span>Antec FLUX PRO 디스플레이 송신</span>
+                <span class="tabular c-muted">기존 백엔드에 없음 · Stage 1은 모의</span>
+              </div>
+              <div class="sub-box meta-row">
+                <span>프로세스별 VRAM</span>
+                <span class="tabular c-muted">HWiNFO REST 미제공 · 기존 백엔드(PDH)</span>
+              </div>
+              <div class="sub-box meta-row">
+                <span>WireView USB 소유권</span>
+                <span class="tabular c-amber">미확정 · 자동 USB 폴백 금지</span>
+              </div>
+              <div class="sub-box meta-row">
+                <span>포트 (Basalt 8080 보호)</span>
+                <span class="tabular c-cyan">HWiNFO 8764 · Relay 8765(루프백)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 2: DUAL GPU -->
+    <section id="view-gpus" class="section">
+      <div class="stack">
+        <div id="gpuCardsContainer" class="grid-2"></div>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">프로세스별 VRAM 점유량</div>
+              <div class="card-sub">HWiNFO REST API는 프로세스별 VRAM을 제공하지 않습니다. 기존 백엔드(PcControlCenter.GpuMemory: PDH "GPU Process Memory" + DXGI)가 담당하며, 이 화면에서는 값을 만들지 않습니다.</div>
+            </div>
+            <span class="badge badge-warn">Native Only</span>
+          </div>
+          <div class="scroll-x">
+            <table>
+              <thead><tr><th>프로세스</th><th>PID</th><th>할당 GPU</th><th class="text-right">전용 VRAM</th><th class="text-right">점유율</th></tr></thead>
+              <tbody id="processVramBody" class="tabular"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: WIREVIEW PRO II -->
+    <section id="view-wireview" class="section">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <div class="card-title">Thermal Grizzly WireView Pro II — 12V-2x6 6핀</div>
+              <div id="wvSub" class="card-sub">UI 주의 기준(Stage 1): 핀 전류 ≥ 7.0 A 적색, ≥ 기준×0.72 앰버, 서로 다른 HWiNFO 측정 3회 연속이면 '핀 불균형 주의'. 하드웨어 보호 설정과 무관.</div>
+            </div>
+            <div class="row-wrap tabular" style="font-size:12px;">
+              <span class="sub-box">상태: <strong id="wvDetailStatus">N/A</strong></span>
+              <span class="sub-box">총 전력: <strong id="wvDetailTotalW">N/A</strong></span>
+              <span class="sub-box" title="6핀 전류가 모두 있을 때만 계산. Stage 1에 불균형 % 기준이 없어 경고하지 않음">핀 편차(최대−최소): <strong id="wvDelta">N/A</strong></span>
+              <span class="sub-box">래치: <strong id="wvLatch">0/3</strong></span>
+            </div>
+          </div>
+          <div id="wireviewPinsGrid" class="grid-6" style="margin-bottom:14px;"></div>
+          <div class="chart-wrap-sm">
+            <canvas id="wireviewCanvas"></canvas>
+          </div>
+          <div id="wvTemps" class="src-note" style="margin-top:8px;">온도: N/A</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: CONNECT & JSON -->
+    <section id="view-connect" class="section">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">LIVE 연결 (루프백 전용)</span>
+            <span class="badge badge-live">GET 전용 · Single-Flight</span>
+          </div>
+          <p class="card-sub" style="margin-bottom:12px;">
+            릴레이(127.0.0.1:8765)가 이 페이지를 서빙하면 Base URL은 공란, 실행 시 출력된 토큰을 입력합니다. HWiNFO(127.0.0.1:8764)에 직접 붙을 때는 토큰을 비워 두세요(Authorization 헤더가 있으면 CORS 사전 요청이 생깁니다). LAN 주소와 포트 8080은 거부합니다.
+          </p>
+          <div class="form-group">
+            <label for="apiBaseInput">서버 Base URL (동일 출처는 공란)</label>
+            <input id="apiBaseInput" type="text" placeholder="공란 = 동일 출처 / 예: http://127.0.0.1:8764" />
+          </div>
+          <div class="form-group">
+            <label for="bearerTokenInput">릴레이 실행별 토큰 (HWiNFO 직접 연결 시 공란)</label>
+            <input id="bearerTokenInput" type="password" autocomplete="off" placeholder="hwinfo_relay_poc.py 실행 시 출력된 토큰" />
+          </div>
+          <div class="grid-2" style="gap:8px;margin-bottom:10px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="pollIntervalSelect">폴링 주기 (HWiNFO 갱신 약 2초)</label>
+              <select id="pollIntervalSelect">
+                <option value="500">500 ms</option>
+                <option value="1000" selected>1000 ms</option>
+                <option value="2000">2000 ms</option>
+                <option value="5000">5000 ms</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;justify-content:flex-end;">
+              <button id="connectLiveBtn" class="btn btn-primary" style="width:100%;">LIVE 연결</button>
+            </div>
+          </div>
+          <button id="switchSimBtn" class="btn" style="width:100%;margin-bottom:10px;">SIMULATION으로 전환</button>
+          <div id="liveDiagnostic" class="sub-box tabular" style="font-size:11px;color:var(--text-muted);">상태: SIMULATION (네트워크 요청 없음)</div>
+
+          <div class="card-title" style="margin:16px 0 8px;">UI 주의 기준 (Stage 1 기본값 · 저장하지 않음)</div>
+          <div class="grid-2" style="gap:8px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="gpuLimitInput" id="gpuLimitLabel">GPU 코어 온도 (°C)</label>
+              <input id="gpuLimitInput" type="text" inputmode="decimal" />
+              <div id="gpuLimitErr" class="err-text"></div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label for="pinLimitInput" id="pinLimitLabel">WireView 핀 전류 (A)</label>
+              <input id="pinLimitInput" type="text" inputmode="decimal" />
+              <div id="pinLimitErr" class="err-text"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">JSON 스냅샷 검증 (SNAPSHOT · LIVE 이력과 분리)</span>
+            <span class="badge">textContent Only</span>
+          </div>
+          <p class="card-sub" style="margin-bottom:10px;">
+            실기에서 저장한 read.json·sdb.json을 열거나 <strong>합성 픽스처(SYNTHETIC, 실측 아님)</strong>를 불러와 매핑을 확인합니다. 스냅샷은 LIVE로 표시되지 않으며 LIVE·SIMULATION 이력에 섞이지 않습니다. SDB가 없으면 단위를 확인할 수 없어 값을 채택하지 않습니다.
+          </p>
+          <div class="row-wrap" style="margin-bottom:10px;">
+            <label class="btn btn-sm" style="cursor:pointer;">read.json 열기<input id="readFileInput" type="file" accept=".json,application/json" style="display:none;" /></label>
+            <label class="btn btn-sm" style="cursor:pointer;">sdb.json 열기<input id="sdbFileInput" type="file" accept=".json,application/json" style="display:none;" /></label>
+            <button id="loadSyntheticBtn" class="btn btn-sm">합성 픽스처 (SYNTHETIC)</button>
+            <button id="showSnapshotBtn" class="btn btn-sm btn-active">스냅샷 화면 보기</button>
+          </div>
+          <div id="parsedOutput" class="sub-box scroll-y tabular" style="font-size:11px;color:var(--text-secondary);">불러온 스냅샷이 없습니다.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="mobile-nav" aria-label="모바일 하단 메뉴">
+    <button data-view="overview" class="m-tab active"><span>개요</span></button>
+    <button data-view="gpus" class="m-tab"><span>듀얼GPU</span></button>
+    <button data-view="wireview" class="m-tab"><span>WireView</span></button>
+    <button data-view="connect" class="m-tab"><span>연결</span></button>
+  </nav>
+
+  <script src="assets/iron-config.js"></script>
+  <script src="assets/iron-model.js"></script>
+  <script src="assets/iron-synthetic.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      // 모든 해석·판정은 assets/iron-model.js(공유 모델, .NET PoC와 같은 규칙), 기준은 assets/iron-config.js(config/*.json에서 생성).
+      const CFG = window.IRON_CONFIG, M = window.IronModel, SYN = window.IRON_SYNTHETIC;
+      const TH = CFG.thresholds, GATES = CFG.gates;
+      const $ = id => document.getElementById(id);
+
+      function newHist() { return { labels: [], cpuT: [], g0T: [], g1T: [], cpuP: [], g0P: [], g1P: [] }; }
+      function clearEl(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+      function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined && text !== null) n.textContent = String(text); return n; }
+      function showToast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._tid); t._tid = setTimeout(() => t.classList.remove('show'), 3200); }
+      const fmt = (v, d, unit) => v === null || v === undefined ? 'N/A' : v.toFixed(d) + (unit || '');
+      const pad2 = n => String(n).padStart(2, '0');
+      const clockText = ms => { if (ms === null || ms === undefined) return '--:--:--'; const d = new Date(ms); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); };
+
+      const state = {
+        mode: 'SIMULATION', // SIMULATION | LIVE | STALE | OFFLINE | SNAPSHOT
+        scenario: 'gaming', paused: false, pollMs: 1000, chartMode: 'temp',
+        limits: { gpuTempC: TH.gpuTemperatureC['default'], pinA: TH.wireViewPinCurrentA['default'] },
+        live: { base: '', token: '', sdb: null, tracker: null, inFlight: false, abort: null, lastPingAt: 0, lastSdbAt: 0, ok: 0, fail: 0, invalid: 0, lastModel: null, lastTracked: null },
+        sim: { tracker: null, ts: 0, read: null, sdb: null },
+        snap: { read: null, readName: '', sdb: null, sdbName: '', source: null },
+        timerId: null, watchId: null, lastPins: null,
+        hist: { SIMULATION: newHist(), LIVE: newHist() }
+      };
+
+      const MODE_STYLE = { SIMULATION: ['badge-sim', 'dot-sim'], LIVE: ['badge-live', 'dot-live'], STALE: ['badge-stale', 'dot-stale'], OFFLINE: ['badge-offline', 'dot-offline'], SNAPSHOT: ['badge-snap', 'dot-snap'] };
+      function setMode(mode, text) {
+        state.mode = mode;
+        $('stateBadge').textContent = mode;
+        $('stateBadge').className = 'badge ' + MODE_STYLE[mode][0];
+        $('statusDot').className = 'dot ' + MODE_STYLE[mode][1];
+        if (text) $('statusText').textContent = text;
+        $('scenarioSelect').disabled = mode !== 'SIMULATION';
+        $('chartSubtitle').textContent = mode === 'SNAPSHOT' ? '스냅샷 — 이력 없음 (LIVE·SIMULATION 이력과 분리)'
+          : (mode === 'SIMULATION' ? 'SIMULATION 이력 (합성)' : 'LIVE 이력 (새 HWiNFO 측정만 추가)');
+      }
+
+      function opts(source) { return { source: source, rules: CFG.rules, thresholds: TH, limits: state.limits }; }
+      function srcBadge(source) {
+        if (source === 'LIVE') return ['LIVE', 'badge-live'];
+        if (state.mode === 'LIVE' || state.mode === 'STALE') return ['SYNTH', 'badge-snap'];
+        if (state.mode === 'SIMULATION') return ['SIM', 'badge-sim'];
+        if (source === 'OFFLINE_JSON') return ['FILE', 'badge-snap'];
+        return ['SYNTH', 'badge-snap'];
+      }
+
+      // ---------- 렌더(모델 결과만 표시) ----------
+      function render(model, tracked) {
+        const sum = M.summarize(model, tracked);
+        const live = state.mode === 'LIVE' || state.mode === 'STALE';
+        const modeText = state.mode === 'SNAPSHOT' ? 'SNAPSHOT · ' + model.source : state.mode === 'SIMULATION' ? 'SIMULATION · 합성'
+          : 'LIVE' + (model.source === 'SYNTHETIC' ? ' 경로 · 응답이 SYNTHETIC(모의 서버)' : '');
+        const statusWord = state.mode === 'SNAPSHOT' && sum.status === 'ONLINE' ? '경고 없음' : sum.status;
+        const fresh = tracked.freshness === 'SNAPSHOT' ? '단일 스냅샷(래치 없음)'
+          : tracked.ageMs !== null && tracked.ageMs !== undefined ? '측정 후 ' + tracked.ageMs + ' ms' : (tracked.frozenMs !== null && tracked.frozenMs !== undefined ? '정지 ' + tracked.frozenMs + ' ms' : '');
+        $('statusText').textContent = modeText + ' · ' + statusWord + (fresh ? ' · ' + fresh : '');
+        $('lastUpdate').textContent = 'HWiNFO ' + clockText(model.hwinfo.timestampMs);
+        const [bt, bc] = srcBadge(model.source);
+        ['cpuSrcBadge', 'ramSrcBadge', 'gpuSrcBadge'].forEach(id => { $(id).textContent = bt; $(id).className = 'badge ' + bc; });
+
+        // CPU
+        $('cpuCardTitle').textContent = 'CPU · ' + (model.cpu.name || 'N/A');
+        $('cpuTemp').textContent = fmt(model.cpu.tctlC, 1, '°C');
+        $('cpuLoad').textContent = fmt(model.cpu.usagePct, 1, '%');
+        $('cpuBar').style.width = (model.cpu.usagePct || 0) + '%';
+        $('cpuPower').textContent = fmt(model.cpu.packagePowerW, 1, ' W');
+
+        // RAM
+        const used = model.ram.usedMB, avail = model.ram.availableMB;
+        $('ramUsed').textContent = used === null ? 'N/A' : (used / 1024).toFixed(1) + ' GB';
+        $('ramPct').textContent = fmt(model.ram.loadPct, 1, '%');
+        const pct = model.ram.loadPct !== null ? model.ram.loadPct : (used !== null && avail !== null ? used * 100 / (used + avail) : 0);
+        $('ramBar').style.width = pct + '%';
+        $('dimmSummary').textContent = 'DIMM: ' + (model.dimms.length ? model.dimms.map(d => fmt(d.temp, 1, '°C')).join(' · ') : 'N/A');
+
+        // GPU 합계: 일부 GPU 전력이 없으면 합계를 만들지 않는다(PARTIAL)
+        const gp = model.gpuPower;
+        $('gpuTotalPower').textContent = gp.state === 'COMPLETE' ? gp.totalW.toFixed(1) + ' W' : gp.state === 'PARTIAL' ? '부분 ' + gp.reported + '/' + gp.expected : 'N/A';
+        $('gpuTotalPower').title = gp.state === 'PARTIAL' ? '전력을 보고하지 않은 GPU가 있어 합계를 만들지 않음' : '';
+        $('gpuTotalPower').style.fontSize = gp.state === 'PARTIAL' ? '22px' : '';
+        $('gpuPowerBar').style.width = gp.state === 'COMPLETE' ? Math.min(100, gp.totalW / 6) + '%' : '0%';
+        const anyHot = model.gpus.some(g => g.hot === true);
+        $('gpuCoreMax').textContent = '코어 최고 ' + fmt(model.gpuTemps.coreMaxC, 1, '°C');
+        $('gpuCoreMax').className = 'kpi-sub tabular ' + (anyHot ? 'c-red' : 'c-amber');
+        $('gpuMiniSummary').textContent = '핫스팟 최고 ' + fmt(model.gpuTemps.hotspotMaxC, 1, '°C') + ' · 메모리 정션 ' + fmt(model.gpuTemps.memJunctionMaxC, 1, '°C') + ' (표시만)';
+
+        // WireView
+        const wv = model.wireview;
+        $('wvBadge').textContent = sum.wireViewStatus;
+        $('wvBadge').className = 'badge ' + (sum.wireViewStatus === 'OK' ? 'badge-sim' : sum.wireViewStatus === 'N/A' ? 'badge-na' : sum.wireViewStatus === 'STALE' || sum.wireViewStatus === 'INVALID' ? 'badge-stale' : sum.wireViewStatus.indexOf('INCOMPLETE') === 0 ? 'badge-warn' : 'badge-offline');
+        $('wvTotalW').textContent = fmt(wv.totalW, 1, ' W');
+        $('wvBar').style.width = wv.totalW !== null ? Math.min(100, wv.totalW / 6) + '%' : '0%';
+        const measured = wv.pins.filter(p => p.currentA !== null);
+        const maxPin = measured.length ? measured.reduce((a, b) => (b.currentA > a.currentA ? b : a)) : null;
+        $('wvMaxPin').textContent = maxPin ? '최대 P' + maxPin.pin + ' ' + maxPin.currentA.toFixed(2) + ' A' : (wv.present ? '핀 전류 N/A' : 'N/A');
+        $('wvMaxPin').className = 'kpi-sub tabular ' + (maxPin && maxPin.level === 'OVER' ? 'c-red' : maxPin && maxPin.level === 'APPROACHING' ? 'c-amber' : 'c-green');
+        $('wvConnTemp').textContent = '온도: ' + (wv.temperaturesC.length ? wv.temperaturesC.map(t => t.valueC.toFixed(1) + '°C').join(' / ') : 'N/A');
+        $('wvOwnerText').textContent = '소유권: 미확정';
+        $('wvOwnerText').title = wv.ownership.basis;
+
+        // NVMe
+        const nv = $('nvmeList'); clearEl(nv);
+        $('nvmeCountBadge').textContent = model.nvme.length + ' Drives';
+        if (!model.nvme.length) nv.appendChild(el('div', 'sub-box c-muted', 'NVMe 센서 없음 (N/A)'));
+        model.nvme.forEach(d => {
+          const row = el('div', 'sub-box meta-row');
+          row.appendChild(el('span', '', d.sensor.replace(/^S\.M\.A\.R\.T\.:\s*/, '')));
+          row.appendChild(el('span', 'tabular', fmt(d.temp, 1, '°C') + ' · 수명 ' + fmt(d.remainingLife, 0, '%')));
+          nv.appendChild(row);
+        });
+
+        // GPU 상세
+        const gc = $('gpuCardsContainer'); clearEl(gc);
+        if (!model.gpus.length) gc.appendChild(el('div', 'card c-muted', 'GPU 센서 없음 (N/A)'));
+        model.gpus.forEach(g => {
+          const card = el('div', 'card');
+          const head = el('div', 'card-head');
+          head.appendChild(el('span', 'card-title', 'GPU #' + g.index + ' · ' + (g.name || 'N/A')));
+          head.appendChild(el('span', 'badge ' + bc, bt));
+          card.appendChild(head);
+          const kv = el('div', 'kv tabular');
+          const add = (k, v, cls) => { kv.appendChild(el('span', 'c-muted', k)); kv.appendChild(el('span', cls || '', v)); };
+          add('코어 온도 (경고 기준 ≥ ' + state.limits.gpuTempC + ' °C)', fmt(g.coreTempC, 1, '°C'), g.hot ? 'c-red' : '');
+          add('핫스팟 (표시만)', fmt(g.hotspotC, 1, '°C'));
+          add('메모리 정션 (표시만)', fmt(g.memJunctionC, 1, '°C'));
+          add('전력', fmt(g.powerW, 1, ' W'), g.powerW === null ? 'c-amber' : '');
+          add('부하', fmt(g.loadPct, 1, '%'));
+          add('VRAM 사용', g.vramUsedMB === null ? 'N/A' : (g.vramUsedMB / 1024).toFixed(2) + ' GB');
+          add('클럭', fmt(g.clockMHz, 0, ' MHz'));
+          card.appendChild(kv);
+          gc.appendChild(card);
+        });
+        const tb = $('processVramBody'); clearEl(tb);
+        const tr = document.createElement('tr'); const td = el('td', 'c-muted', 'N/A — HWiNFO REST API 미제공 (기존 백엔드 PDH "GPU Process Memory" 전용)'); td.colSpan = 5; tr.appendChild(td); tb.appendChild(tr);
+
+        // WireView 상세
+        $('wvDetailStatus').textContent = sum.wireViewStatus;
+        $('wvDetailTotalW').textContent = fmt(wv.totalW, 1, ' W');
+        $('wvDelta').textContent = wv.deltaA !== null ? wv.deltaA.toFixed(2) + ' A' : (wv.present ? 'N/A (6핀 미완)' : 'N/A');
+        $('wvLatch').textContent = (tracked.pinOverCount || 0) + '/' + TH.pinLatchReadings + (tracked.pinAlert ? ' · 핀 불균형 주의' : '');
+        $('wvLatch').className = tracked.pinAlert ? 'c-red' : '';
+        $('wvSub').textContent = 'UI 주의 기준(Stage 1): 핀 전류 ≥ ' + state.limits.pinA.toFixed(1) + ' A 적색, ≥ ' + (state.limits.pinA * TH.pinApproachingShare).toFixed(2) + ' A 앰버, 서로 다른 HWiNFO 측정 ' + TH.pinLatchReadings + '회 연속이면 \'핀 불균형 주의\'. 하드웨어 보호 설정과 무관.';
+        $('wvTemps').textContent = '온도(표시만, Stage 1 기준 없음): ' + (wv.temperaturesC.length ? wv.temperaturesC.map(t => t.name + ' ' + t.valueC.toFixed(1) + '°C').join(' · ') : 'N/A');
+        const grid = $('wireviewPinsGrid'); clearEl(grid);
+        if (!wv.present) grid.appendChild(el('div', 'sub-box c-muted', 'WireView 센서 없음 (N/A) — USB 해제·미연결·HWiNFO 미지원'));
+        wv.pins.forEach(p => {
+          const card = el('div', 'pin-card' + (p.level === 'OVER' ? ' crit' : p.level === 'APPROACHING' ? ' warn' : ''));
+          const top = el('div', 'meta-row');
+          top.appendChild(el('strong', '', 'PIN ' + p.pin));
+          top.appendChild(el('span', 'tabular', fmt(p.voltageV, 2, ' V')));
+          card.appendChild(top);
+          card.appendChild(el('div', 'kpi-val tabular ' + (p.level === 'OVER' ? 'c-red' : p.level === 'APPROACHING' ? 'c-amber' : ''), fmt(p.currentA, 2, ' A')));
+          card.appendChild(el('div', 'card-sub tabular', p.level === 'N/A' ? '전류 리딩 없음' : '전력 ' + fmt(p.powerW, 1, ' W')));
+          grid.appendChild(card);
+        });
+
+        // 이력: LIVE·SIMULATION만, 새 측정일 때만
+        if ((live || state.mode === 'SIMULATION') && tracked.newMeasurement) {
+          const h = state.hist[state.mode === 'SIMULATION' ? 'SIMULATION' : 'LIVE'];
+          h.labels.push(clockText(model.hwinfo.timestampMs));
+          h.cpuT.push(model.cpu.tctlC); h.cpuP.push(model.cpu.packagePowerW);
+          h.g0T.push(model.gpus[0] ? model.gpus[0].coreTempC : null); h.g0P.push(model.gpus[0] ? model.gpus[0].powerW : null);
+          h.g1T.push(model.gpus[1] ? model.gpus[1].coreTempC : null); h.g1P.push(model.gpus[1] ? model.gpus[1].powerW : null);
+          if (h.labels.length > 60) Object.keys(h).forEach(k => h[k].shift());
+        }
+        drawCharts(wv.pins);
+      }
+
+      function currentHist() { return state.mode === 'SNAPSHOT' ? newHist() : state.hist[state.mode === 'SIMULATION' ? 'SIMULATION' : 'LIVE']; }
+      function drawCharts(pins) { if (pins) state.lastPins = pins; drawLineChart($('telemetryCanvas'), currentHist(), state.chartMode); drawPinBarChart($('wireviewCanvas'), state.lastPins || []); }
+
+      // ---------- 차트(외부 라이브러리 없음) ----------
+      function setupCanvas(canvas) {
+        const dpr = window.devicePixelRatio || 1, rect = canvas.getBoundingClientRect();
+        if (rect.width < 10 || rect.height < 10) return null;
+        canvas.width = Math.round(rect.width * dpr); canvas.height = Math.round(rect.height * dpr);
+        const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, rect.width, rect.height);
+        return { ctx: ctx, W: rect.width, H: rect.height };
+      }
+      function drawLineChart(canvas, h, mode) {
+        const c = setupCanvas(canvas); if (!c) return;
+        const { ctx, W, H } = c, pad = { l: 42, r: 14, t: 22, b: 26 }, pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+        const series = mode === 'temp'
+          ? [{ label: 'CPU', data: h.cpuT, color: '#38BDF8' }, { label: 'GPU #0', data: h.g0T, color: '#F59E0B' }, { label: 'GPU #1', data: h.g1T, color: '#10B981' }]
+          : [{ label: 'CPU', data: h.cpuP, color: '#38BDF8' }, { label: 'GPU #0', data: h.g0P, color: '#F59E0B' }, { label: 'GPU #1', data: h.g1P, color: '#10B981' }];
+        let lx = pad.l; ctx.font = '11px ui-monospace, monospace';
+        series.forEach(s => { ctx.fillStyle = s.color; ctx.fillRect(lx, 6, 10, 3); ctx.fillStyle = '#94A3B8'; ctx.fillText(s.label, lx + 14, 11); lx += 74; });
+        const vals = series.flatMap(s => s.data.filter(v => v !== null && Number.isFinite(v)));
+        if (!vals.length) { ctx.fillStyle = '#64748B'; ctx.font = '12px sans-serif'; ctx.fillText(state.mode === 'SNAPSHOT' ? '스냅샷 — 이력 없음' : '데이터 없음 (N/A)', pad.l + 10, pad.t + ph / 2); return; }
+        const minV = Math.floor(Math.min(...vals) * 0.85), maxV = Math.ceil(Math.max(...vals, minV + 10) * 1.1), span = Math.max(1, maxV - minV);
+        ctx.strokeStyle = 'rgba(35,44,61,0.65)'; ctx.lineWidth = 1; ctx.fillStyle = '#64748B'; ctx.font = '10px ui-monospace, monospace';
+        for (let i = 0; i <= 4; i++) { const y = pad.t + (ph * i) / 4; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); ctx.fillText(Math.round(maxV - (span * i) / 4) + (mode === 'temp' ? '°' : 'W'), 4, y + 3); }
+        if (mode === 'temp' && state.limits.gpuTempC >= minV && state.limits.gpuTempC <= maxV) {
+          const y = pad.t + ph - ((state.limits.gpuTempC - minV) / span) * ph;
+          ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(239,68,68,0.7)'; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); ctx.setLineDash([]);
+        }
+        const n = h.labels.length;
+        series.forEach(s => {
+          ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.beginPath(); let started = false;
+          s.data.forEach((v, i) => {
+            if (v === null || !Number.isFinite(v)) { started = false; return; }
+            const x = pad.l + (n > 1 ? (i / (n - 1)) * pw : pw), y = pad.t + ph - ((v - minV) / span) * ph;
+            if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+          });
+          ctx.stroke();
+        });
+        if (n > 0) { ctx.fillStyle = '#64748B'; ctx.fillText(h.labels[0], pad.l, H - 6); const last = h.labels[n - 1]; ctx.fillText(last, W - pad.r - ctx.measureText(last).width, H - 6); }
+      }
+      function drawPinBarChart(canvas, pins) {
+        const c = setupCanvas(canvas); if (!c) return;
+        const { ctx, W, H } = c, pad = { l: 38, r: 12, t: 16, b: 26 }, pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+        if (!pins.length) { ctx.fillStyle = '#64748B'; ctx.font = '12px sans-serif'; ctx.fillText('WireView 6핀 데이터 없음 (N/A)', pad.l + 10, pad.t + ph / 2); return; }
+        const maxA = TH.pinScaleMaxA; // Stage 1 핀 미터 눈금(9.5 A)
+        ctx.strokeStyle = 'rgba(35,44,61,0.65)'; ctx.fillStyle = '#64748B'; ctx.font = '10px ui-monospace, monospace';
+        for (let i = 0; i <= 4; i++) { const y = pad.t + (ph * i) / 4; ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke(); ctx.fillText((maxA * (4 - i) / 4).toFixed(1) + 'A', 2, y + 3); }
+        const yLim = pad.t + ph - (state.limits.pinA / maxA) * ph;
+        ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(239,68,68,0.75)'; ctx.beginPath(); ctx.moveTo(pad.l, yLim); ctx.lineTo(W - pad.r, yLim); ctx.stroke(); ctx.setLineDash([]);
+        const slot = pw / pins.length, bw = Math.min(44, slot * 0.56);
+        pins.forEach((p, i) => {
+          const v = p.currentA !== null ? Math.min(p.currentA, maxA) : 0, bh = (v / maxA) * ph, x = pad.l + i * slot + (slot - bw) / 2;
+          ctx.fillStyle = p.level === 'N/A' ? '#334155' : p.level === 'OVER' ? '#EF4444' : p.level === 'APPROACHING' ? '#F59E0B' : '#38BDF8';
+          ctx.fillRect(x, pad.t + ph - bh, bw, bh);
+          ctx.fillStyle = '#CBD5E1'; const lbl = 'P' + p.pin + (p.level === 'N/A' ? ' N/A' : ''); ctx.fillText(lbl, x + bw / 2 - ctx.measureText(lbl).width / 2, H - 7);
+        });
+      }
+
+      // ---------- SIMULATION: 합성 read JSON을 만들어 같은 모델로 해석 ----------
+      const SIM_SCENARIOS = {
+        idle: { tctl: 42, usage: 6, pkg: 38, g0: [38, 22, 3], g1: [34, 9, 1], pins: [0.35, 0.36, 0.34, 0.37, 0.35, 0.36] },
+        gaming: { tctl: 68, usage: 45, pkg: 95, g0: [66, 330, 97], g1: [44, 18, 5], pins: [4.62, 4.71, 4.55, 4.8, 4.49, 4.66] },
+        ai: { tctl: 61, usage: 30, pkg: 80, g0: [71, 355, 99], g1: [62, 150, 98], pins: [4.95, 5.05, 4.9, 5.1, 4.88, 5.0] },
+        imbalance: { tctl: 66, usage: 40, pkg: 90, g0: [67, 340, 96], g1: [44, 18, 5], pins: [4.2, 4.3, 7.4, 4.1, 4.25, 4.15] }
+      };
+      const jit = (b, r) => b + (Math.random() - 0.5) * 2 * r;
+      const comma = v => Math.round(v).toLocaleString('en-US');
+      function setVal(read, sensor, reading, value) { const node = read[sensor] && read[sensor][reading]; if (!node) return; const k = Object.keys(node)[0]; node[k].Value = String(value); }
+      function simTick() {
+        const sc = SIM_SCENARIOS[state.scenario];
+        const read = JSON.parse(JSON.stringify(SYN.read));
+        const cpu = Object.keys(read).find(k => /^CPU \[#0\]/.test(k)), g0 = Object.keys(read).find(k => /^GPU \[#0\]/.test(k)), g1 = Object.keys(read).find(k => /^GPU \[#1\]/.test(k));
+        const wvS = Object.keys(read).find(k => /WireView/.test(k)), sys = Object.keys(read).find(k => /^System:/.test(k));
+        setVal(read, cpu, 'CPU (Tctl/Tdie)', jit(sc.tctl, 1.5).toFixed(1)); setVal(read, cpu, 'Total CPU Usage', jit(sc.usage, 4).toFixed(1)); setVal(read, cpu, 'CPU Package Power', jit(sc.pkg, 5).toFixed(1));
+        setVal(read, g0, 'GPU Temperature', jit(sc.g0[0], 1.2).toFixed(1)); setVal(read, g0, 'GPU Hot Spot Temperature', jit(sc.g0[0] + 12, 1.5).toFixed(1)); setVal(read, g0, 'GPU Power', jit(sc.g0[1], 8).toFixed(1)); setVal(read, g0, 'GPU Core Load', jit(sc.g0[2], 1).toFixed(1));
+        setVal(read, g1, 'GPU Temperature', jit(sc.g1[0], 1).toFixed(1)); setVal(read, g1, 'GPU Power', jit(sc.g1[1], 3).toFixed(1)); setVal(read, g1, 'GPU Core Load', jit(sc.g1[2], 1).toFixed(1));
+        setVal(read, sys, 'Physical Memory Used', comma(jit(36864, 300)));
+        let total = 0;
+        sc.pins.forEach((a, i) => { const v = Math.max(0, jit(a, 0.06)); total += v * 12.07; setVal(read, wvS, 'Pin ' + (i + 1) + ' Current', v.toFixed(2)); });
+        setVal(read, wvS, 'Total Power', total.toFixed(1));
+        state.sim.ts = Math.max(state.sim.ts + state.pollMs, Date.now() - 300);
+        read['Timestamp RS ms'] = state.sim.ts - 110; read['Timestamp ms'] = state.sim.ts; read['Timestamp RE ms'] = state.sim.ts + 25;
+        const model = M.mapFrame(M.parseRead(read), state.sim.sdb, opts('SYNTHETIC'));
+        render(model, state.sim.tracker.update(model, Date.now()));
+      }
+      function startSimulation() {
+        stopAll();
+        state.sim.tracker = M.createTracker({ thresholds: TH, gates: GATES });
+        const now = Date.now(); state.sim.tracker.setClockOffset(now, now, now);
+        state.sim.sdb = state.sim.sdb || M.parseSdb(SYN.sdb);
+        setMode('SIMULATION', 'SIMULATION · 합성');
+        $('liveDiagnostic').textContent = '상태: SIMULATION (네트워크 요청 없음 · 합성 read JSON → 공유 모델)';
+        simTick(); schedule();
+      }
+
+      // ---------- LIVE ----------
+      function validateBase(base) {
+        if (base === '') return null;
+        let u; try { u = new URL(base); } catch (e) { return '잘못된 URL입니다.'; }
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'http(s)만 허용합니다.';
+        if (['127.0.0.1', 'localhost', '[::1]'].indexOf(u.hostname) < 0) return '루프백 주소만 허용합니다(LAN 노출은 별도 승인 전 금지).';
+        const port = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80);
+        if (GATES.ports.forbidden.indexOf(port) >= 0) return '포트 ' + port + '는 Basalt 운영 포트입니다.';
+        return null;
+      }
+      async function get(path) {
+        const ctrl = new AbortController(); state.live.abort = ctrl;
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        const headers = state.live.token ? { Authorization: 'Bearer ' + state.live.token } : undefined;
+        const t0 = Date.now();
+        try {
+          const r = await fetch(state.live.base + path, { method: 'GET', cache: 'no-store', signal: ctrl.signal, headers: headers });
+          const text = await r.text();
+          const t3 = Date.now();
+          if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + text.slice(0, 80));
+          return { json: JSON.parse(text), t0: t0, t3: t3 };
+        } finally { clearTimeout(timer); }
+      }
+      async function syncClock() {
+        let best = null;
+        for (let i = 0; i < 3; i++) {
+          const r = await get('/api/ping');
+          if (r.json && r.json.pong === true && typeof r.json.t === 'number' && (!best || r.t3 - r.t0 < best.t3 - best.t0)) best = r;
+        }
+        if (!best) throw new Error('/api/ping 응답에 t 가 없습니다.');
+        state.live.tracker.setClockOffset(best.json.t, best.t0, best.t3);
+        state.live.lastPingAt = Date.now();
+        return best.t3 - best.t0;
+      }
+      async function loadSdb() { state.live.sdb = M.parseSdb((await get('/api/sensors/sdb')).json); state.live.lastSdbAt = Date.now(); }
+      async function connectLive() {
+        const base = $('apiBaseInput').value.trim().replace(/\/$/, '');
+        const err = validateBase(base);
+        if (err) { showToast(err); $('liveDiagnostic').textContent = '연결 거부: ' + err; return; }
+        stopAll();
+        Object.assign(state.live, { base: base, token: $('bearerTokenInput').value.trim(), sdb: null, ok: 0, fail: 0, invalid: 0, lastModel: null, lastTracked: null });
+        state.live.tracker = M.createTracker({ thresholds: TH, gates: GATES });
+        state.hist.LIVE = newHist();
+        setMode('OFFLINE', 'LIVE 연결 중 (ping · sdb)…');
+        try {
+          const rtt = await syncClock();
+          await loadSdb();
+          setMode('LIVE', 'LIVE · 첫 측정 대기');
+          $('liveDiagnostic').textContent = 'LIVE: ping 최소 RTT ' + rtt + ' ms · SDB 리딩 ' + Object.keys(state.live.sdb).length + '개 · GET만 사용';
+          schedule(); pollLive();
+        } catch (e) {
+          setMode('OFFLINE', 'OFFLINE · 연결 실패');
+          $('liveDiagnostic').textContent = '연결 실패: ' + e.message;
+        }
+      }
+      async function pollLive() {
+        if (state.live.inFlight || (state.mode !== 'LIVE' && state.mode !== 'STALE')) return;
+        state.live.inFlight = true;
+        try {
+          if (Date.now() - state.live.lastPingAt > 30000) await syncClock();
+          if (Date.now() - state.live.lastSdbAt > 60000) await loadSdb();
+          const r = await get('/api/sensors/read');
+          // 모의 서버·합성 응답은 LIVE로 표시하지 않는다
+          const src = /SYNTHETIC/.test(String(r.json._notice || '')) ? 'SYNTHETIC' : 'LIVE';
+          const model = M.mapFrame(M.parseRead(r.json), state.live.sdb, opts(src));
+          const tracked = state.live.tracker.update(model, r.t3);
+          state.live.ok++;
+          if (tracked.freshness === 'INVALID') { state.live.invalid++; }
+          else {
+            if (tracked.freshness === 'STALE') setMode('STALE'); else setMode('LIVE');
+            state.live.lastModel = model; state.live.lastTracked = tracked;
+            render(model, tracked);
+          }
+          $('liveDiagnostic').textContent = 'LIVE: 성공 ' + state.live.ok + ' · 실패 ' + state.live.fail + ' · INVALID ' + state.live.invalid + ' · RTT ' + (r.t3 - r.t0) + ' ms · 매핑 ' + model.mapping.mappingPct + '% · 단위 불일치 ' + model.mapping.unitMismatches.length;
+        } catch (e) {
+          state.live.fail++;
+          $('liveDiagnostic').textContent = 'LIVE 요청 실패(' + state.live.fail + '): ' + e.message;
+        } finally { state.live.inFlight = false; }
+      }
+      function watchdog() {
+        if ((state.mode !== 'LIVE' && state.mode !== 'STALE') || !state.live.tracker || !state.live.lastModel) return;
+        const c = state.live.tracker.check(Date.now());
+        if (c.freshness === 'STALE' && state.mode !== 'STALE') {
+          setMode('STALE');
+          render(state.live.lastModel, { freshness: 'STALE', ageMs: null, frozenMs: c.frozenMs, pinAlert: false, pinOverCount: 0, newMeasurement: false });
+        }
+      }
+
+      // ---------- SNAPSHOT (OFFLINE_JSON / SYNTHETIC) ----------
+      function readFile(input, cb) {
+        const f = input.files[0]; if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => { try { cb(JSON.parse(String(fr.result)), f.name); } catch (e) { showToast('JSON 오류: ' + e.message); } input.value = ''; };
+        fr.readAsText(f);
+      }
+      function describeSnapshot() {
+        const box = $('parsedOutput'); clearEl(box);
+        const s = state.snap;
+        if (!s.read) { box.appendChild(el('div', '', '불러온 스냅샷이 없습니다.')); return null; }
+        let model;
+        try { model = M.mapFrame(M.parseRead(s.read), s.sdb ? M.parseSdb(s.sdb) : {}, opts(s.source)); }
+        catch (e) { box.appendChild(el('div', 'c-red', '해석 실패: ' + e.message)); return null; }
+        const g2 = M.evaluateG2(model, GATES);
+        const line = (t, c) => box.appendChild(el('div', c || '', t));
+        line('출처: ' + s.source + ' — ' + s.readName + (s.sdb ? ' + ' + s.sdbName : ' (SDB 없음: 단위 확인 불가 → 값 채택 안 함)'), s.sdb ? '' : 'c-amber');
+        line('리딩 ' + model.mapping.readings + '개 · SDB 매핑 ' + model.mapping.mappingPct + '% · 단위 불일치 ' + model.mapping.unitMismatches.length + '건');
+        line('G2(참고, 스냅샷은 항상 UNVERIFIED): 기준 충족 ' + g2.criteriaMet + ' · 미달 ' + (g2.checks.filter(c => !c.pass).map(c => c.name).join(', ') || '없음'));
+        model.mapping.unitMismatches.slice(0, 20).forEach(m => line('단위 거부: ' + m.item + ' ← ' + m.key + ' [' + m.unit + '] 허용 ' + m.allowed.join('/'), 'c-amber'));
+        Object.keys(model.mapping.resolved).forEach(k => line((model.mapping.resolved[k] ? '채택 ' : '없음 ') + k + (model.mapping.resolved[k] ? ' ← ' + model.mapping.resolved[k] : ''), model.mapping.resolved[k] ? 'c-muted' : 'c-amber'));
+        model.mapping.unmappedKeys.slice(0, 20).forEach(k => line('SDB에 없음: ' + k, 'c-amber'));
+        return model;
+      }
+      function showSnapshot() {
+        if (!state.snap.read) { showToast('먼저 read.json을 열거나 합성 픽스처를 불러오세요.'); return; }
+        const model = describeSnapshot(); if (!model) return;
+        stopAll();
+        setMode('SNAPSHOT');
+        render(model, { freshness: 'SNAPSHOT', ageMs: null, frozenMs: null, pinAlert: false, pinOverCount: 0, newMeasurement: false, reasons: [] });
+        $('liveDiagnostic').textContent = '상태: SNAPSHOT (' + model.source + ') — LIVE 연결은 끊김, LIVE 이력은 다음 LIVE 연결 때 새로 시작';
+      }
+
+      function stopAll() {
+        clearInterval(state.timerId); clearInterval(state.watchId); state.timerId = state.watchId = null;
+        if (state.live.abort) state.live.abort.abort();
+        state.live.inFlight = false;
+      }
+      function schedule() {
+        clearInterval(state.timerId); clearInterval(state.watchId);
+        state.timerId = setInterval(() => {
+          if (state.paused) return;
+          if (state.mode === 'SIMULATION') simTick();
+          else if (state.mode === 'LIVE' || state.mode === 'STALE') pollLive();
+        }, state.pollMs);
+        state.watchId = setInterval(watchdog, 1000);
+      }
+
+      // ---------- UI 기준 입력(Stage 1 NumericSetting과 같은 검사, 저장 안 함) ----------
+      function bindLimit(inputId, errId, labelId, spec, key, unit) {
+        const input = $(inputId);
+        input.value = state.limits[key].toFixed(spec.decimals);
+        $(labelId).textContent += ' — ' + spec.min.toFixed(spec.decimals) + '~' + spec.max.toFixed(spec.decimals);
+        input.addEventListener('input', () => {
+          const r = M.validateSetting(input.value, spec);
+          $(errId).textContent = r.error || '';
+          if (!r.error) { state.limits[key] = r.value; if (state.mode === 'SNAPSHOT') showSnapshot(); }
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        bindLimit('gpuLimitInput', 'gpuLimitErr', 'gpuLimitLabel', TH.gpuTemperatureC, 'gpuTempC', '°C');
+        bindLimit('pinLimitInput', 'pinLimitErr', 'pinLimitLabel', TH.wireViewPinCurrentA, 'pinA', 'A');
+        document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+          document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+          $('view-' + b.dataset.view).classList.add('active');
+          document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('active', x.dataset.view === b.dataset.view));
+          setTimeout(() => drawCharts(null), 30);
+        }));
+        document.querySelectorAll('.chart-mode-btn').forEach(b => b.addEventListener('click', () => {
+          state.chartMode = b.dataset.chartMode;
+          document.querySelectorAll('.chart-mode-btn').forEach(x => x.classList.toggle('btn-active', x === b));
+          drawLineChart($('telemetryCanvas'), currentHist(), state.chartMode);
+        }));
+        $('scenarioSelect').addEventListener('change', e => { state.scenario = e.target.value; state.sim.tracker = M.createTracker({ thresholds: TH, gates: GATES }); const n = Date.now(); state.sim.tracker.setClockOffset(n, n, n); });
+        $('togglePollBtn').addEventListener('click', () => { state.paused = !state.paused; $('togglePollBtn').textContent = state.paused ? '재개' : '일시정지'; });
+        $('pollIntervalSelect').addEventListener('change', e => { state.pollMs = Math.max(GATES.hwinfo.minPollMs, Number(e.target.value)); if (state.timerId) schedule(); });
+        $('connectLiveBtn').addEventListener('click', connectLive);
+        $('switchSimBtn').addEventListener('click', startSimulation);
+        // 합성 데이터와 실기 파일을 한 스냅샷에 섞지 않는다
+        $('readFileInput').addEventListener('change', e => readFile(e.target, (j, name) => {
+          if (state.snap.source === 'SYNTHETIC') Object.assign(state.snap, { sdb: null, sdbName: '' });
+          Object.assign(state.snap, { read: j, readName: name, source: 'OFFLINE_JSON' }); describeSnapshot();
+        }));
+        $('sdbFileInput').addEventListener('change', e => readFile(e.target, (j, name) => {
+          if (state.snap.source === 'SYNTHETIC') { Object.assign(state.snap, { read: null, readName: '', source: null }); showToast('합성 read와 섞지 않도록 read.json도 여세요.'); }
+          Object.assign(state.snap, { sdb: j, sdbName: name }); describeSnapshot();
+        }));
+        $('loadSyntheticBtn').addEventListener('click', () => { Object.assign(state.snap, { read: SYN.read, readName: '합성 read', sdb: SYN.sdb, sdbName: '합성 sdb', source: 'SYNTHETIC' }); describeSnapshot(); showToast('합성 픽스처(SYNTHETIC) — 실측 아님'); });
+        $('showSnapshotBtn').addEventListener('click', showSnapshot);
+        document.addEventListener('visibilitychange', () => { if (document.hidden) stopAll(); else if (state.mode === 'SIMULATION' || state.mode === 'LIVE' || state.mode === 'STALE') schedule(); });
+        window.addEventListener('resize', () => drawCharts(null));
+        startSimulation();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,297 @@
+{
+  "fixture": "rc2_synthetic",
+  "model": {
+    "source": "SYNTHETIC",
+    "limits": {
+      "gpuTempC": 72,
+      "pinA": 7
+    },
+    "hwinfo": {
+      "timestampMs": 1795464600210.4,
+      "timestampRsMs": 1795464600100.1,
+      "timestampReMs": 1795464600235.8,
+      "readoutMs": 110.3,
+      "jsonBuildMs": 25.4,
+      "ordered": true
+    },
+    "cpu": {
+      "name": "AMD Ryzen 7 9800X3D",
+      "tctlC": 64.8,
+      "packagePowerW": 86.4,
+      "usagePct": 41.2
+    },
+    "gpus": [
+      {
+        "index": 0,
+        "name": "NVIDIA GeForce RTX 5080",
+        "coreTempC": 66.5,
+        "hotspotC": null,
+        "memJunctionC": null,
+        "powerW": 332.5,
+        "loadPct": null,
+        "vramUsedMB": null,
+        "clockMHz": null,
+        "hot": false
+      },
+      {
+        "index": 1,
+        "name": "NVIDIA GeForce RTX 5060 Ti",
+        "coreTempC": 44,
+        "hotspotC": null,
+        "memJunctionC": null,
+        "powerW": null,
+        "loadPct": null,
+        "vramUsedMB": null,
+        "clockMHz": null,
+        "hot": false
+      }
+    ],
+    "gpuPower": {
+      "state": "PARTIAL",
+      "totalW": null,
+      "reported": 1,
+      "expected": 2
+    },
+    "gpuTemps": {
+      "coreMaxC": 66.5,
+      "hotspotMaxC": null,
+      "memJunctionMaxC": null
+    },
+    "ram": {
+      "usedMB": 36864,
+      "availableMB": 94208,
+      "loadPct": null
+    },
+    "dimms": [],
+    "nvme": [],
+    "wireview": {
+      "present": true,
+      "completeness": "INCOMPLETE",
+      "presentPins": 1,
+      "pins": [
+        {
+          "pin": 1,
+          "currentA": 4.62,
+          "voltageV": null,
+          "powerW": null,
+          "level": "NORMAL"
+        },
+        {
+          "pin": 2,
+          "currentA": null,
+          "voltageV": null,
+          "powerW": null,
+          "level": "N/A"
+        },
+        {
+          "pin": 3,
+          "currentA": null,
+          "voltageV": null,
+          "powerW": null,
+          "level": "N/A"
+        },
+        {
+          "pin": 4,
+          "currentA": null,
+          "voltageV": null,
+          "powerW": null,
+          "level": "N/A"
+        },
+        {
+          "pin": 5,
+          "currentA": null,
+          "voltageV": null,
+          "powerW": null,
+          "level": "N/A"
+        },
+        {
+          "pin": 6,
+          "currentA": null,
+          "voltageV": null,
+          "powerW": null,
+          "level": "N/A"
+        }
+      ],
+      "totalW": 334.8,
+      "temperaturesC": [],
+      "deltaA": null,
+      "ownership": {
+        "state": "UNCONFIRMED",
+        "basis": "REST 센서 노출만으로는 USB 소유권을 확정하지 않음 — 운영자 확인·프로세스·PnP 증거 필요"
+      },
+      "anyPinOver": false
+    },
+    "mapping": {
+      "readings": 10,
+      "mappedToSdb": 10,
+      "mappingPct": 100,
+      "unmappedKeys": [],
+      "unitMismatches": [],
+      "candidates": {
+        "cpu.tctl": [
+          "CPU [#0]: AMD Ryzen 7 9800X3D|Tctl/Tdie|1"
+        ],
+        "cpu.packagePower": [
+          "CPU [#0]: AMD Ryzen 7 9800X3D|CPU Package Power|5"
+        ],
+        "cpu.usage": [
+          "CPU [#0]: AMD Ryzen 7 9800X3D|Total CPU Usage|7"
+        ],
+        "gpu[0].coreTemp": [
+          "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Temperature|1"
+        ],
+        "gpu[0].power": [
+          "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Power|5"
+        ],
+        "gpu[1].coreTemp": [
+          "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Temperature|1"
+        ],
+        "ram.usedMB": [
+          "System: Synthetic Test|Physical Memory Used|8"
+        ],
+        "ram.availableMB": [
+          "System: Synthetic Test|Physical Memory Available|8"
+        ],
+        "wireview.totalPower": [
+          "Thermal Grizzly WireView Pro II|Total Power|5"
+        ]
+      },
+      "resolved": {
+        "cpu.tctl": "CPU [#0]: AMD Ryzen 7 9800X3D|Tctl/Tdie|1",
+        "cpu.packagePower": "CPU [#0]: AMD Ryzen 7 9800X3D|CPU Package Power|5",
+        "cpu.usage": "CPU [#0]: AMD Ryzen 7 9800X3D|Total CPU Usage|7",
+        "gpu[0].coreTemp": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Temperature|1",
+        "gpu[0].hotspotTemp": null,
+        "gpu[0].memJunctionTemp": null,
+        "gpu[0].power": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Power|5",
+        "gpu[0].load": null,
+        "gpu[0].vramUsed": null,
+        "gpu[0].clock": null,
+        "gpu[1].coreTemp": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Temperature|1",
+        "gpu[1].hotspotTemp": null,
+        "gpu[1].memJunctionTemp": null,
+        "gpu[1].power": null,
+        "gpu[1].load": null,
+        "gpu[1].vramUsed": null,
+        "gpu[1].clock": null,
+        "ram.usedMB": "System: Synthetic Test|Physical Memory Used|8",
+        "ram.availableMB": "System: Synthetic Test|Physical Memory Available|8",
+        "ram.loadPct": null,
+        "wireview.pin1": "Thermal Grizzly WireView Pro II|Pin 1 Current|4",
+        "wireview.pin2": null,
+        "wireview.pin3": null,
+        "wireview.pin4": null,
+        "wireview.pin5": null,
+        "wireview.pin6": null,
+        "wireview.totalPower": "Thermal Grizzly WireView Pro II|Total Power|5"
+      },
+      "decimalCommaSuspects": [],
+      "decimalCommaSuspectCount": 0
+    }
+  },
+  "g2": {
+    "gate": "G2",
+    "source": "SYNTHETIC",
+    "criteriaMet": false,
+    "verdict": "UNVERIFIED",
+    "checks": [
+      {
+        "name": "readToSdbMappingPct",
+        "value": 100,
+        "limit": ">= 99",
+        "pass": true
+      },
+      {
+        "name": "blockingUnitMismatches",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "decimalCommaSuspects",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "gpuCount",
+        "value": 2,
+        "limit": "== 2",
+        "pass": true
+      },
+      {
+        "name": "cpu.tctl",
+        "value": 64.8,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "cpu.usage",
+        "value": 41.2,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].coreTemp",
+        "value": 66.5,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].power",
+        "value": 332.5,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].load",
+        "value": null,
+        "limit": "present",
+        "pass": false
+      },
+      {
+        "name": "gpu[1].coreTemp",
+        "value": 44,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[1].power",
+        "value": null,
+        "limit": "present",
+        "pass": false
+      },
+      {
+        "name": "gpu[1].load",
+        "value": null,
+        "limit": "present",
+        "pass": false
+      },
+      {
+        "name": "ram.usedMB",
+        "value": 36864,
+        "limit": "present",
+        "pass": true
+      }
+    ],
+    "blockingUnitMismatches": [],
+    "informational": {
+      "cpu.packagePower": true,
+      "gpu.hotspotTemp": [
+        false,
+        false
+      ],
+      "gpu.memJunctionTemp": [
+        false,
+        false
+      ],
+      "gpu.vramUsed": [
+        false,
+        false
+      ],
+      "dimm.temp": [],
+      "nvme.temp": [],
+      "nvme.remainingLife": []
+    }
+  }
+}

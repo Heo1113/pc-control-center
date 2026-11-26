@@ -1,0 +1,44 @@
+{
+  "_notice": "SYNTHETIC TEST FIXTURE — 공식 HWiNFO REST API v1 SDB 스키마 기반 합성 샘플 (실측 데이터 아님)",
+  "Version": 1,
+  "System: Synthetic Test": {
+    "Physical Memory Used": {
+      "8": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "MB", "Tooltip": "Used physical RAM", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 8, "eTypeUnion": 0 } }
+    },
+    "Physical Memory Available": {
+      "8": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "MB", "Tooltip": "Available physical RAM", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 8, "eTypeUnion": 0 } }
+    }
+  },
+  "CPU [#0]: AMD Ryzen 7 9800X3D": {
+    "Tctl/Tdie": {
+      "1": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "°C", "Tooltip": "CPU Tctl/Tdie temperature (t-prefixed name regression test)", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 1, "eTypeUnion": 0 } }
+    },
+    "Total CPU Usage": {
+      "7": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "%", "Tooltip": "Total CPU usage (t-prefixed name regression test)", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 7, "eTypeUnion": 0 } }
+    },
+    "CPU Package Power": {
+      "5": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "W", "Tooltip": "Package power", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 5, "eTypeUnion": 0 } }
+    }
+  },
+  "GPU [#0]: NVIDIA GeForce RTX 5080": {
+    "GPU Temperature": {
+      "1": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "°C", "Tooltip": "GPU Core Temp", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 1, "eTypeUnion": 0 } }
+    },
+    "GPU Power": {
+      "5": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "W", "Tooltip": "GPU Total Power", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 5, "eTypeUnion": 0 } }
+    }
+  },
+  "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+    "GPU Temperature": {
+      "1": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "°C", "Tooltip": "Secondary GPU Temp", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 1, "eTypeUnion": 0 } }
+    }
+  },
+  "Thermal Grizzly WireView Pro II": {
+    "Total Power": {
+      "5": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "W", "Tooltip": "WireView Total Power (t-prefixed regression test)", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 5, "eTypeUnion": 0 } }
+    },
+    "Pin 1 Current": {
+      "4": { "hide": 0, "monitoring": 1, "logging": 1, "Unit": "A", "Tooltip": "12V-2x6 Pin 1 Current", "tSensorLocation": {}, "tReadingLocation": {}, "tReadingType": { "eType": 4, "eTypeUnion": 0 } }
+    }
+  }
+}

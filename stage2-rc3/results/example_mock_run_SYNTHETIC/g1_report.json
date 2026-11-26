@@ -1,0 +1,62 @@
+{
+  "gate": "G1",
+  "source": "SYNTHETIC",
+  "criteriaMet": false,
+  "verdict": "UNVERIFIED",
+  "clockOffsetMs": 7.7,
+  "cpu": {
+    "collectMeanPct": null,
+    "baselineMeanPct": null
+  },
+  "checks": [
+    {
+      "name": "samples",
+      "value": 8,
+      "limit": ">= 60",
+      "pass": false
+    },
+    {
+      "name": "successRatePct",
+      "value": 100.0,
+      "limit": ">= 100",
+      "pass": true
+    },
+    {
+      "name": "versionMismatches",
+      "value": 0,
+      "limit": "<= 0 (Version 1)",
+      "pass": true
+    },
+    {
+      "name": "rttP95Ms",
+      "value": 13.1,
+      "limit": "<= 300",
+      "pass": true
+    },
+    {
+      "name": "readoutP95Ms",
+      "value": 110.0,
+      "limit": "<= 250",
+      "pass": true
+    },
+    {
+      "name": "timestampViolations",
+      "value": 0,
+      "limit": "<= 0",
+      "pass": true
+    },
+    {
+      "name": "staleSamples",
+      "value": 0,
+      "limit": "<= 0",
+      "pass": true
+    },
+    {
+      "name": "hwinfoCpuOverheadPct",
+      "value": null,
+      "limit": "<= 3",
+      "pass": null,
+      "note": "REST 비활성 기준선(baseline.json) 없음"
+    }
+  ]
+}

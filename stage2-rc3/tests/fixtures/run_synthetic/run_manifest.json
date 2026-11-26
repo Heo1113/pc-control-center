@@ -1,0 +1,23 @@
+{
+ "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+ "schema": "iron.rc3.run/1",
+ "source": "SYNTHETIC",
+ "sourceReason": "tools/make_synthetic_fixtures.py 가 만든 합성 수집 폴더",
+ "collector": "synthetic",
+ "gate": "G3A",
+ "url": "http://127.0.0.1:8764",
+ "startedAtUtc": "synthetic",
+ "samplesRequested": 12,
+ "intervalMs": 1000,
+ "endpointOwner": null,
+ "operatorAttestation": {
+  "hwinfoIsOnlyWireViewClient": true,
+  "note": "synthetic"
+ },
+ "evidence": {
+  "wireViewClientProcesses": [],
+  "pnp": [],
+  "ports": []
+ },
+ "baselineFile": "baseline.json"
+}

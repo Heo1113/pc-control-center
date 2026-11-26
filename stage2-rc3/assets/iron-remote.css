@@ -1,0 +1,14 @@
+/* IRON Remote RC2 — Local Zero-CDN Stylesheet Reference (included in RC2 package assets/) */
+:root {
+  --bg-obsidian: #090B0F;
+  --bg-panel: #11151D;
+  --bg-sub: #0D1118;
+  --border-steel: #232C3D;
+  --text-primary: #E8EEF8;
+  --text-muted: #8494AE;
+  --cyan: #38BDF8;
+  --amber: #F59E0B;
+  --crimson: #EF4444;
+  --emerald: #10B981;
+}
+/* Note: IRON_REMOTE_PROTOTYPE.html bundles these styles inline so it also works standalone offline without external CDN. */
