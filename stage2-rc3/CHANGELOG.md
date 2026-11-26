@@ -1,5 +1,25 @@
 # CHANGELOG — IRON Stage 2 HWiNFO REST API 독립 조사 및 검증 패키지
 
+## [RC3.1] - 2026-11-26 — Windows 러너 호환성 검증 반영
+
+임시 브랜치 `rc3/windows-ci-check`의 GitHub Actions Windows 러너(Windows PowerShell 5.1.26100, PowerShell 7.6.10, .NET 10, 로캘 ko-KR·de-DE)에서 **모의 HWiNFO 서버(SYNTHETIC)**로 검증했습니다. 실제 하드웨어 측정이 아닙니다. `main`·`feat/iron-ui-stage1`은 변경하지 않았습니다.
+
+### Fixed (검증 중 발견)
+- **Baseline 모드가 실행되자마자 실패**: 지역 변수 `$samples`가 매개변수 `[int]$Samples`와 같은 변수(PowerShell 변수 이름은 대소문자 무시)여서 배열 대입이 형 변환 오류를 냈음. 실기 절차 3단계에서 그대로 막혔을 결함 → `$cpuSamples`로 변경.
+- **Baseline 측정 중 "REST 서버가 켜졌다" 오판**: `@(Get-Listener …)`가 빈 배열을 원소 1개로 셈 → 반환값을 그대로 비교.
+- **CPU 측정 경로**: 출처가 `LIVE_CAPTURE`일 때만 HWiNFO CPU를 쟀음 → 포트 소유자가 HWiNFO로 확인되면 항상 측정(HWiNFO가 아닌 소유자는 그 전에 중단).
+- 기준선 파일이 없으면 수집 폴더를 만들기 전에 중단.
+- PoC `live`: 응답에 SYNTHETIC 표시가 있으면 출처를 SYNTHETIC으로 기록(수집기·HTML과 같게).
+
+### Verified (Windows, 모의 서버)
+- PS 5.1: 정책 거부(8080), 비-HWiNFO 소유자 중단, Inventory(포트 소유자·버전·°C 보존·한글), Baseline, Collect 정상(CPU 표본·오버헤드 계산), G3A 형식, 503·잘린 JSON, SDB Version 2 거부, Analyze, 연결 해제·재연결, WireView 클라이언트 감지(코드 5, 프로세스 유지).
+- PS 7: Windows 전용 경로(소유자·CPU·PnP·레지스트리)와 연결 해제·재연결, WireView 감지.
+- PowerShell G1 == C# analyze G1 (모든 수집 폴더), de-DE 로캘에서도 JSON 숫자·G1 일치.
+- C# PoC: selftest(JS 기대값 일치), live 정상, live 연결 해제·재연결(종료 코드 3, 표본 누락 없음).
+
+### Known (미수정, 승인 시 수정)
+- 연결이 끊긴 동안 요청 하나가 끊긴 시간 내내 막히고, 재연결 뒤 밀린 표본을 간격 없이 몰아서 보냄. 실패가 1건이라도 있으면 G1·G3A는 미달이므로 판정은 안전하지만, 실패 수가 끊긴 시간보다 적게 기록됨. 수정안: 일정이 한 간격 이상 밀리면 다시 기준을 잡고 건너뛴 칸 수를 기록.
+
 ## [RC3] - 2026-11-24
 
 RC2 독립 검수의 잔여 결함 10건을 고쳤습니다. Stage 1(`feat/iron-ui-stage1`), `main`, 기존 백엔드, 하드웨어 보호 설정은 변경하지 않았고 격리 폴더에서만 작업했습니다. **실측은 하지 못했습니다**(사용자 PC 미연결) — G1~G5는 모두 미검증이며 `results/`에는 합성 자체 시험 출력만 있습니다.

@@ -19,6 +19,7 @@
 | G3B WireView 동시 접근 | 실행 안 함 | 별도 승인 전 금지 |
 | G4S 운용성(자동 시작·포트 점유) | 미검증 | 수동 기록 |
 | G5 자동 테스트 | 합성 데이터로 통과 | 아래 참고, LAN 노출 시험은 실행 안 함 |
+| Windows 호환성(도구 자체) | 모의 서버로 통과 | Windows PowerShell 5.1·7, .NET 10, ko-KR·de-DE (CHANGELOG RC3.1) |
 
 ## 장기 미검증
 
