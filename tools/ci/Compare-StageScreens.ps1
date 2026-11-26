@@ -125,6 +125,13 @@ $rows = foreach ($f in $files) {
     $whole = $hb[0] -eq $hn[0]
     $d = [long[]]@(0, 0, 0, 0, 0, 0)
     if (-not $whole) { $d = [ScreenDiff]::Masked((PathOf 'base' $name), (PathOf 'new' $name), $cells) }
+    # Outside the cells, does any render of this branch match 187d533? (a difference only some runs show is run-to-run
+    # variation of this branch, reported separately; a difference every run shows is a real change and fails)
+    $bestOutside = [long]$d[0]
+    for ($k = 1; $k -lt $runsN.Count -and $bestOutside -ne 0; $k++) {
+        $o = if ($hn[$k] -eq $hb[0]) { 0 } else { [ScreenDiff]::Masked((PathOf 'base' $name), (PathOf $runsN[$k] $name), $cells)[0] }
+        if ($o -ge 0 -and $o -lt $bestOutside) { $bestOutside = $o }
+    }
     $box = ''
     if ($d[0] -gt 0) { $box = "$($d[2]),$($d[3])-$($d[4]),$($d[5])" }
     $selfOutside = 0
@@ -132,7 +139,7 @@ $rows = foreach ($f in $files) {
         if ($hn[$k] -ne $hn[0]) { $selfOutside = [Math]::Max($selfOutside, [ScreenDiff]::Masked((PathOf 'new' $name), (PathOf $runsN[$k] $name), $cells)[0]) }
     }
     [pscustomobject]@{
-        File = $name; Cells = $cells.Count / 4; Whole = $whole; Outside = $d[0]; Inside = $d[1]
+        File = $name; Cells = $cells.Count / 4; Whole = $whole; Outside = $d[0]; BestOutside = $bestOutside; Inside = $d[1]
         Box = $box
         BaseVariants = @($hb | Select-Object -Unique).Count; BranchVariants = @($hn | Select-Object -Unique).Count; BranchSelfOutside = $selfOutside
     }
@@ -142,7 +149,8 @@ foreach ($r in $rows) {
     if ($r.Whole) { $state = 'identical to 187d533' }
     elseif ($r.Outside -eq 0) { $state = "changed only inside name cells ($($r.Inside) px)" }
     elseif ($r.Outside -lt 0) { $state = 'SIZE DIFFERS' }
-    else { $state = "OUTSIDE name cells: $($r.Outside) px at $($r.Box) (inside: $($r.Inside) px)" }
+    elseif ($r.BestOutside -eq 0) { $state = "changed inside name cells ($($r.Inside) px); outside them run 1 differs by $($r.Outside) px at $($r.Box) but another run of this branch matches 187d533 there (run-to-run variation)" }
+    else { $state = "OUTSIDE name cells: $($r.Outside) px at $($r.Box), in every run (inside: $($r.Inside) px)" }
     $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: 187d533 $($r.BaseVariants), branch $($r.BranchVariants)"
     if ($r.BranchSelfOutside -gt 0) { $line += " (branch vs itself outside name cells: $($r.BranchSelfOutside) px)" }
     $line
@@ -169,10 +177,12 @@ foreach ($r in $rows) {
     }
 }
 
-$outsideScreens = @($rows | Where-Object { $_.Outside -ne 0 })
-$insideOnly = @($rows | Where-Object { -not $_.Whole -and $_.Outside -eq 0 })
+$outsideScreens = @($rows | Where-Object { $_.BestOutside -ne 0 })
+$jitterScreens = @($rows | Where-Object { $_.Outside -ne 0 -and $_.BestOutside -eq 0 })
+$insideOnly = @($rows | Where-Object { -not $_.Whole -and $_.BestOutside -eq 0 })
 $summary = "screens: $($rows.Count) · identical to 187d533: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
-    "($(($rows | Measure-Object Cells -Sum).Sum) cells) · changed outside the name cells: $($outsideScreens.Count) · " +
+    "($(($rows | Measure-Object Cells -Sum).Sum) cells) · changed outside the name cells in every run: $($outsideScreens.Count) · " +
+    "outside the name cells only in some runs of this branch: $($jitterScreens.Count) · " +
     "screens varying across $Runs runs: 187d533 $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
     "(outside name cells: $(@($rows | Where-Object { $_.BranchSelfOutside -gt 0 }).Count)) · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · " +
     "binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"

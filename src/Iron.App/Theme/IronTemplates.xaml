@@ -130,7 +130,8 @@
        program name, then the executable name in muted text when it fits. The row height, the other columns and the data are unchanged. -->
   <DataTemplate x:Key="Iron.ProcessNameCell">
     <DockPanel VerticalAlignment="Center" ToolTip="{Binding Identity}">
-      <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" VerticalAlignment="Center">
+      <!-- 1 DIP inset: the rounded box's anti-aliased edge stays inside the cell (it touched the column edge by 1 px) -->
+      <Grid DockPanel.Dock="Left" Width="16" Height="16" Margin="1,0,7,0" VerticalAlignment="Center">
         <Border CornerRadius="3" BorderThickness="1" BorderBrush="{StaticResource IronInkBezelMuted}"
                 Visibility="{Binding Identity.Icon, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}">
           <TextBlock Text="{Binding Identity.Monogram, Mode=OneWay}" FontFamily="{StaticResource IronDisplayFont}" FontSize="10" FontWeight="SemiBold"
