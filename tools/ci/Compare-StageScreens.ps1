@@ -67,6 +67,22 @@ public static class ScreenDiff {
     }
     return sb.ToString();
   }
+  // text picture of new around (cx, cy): luminance ramp, 'X' = differs from base, '|' column left of the nearest cell edge
+  public static string Around(string a, string b, int cx, int cy, int w, int h) {
+    using (var x = new Bitmap(a)) using (var y = new Bitmap(b)) {
+      var sb = new System.Text.StringBuilder(); const string ramp = " .:-=+*%@#";
+      for (int py = Math.Max(0, cy - h / 2); py < Math.Min(x.Height, cy + h / 2); py++) {
+        sb.Append(py.ToString().PadLeft(5)).Append(' ');
+        for (int px = Math.Max(0, cx - w / 2); px < Math.Min(x.Width, cx + w / 2); px++) {
+          var p = y.GetPixel(px, py); var q = x.GetPixel(px, py);
+          if (p != q) { sb.Append('X'); continue; }
+          int lum = (p.R * 3 + p.G * 6 + p.B) / 10; sb.Append(ramp[Math.Min(9, lum * 10 / 256)]);
+        }
+        sb.Append('\n');
+      }
+      return sb.ToString();
+    }
+  }
   // base64 PNG of the rectangle, scaled
   public static string Crop(string path, int x0, int y0, int x1, int y1, double scale) {
     using (var src = new Bitmap(path)) {
@@ -89,9 +105,15 @@ function HashOf([string]$dir, [string]$name) { (Get-FileHash -LiteralPath (Join-
 
 $rn = Get-Content (Join-Path $Root 'new/layout-report.json') -Raw | ConvertFrom-Json
 $rb = Get-Content (Join-Path $Root 'base/layout-report.json') -Raw | ConvertFrom-Json
-$cellsByFile = @{}
-foreach ($s in $rn.screens) { $cellsByFile[$s.file] = [int[]]@($s.nameCells | ForEach-Object { $_ }) }
+$cellsByFile = @{}; $procsByFile = @{}
+foreach ($s in $rn.screens) {
+    [int[]]$flat = @()
+    if ($s.nameCells) { $flat = [int[]]@($s.nameCells | ForEach-Object { $_ }) }
+    $cellsByFile[$s.file] = $flat
+    $procsByFile[$s.file] = @($s.nameCellProcesses)
+}
 
+$script:pictures = 0
 $runsB = @('base') + @(2..$Runs | ForEach-Object { "base$_" })
 $runsN = @('new') + @(2..$Runs | ForEach-Object { "new$_" })
 $files = Get-ChildItem (Join-Path $Root 'base') -Filter *.png | Sort-Object Name
@@ -124,7 +146,19 @@ foreach ($r in $rows) {
     $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: 187d533 $($r.BaseVariants), branch $($r.BranchVariants)"
     if ($r.BranchSelfOutside -gt 0) { $line += " (branch vs itself outside name cells: $($r.BranchSelfOutside) px)" }
     $line
-    if ($r.Outside -gt 0) { '    sample: ' + [ScreenDiff]::OutsideSample((PathOf 'base' $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12) }
+    if ($r.Outside -gt 0) {
+        '    sample: ' + [ScreenDiff]::OutsideSample((PathOf 'base' $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
+        if ($r.Box -match '^(\d+),(\d+)-') {
+            $bx = [int]$Matches[1]; $by = [int]$Matches[2]; $cl = $cellsByFile[$r.File]; $pr = $procsByFile[$r.File]
+            for ($i = 0; $i + 3 -lt $cl.Count; $i += 4) {
+                if ($by -ge $cl[$i + 1] -and $by -le $cl[$i + 3]) { "    row of cell $($i / 4) ($($pr[$i / 4])): cell $($cl[$i]),$($cl[$i + 1])-$($cl[$i + 2]),$($cl[$i + 3])" }
+            }
+            if ($script:pictures++ -lt 3) {
+                "    this branch around $bx,$by (X = differs from 187d533; luminance ' ' dark .. '#' light):"
+                [ScreenDiff]::Around((PathOf 'base' $r.File), (PathOf 'new' $r.File), $bx + 30, $by, 80, 24)
+            }
+        }
+    }
 }
 
 $outsideScreens = @($rows | Where-Object { $_.Outside -ne 0 })

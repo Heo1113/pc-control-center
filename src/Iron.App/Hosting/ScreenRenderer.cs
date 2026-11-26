@@ -61,7 +61,7 @@ internal static class ScreenRenderer
                 var issues = LayoutAudit.Check(view);
                 total += issues.Count;
                 screens.Add(new { file = Path.GetFileName(file), width, height, scale = options.RenderScale, layout = vm.Layout.ToString(), status = vm.StatusText, issues,
-                    nameCells = NameCells(view, options.RenderScale) });
+                    nameCells = NameCells(view, options.RenderScale, out var cellNames), nameCellProcesses = cellNames });
             }
 
             // the tray popup (its own window, fixed 320 DIP wide)
@@ -70,8 +70,10 @@ internal static class ScreenRenderer
             var trayFile = Path.Combine(dir, $"{sizeName}-tray-alert-flux-conflict.png");
             Render(tray, 320, double.NaN, options.RenderScale, trayFile);
             var trayIssues = LayoutAudit.Check(tray);
+            var trayCells = NameCells(tray, options.RenderScale, out var trayCellNames);
             total += trayIssues.Count;
-            screens.Add(new { file = Path.GetFileName(trayFile), width = 320.0, height = tray.ActualHeight, scale = options.RenderScale, layout = "Tray", status = trayVm.StatusText, issues = trayIssues });
+            screens.Add(new { file = Path.GetFileName(trayFile), width = 320.0, height = tray.ActualHeight, scale = options.RenderScale, layout = "Tray", status = trayVm.StatusText, issues = trayIssues,
+                nameCells = trayCells, nameCellProcesses = trayCellNames });
         }
 
         var bindingErrors = errors.Messages.Where(m => m.Contains("Error", StringComparison.Ordinal)).Distinct().ToList();
@@ -141,9 +143,10 @@ internal static class ScreenRenderer
     /// visible part of a scrolling list. CI compares screens with these areas apart from the rest of the screen, since the
     /// name cell is the one area changed on purpose (icon and identified program name).
     /// </summary>
-    internal static List<int[]> NameCells(FrameworkElement root, double scale)
+    internal static List<int[]> NameCells(FrameworkElement root, double scale, out List<string> processes)
     {
         var cells = new List<int[]>();
+        processes = [];
         var stack = new Stack<DependencyObject>();
         stack.Push(root);
         while (stack.Count > 0)
@@ -168,6 +171,7 @@ internal static class ScreenRenderer
                 if (!r.IsEmpty && r.Width > 0 && r.Height > 0)
                 {
                     cells.Add([(int)Math.Floor(r.Left * scale), (int)Math.Floor(r.Top * scale), (int)Math.Ceiling(r.Right * scale) - 1, (int)Math.Ceiling(r.Bottom * scale) - 1]);
+                    processes.Add((cell.DataContext as ProcessRowViewModel)?.Name ?? "?");
                 }
 
                 continue;
