@@ -1,0 +1,112 @@
+{
+  "fixture": "seq_invalid",
+  "invalidCount": 2,
+  "frames": [
+    {
+      "i": 0,
+      "freshness": "FRESH_BY_PROGRESS",
+      "ageMs": null,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "ONLINE",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 1,
+      "freshness": "FRESH_BY_PROGRESS",
+      "ageMs": null,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "ONLINE",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 2,
+      "freshness": "INVALID",
+      "ageMs": null,
+      "frozenMs": null,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "INVALID",
+      "wireViewStatus": "INVALID",
+      "reasons": [
+        "타임스탬프 순서 오류(RS<=TS<=RE 위반 또는 역행) — 프레임 폐기"
+      ]
+    },
+    {
+      "i": 3,
+      "freshness": "FRESH_BY_PROGRESS",
+      "ageMs": null,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "ONLINE",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 4,
+      "freshness": "INVALID",
+      "ageMs": null,
+      "frozenMs": null,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "INVALID",
+      "wireViewStatus": "INVALID",
+      "reasons": [
+        "타임스탬프 순서 오류(RS<=TS<=RE 위반 또는 역행) — 프레임 폐기"
+      ]
+    },
+    {
+      "i": 5,
+      "freshness": "FRESH_BY_PROGRESS",
+      "ageMs": null,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "ONLINE",
+      "wireViewStatus": "OK",
+      "reasons": []
+    }
+  ]
+}

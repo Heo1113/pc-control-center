@@ -1,0 +1,178 @@
+{
+ "fixture": "seq_frozen",
+ "invalidCount": 0,
+ "frames": [
+  {
+   "i": 0,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 0,
+   "newMeasurement": true,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 1,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 1000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 2,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 0,
+   "newMeasurement": true,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 3,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 1000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 4,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 2000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 5,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 3000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 6,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 4000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 7,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 5000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 8,
+   "freshness": "FRESH_BY_PROGRESS",
+   "ageMs": null,
+   "frozenMs": 6000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "ONLINE",
+   "wireViewStatus": "OK",
+   "reasons": []
+  },
+  {
+   "i": 9,
+   "freshness": "STALE",
+   "ageMs": null,
+   "frozenMs": 7000,
+   "newMeasurement": false,
+   "pinOverCount": 0,
+   "pinAlert": false,
+   "gpuHot": [
+    false,
+    false
+   ],
+   "wireViewCompleteness": "COMPLETE",
+   "status": "STALE",
+   "wireViewStatus": "STALE",
+   "reasons": [
+    "HWiNFO 타임스탬프가 7000 ms 동안 그대로"
+   ]
+  }
+ ]
+}

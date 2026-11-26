@@ -1,0 +1,193 @@
+{
+  "fixture": "seq_latch_release",
+  "invalidCount": 0,
+  "frames": [
+    {
+      "i": 0,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 1,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 1,
+      "freshness": "FRESH",
+      "ageMs": 1050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 1,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 2,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 2,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 3,
+      "freshness": "FRESH",
+      "ageMs": 1050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 2,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 4,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 3,
+      "pinAlert": true,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "핀 불균형 · GPU 온도 주의",
+      "wireViewStatus": "핀 불균형 주의",
+      "reasons": []
+    },
+    {
+      "i": 5,
+      "freshness": "FRESH",
+      "ageMs": 1050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 3,
+      "pinAlert": true,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "핀 불균형 · GPU 온도 주의",
+      "wireViewStatus": "핀 불균형 주의",
+      "reasons": []
+    },
+    {
+      "i": 6,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "ABSENT",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "N/A",
+      "reasons": []
+    },
+    {
+      "i": 7,
+      "freshness": "FRESH",
+      "ageMs": 1050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 8,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 1,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 9,
+      "freshness": "FRESH",
+      "ageMs": 1050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 1,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    },
+    {
+      "i": 10,
+      "freshness": "FRESH",
+      "ageMs": 50,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        true,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "GPU 온도 주의",
+      "wireViewStatus": "OK",
+      "reasons": []
+    }
+  ]
+}

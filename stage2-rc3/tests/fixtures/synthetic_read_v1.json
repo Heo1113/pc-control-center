@@ -1,0 +1,30 @@
+{
+  "_notice": "SYNTHETIC TEST FIXTURE — 공식 HWiNFO REST API v1 read 스키마 기반 합성 샘플 (실측 데이터 아님)",
+  "Version": 1,
+  "Timestamp RS": "25.11.2026 05:10:00.100",
+  "Timestamp": "25.11.2026 05:10:00.210",
+  "Timestamp RE": "25.11.2026 05:10:00.235",
+  "Timestamp RS ms": 1795464600100.100,
+  "Timestamp ms": 1795464600210.400,
+  "Timestamp RE ms": 1795464600235.800,
+  "System: Synthetic Test": {
+    "Physical Memory Used": { "8": { "Value": "36,864" } },
+    "Physical Memory Available": { "8": { "Value": "94,208" } }
+  },
+  "CPU [#0]: AMD Ryzen 7 9800X3D": {
+    "Tctl/Tdie": { "1": { "Value": "64.8" } },
+    "Total CPU Usage": { "7": { "Value": "41.2" } },
+    "CPU Package Power": { "5": { "Value": "86.4" } }
+  },
+  "GPU [#0]: NVIDIA GeForce RTX 5080": {
+    "GPU Temperature": { "1": { "Value": "66.5" } },
+    "GPU Power": { "5": { "Value": "332.5" } }
+  },
+  "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+    "GPU Temperature": { "1": { "Value": "44.0" } }
+  },
+  "Thermal Grizzly WireView Pro II": {
+    "Total Power": { "5": { "Value": "334.8" } },
+    "Pin 1 Current": { "4": { "Value": "4.62" } }
+  }
+}

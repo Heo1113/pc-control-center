@@ -1,0 +1,380 @@
+{
+ "fixture": "synthetic_mismatch",
+ "model": {
+  "source": "SYNTHETIC",
+  "limits": {
+   "gpuTempC": 72,
+   "pinA": 7
+  },
+  "hwinfo": {
+   "timestampMs": 1795464600100,
+   "timestampRsMs": 1795464599990,
+   "timestampReMs": 1795464600125,
+   "readoutMs": 110,
+   "jsonBuildMs": 25,
+   "ordered": true
+  },
+  "cpu": {
+   "name": "AMD Ryzen 7 9800X3D",
+   "tctlC": 64.8,
+   "packagePowerW": 86.4,
+   "usagePct": 41.2
+  },
+  "gpus": [
+   {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 5080",
+    "coreTempC": 66.5,
+    "hotspotC": 78.9,
+    "memJunctionC": 70,
+    "powerW": 332.5,
+    "loadPct": 97,
+    "vramUsedMB": 12450,
+    "clockMHz": 2805,
+    "hot": false
+   },
+   {
+    "index": 1,
+    "name": "NVIDIA GeForce RTX 5060 Ti",
+    "coreTempC": 44,
+    "hotspotC": null,
+    "memJunctionC": null,
+    "powerW": null,
+    "loadPct": 12,
+    "vramUsedMB": 1536,
+    "clockMHz": null,
+    "hot": false
+   }
+  ],
+  "gpuPower": {
+   "state": "PARTIAL",
+   "totalW": null,
+   "reported": 1,
+   "expected": 2
+  },
+  "gpuTemps": {
+   "coreMaxC": 66.5,
+   "hotspotMaxC": 78.9,
+   "memJunctionMaxC": 70
+  },
+  "ram": {
+   "usedMB": 36864,
+   "availableMB": 94208,
+   "loadPct": 28.1
+  },
+  "dimms": [
+   {
+    "sensor": "DDR5 DIMM [#0] (SPD)",
+    "temp": 465
+   }
+  ],
+  "nvme": [
+   {
+    "sensor": "S.M.A.R.T.: Samsung SSD 990 PRO 2TB",
+    "temp": 48,
+    "remainingLife": 99
+   }
+  ],
+  "wireview": {
+   "present": true,
+   "completeness": "COMPLETE",
+   "presentPins": 6,
+   "pins": [
+    {
+     "pin": 1,
+     "currentA": 4.62,
+     "voltageV": 12.08,
+     "powerW": null,
+     "level": "NORMAL"
+    },
+    {
+     "pin": 2,
+     "currentA": 4.71,
+     "voltageV": 12.07,
+     "powerW": null,
+     "level": "NORMAL"
+    },
+    {
+     "pin": 3,
+     "currentA": 4.55,
+     "voltageV": 12.08,
+     "powerW": null,
+     "level": "NORMAL"
+    },
+    {
+     "pin": 4,
+     "currentA": 4.8,
+     "voltageV": 12.06,
+     "powerW": null,
+     "level": "NORMAL"
+    },
+    {
+     "pin": 5,
+     "currentA": 4.49,
+     "voltageV": 12.08,
+     "powerW": null,
+     "level": "NORMAL"
+    },
+    {
+     "pin": 6,
+     "currentA": 4.66,
+     "voltageV": 12.07,
+     "powerW": null,
+     "level": "NORMAL"
+    }
+   ],
+   "totalW": 334.8,
+   "temperaturesC": [
+    {
+     "name": "Connector Temperature",
+     "valueC": 41.5
+    }
+   ],
+   "deltaA": 0.31,
+   "ownership": {
+    "state": "UNCONFIRMED",
+    "basis": "REST 센서 노출만으로는 USB 소유권을 확정하지 않음 — 운영자 확인·프로세스·PnP 증거 필요"
+   },
+   "anyPinOver": false
+  },
+  "mapping": {
+   "readings": 36,
+   "mappedToSdb": 35,
+   "mappingPct": 97.22,
+   "unmappedKeys": [
+    "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Fan|3"
+   ],
+   "unitMismatches": [
+    {
+     "item": "gpu[1].power",
+     "key": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Power|7",
+     "unit": "%",
+     "allowed": [
+      "W"
+     ]
+    }
+   ],
+   "candidates": {
+    "cpu.tctl": [
+     "CPU [#0]: AMD Ryzen 7 9800X3D|CPU (Tctl/Tdie)|1"
+    ],
+    "cpu.packagePower": [
+     "CPU [#0]: AMD Ryzen 7 9800X3D|CPU Package Power|5"
+    ],
+    "cpu.usage": [
+     "CPU [#0]: AMD Ryzen 7 9800X3D|Total CPU Usage|7"
+    ],
+    "gpu[0].coreTemp": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Temperature|1"
+    ],
+    "gpu[0].hotspotTemp": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Hot Spot Temperature|1"
+    ],
+    "gpu[0].memJunctionTemp": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Memory Junction Temperature|1"
+    ],
+    "gpu[0].power": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Power|5"
+    ],
+    "gpu[0].load": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Core Load|7"
+    ],
+    "gpu[0].vramUsed": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Memory Allocated|8"
+    ],
+    "gpu[0].clock": [
+     "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Clock|6"
+    ],
+    "gpu[1].coreTemp": [
+     "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Temperature|1"
+    ],
+    "gpu[1].power": [
+     "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Power|7"
+    ],
+    "gpu[1].load": [
+     "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Core Load|7"
+    ],
+    "gpu[1].vramUsed": [
+     "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Memory Allocated|8"
+    ],
+    "ram.usedMB": [
+     "System: Synthetic Test|Physical Memory Used|8"
+    ],
+    "ram.availableMB": [
+     "System: Synthetic Test|Physical Memory Available|8"
+    ],
+    "ram.loadPct": [
+     "System: Synthetic Test|Physical Memory Load|7"
+    ],
+    "dimm.temp": [
+     "DDR5 DIMM [#0] (SPD)|SPD Hub Temperature|1"
+    ],
+    "nvme.temp": [
+     "S.M.A.R.T.: Samsung SSD 990 PRO 2TB|Drive Temperature|1"
+    ],
+    "nvme.remainingLife": [
+     "S.M.A.R.T.: Samsung SSD 990 PRO 2TB|Drive Remaining Life|7"
+    ],
+    "wireview.totalPower": [
+     "Thermal Grizzly WireView Pro II|Total Power|5"
+    ]
+   },
+   "resolved": {
+    "cpu.tctl": "CPU [#0]: AMD Ryzen 7 9800X3D|CPU (Tctl/Tdie)|1",
+    "cpu.packagePower": "CPU [#0]: AMD Ryzen 7 9800X3D|CPU Package Power|5",
+    "cpu.usage": "CPU [#0]: AMD Ryzen 7 9800X3D|Total CPU Usage|7",
+    "gpu[0].coreTemp": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Temperature|1",
+    "gpu[0].hotspotTemp": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Hot Spot Temperature|1",
+    "gpu[0].memJunctionTemp": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Memory Junction Temperature|1",
+    "gpu[0].power": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Power|5",
+    "gpu[0].load": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Core Load|7",
+    "gpu[0].vramUsed": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Memory Allocated|8",
+    "gpu[0].clock": "GPU [#0]: NVIDIA GeForce RTX 5080|GPU Clock|6",
+    "gpu[1].coreTemp": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Temperature|1",
+    "gpu[1].hotspotTemp": null,
+    "gpu[1].memJunctionTemp": null,
+    "gpu[1].power": null,
+    "gpu[1].load": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Core Load|7",
+    "gpu[1].vramUsed": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Memory Allocated|8",
+    "gpu[1].clock": null,
+    "ram.usedMB": "System: Synthetic Test|Physical Memory Used|8",
+    "ram.availableMB": "System: Synthetic Test|Physical Memory Available|8",
+    "ram.loadPct": "System: Synthetic Test|Physical Memory Load|7",
+    "dimm.temp": "DDR5 DIMM [#0] (SPD)|SPD Hub Temperature|1",
+    "nvme.temp": "S.M.A.R.T.: Samsung SSD 990 PRO 2TB|Drive Temperature|1",
+    "nvme.remainingLife": "S.M.A.R.T.: Samsung SSD 990 PRO 2TB|Drive Remaining Life|7",
+    "wireview.pin1": "Thermal Grizzly WireView Pro II|Pin 1 Current|4",
+    "wireview.pin2": "Thermal Grizzly WireView Pro II|Pin 2 Current|4",
+    "wireview.pin3": "Thermal Grizzly WireView Pro II|Pin 3 Current|4",
+    "wireview.pin4": "Thermal Grizzly WireView Pro II|Pin 4 Current|4",
+    "wireview.pin5": "Thermal Grizzly WireView Pro II|Pin 5 Current|4",
+    "wireview.pin6": "Thermal Grizzly WireView Pro II|Pin 6 Current|4",
+    "wireview.totalPower": "Thermal Grizzly WireView Pro II|Total Power|5"
+   },
+   "decimalCommaSuspects": [
+    "DDR5 DIMM [#0] (SPD)|SPD Hub Temperature|1"
+   ],
+   "decimalCommaSuspectCount": 1
+  }
+ },
+ "g2": {
+  "gate": "G2",
+  "source": "SYNTHETIC",
+  "criteriaMet": false,
+  "verdict": "UNVERIFIED",
+  "checks": [
+   {
+    "name": "readToSdbMappingPct",
+    "value": 97.22,
+    "limit": ">= 99",
+    "pass": false
+   },
+   {
+    "name": "blockingUnitMismatches",
+    "value": 1,
+    "limit": "<= 0",
+    "pass": false
+   },
+   {
+    "name": "decimalCommaSuspects",
+    "value": 1,
+    "limit": "<= 0",
+    "pass": false
+   },
+   {
+    "name": "gpuCount",
+    "value": 2,
+    "limit": "== 2",
+    "pass": true
+   },
+   {
+    "name": "cpu.tctl",
+    "value": 64.8,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "cpu.usage",
+    "value": 41.2,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "gpu[0].coreTemp",
+    "value": 66.5,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "gpu[0].power",
+    "value": 332.5,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "gpu[0].load",
+    "value": 97,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "gpu[1].coreTemp",
+    "value": 44,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "gpu[1].power",
+    "value": null,
+    "limit": "present",
+    "pass": false
+   },
+   {
+    "name": "gpu[1].load",
+    "value": 12,
+    "limit": "present",
+    "pass": true
+   },
+   {
+    "name": "ram.usedMB",
+    "value": 36864,
+    "limit": "present",
+    "pass": true
+   }
+  ],
+  "blockingUnitMismatches": [
+   {
+    "item": "gpu[1].power",
+    "key": "GPU [#1]: NVIDIA GeForce RTX 5060 Ti|GPU Power|7",
+    "unit": "%",
+    "allowed": [
+     "W"
+    ]
+   }
+  ],
+  "informational": {
+   "cpu.packagePower": true,
+   "gpu.hotspotTemp": [
+    true,
+    false
+   ],
+   "gpu.memJunctionTemp": [
+    true,
+    false
+   ],
+   "gpu.vramUsed": [
+    true,
+    true
+   ],
+   "dimm.temp": [
+    true
+   ],
+   "nvme.temp": [
+    true
+   ],
+   "nvme.remainingLife": [
+    true
+   ]
+  }
+ }
+}

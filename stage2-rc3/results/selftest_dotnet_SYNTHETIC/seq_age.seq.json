@@ -1,0 +1,82 @@
+{
+  "fixture": "seq_age",
+  "invalidCount": 0,
+  "frames": [
+    {
+      "i": 0,
+      "freshness": "STALE",
+      "ageMs": 8050,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "STALE",
+      "wireViewStatus": "STALE",
+      "reasons": [
+        "측정 후 8050 ms 경과"
+      ]
+    },
+    {
+      "i": 1,
+      "freshness": "STALE",
+      "ageMs": 9050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "STALE",
+      "wireViewStatus": "STALE",
+      "reasons": [
+        "측정 후 9050 ms 경과"
+      ]
+    },
+    {
+      "i": 2,
+      "freshness": "STALE",
+      "ageMs": 8050,
+      "frozenMs": 0,
+      "newMeasurement": true,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "STALE",
+      "wireViewStatus": "STALE",
+      "reasons": [
+        "측정 후 8050 ms 경과"
+      ]
+    },
+    {
+      "i": 3,
+      "freshness": "STALE",
+      "ageMs": 9050,
+      "frozenMs": 1000,
+      "newMeasurement": false,
+      "pinOverCount": 0,
+      "pinAlert": false,
+      "gpuHot": [
+        false,
+        false
+      ],
+      "wireViewCompleteness": "COMPLETE",
+      "status": "STALE",
+      "wireViewStatus": "STALE",
+      "reasons": [
+        "측정 후 9050 ms 경과"
+      ]
+    }
+  ]
+}

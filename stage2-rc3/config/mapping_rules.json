@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "_note": "HWiNFO read/sdb 리딩을 IRON 항목에 대응시키는 규칙. 이름(정규식)은 후보를 고르는 데만 쓰고, 채택은 SDB 'Unit'(정규화)이 허용 단위와 맞을 때만 한다. 실제 이름은 사용자 PC의 인벤토리(sdb_dump.json)로 확정해야 하며, 확정 전에는 후보·거부 사유를 모두 보고한다. 정규식은 JavaScript와 .NET에서 같은 뜻이 되는 문법만 사용한다.",
+  "units": {
+    "°C": ["°C", "℃", "C", "degC"],
+    "°F": ["°F", "F"],
+    "W": ["W"],
+    "A": ["A"],
+    "V": ["V"],
+    "%": ["%"],
+    "MHz": ["MHz"],
+    "MB": ["MB", "MiB"],
+    "GB": ["GB", "GiB"],
+    "RPM": ["RPM"]
+  },
+  "groups": {
+    "cpu": {
+      "sensor": "^CPU \\[#(\\d+)\\]",
+      "readings": {
+        "tctl": { "name": "^(CPU \\()?Tctl/Tdie\\)?$", "units": ["°C"] },
+        "packagePower": { "name": "^(CPU Package Power|Package Power|CPU PPT)$", "units": ["W"] },
+        "usage": { "name": "^Total CPU Usage$", "units": ["%"] }
+      }
+    },
+    "gpu": {
+      "sensor": "^GPU \\[#(\\d+)\\]",
+      "readings": {
+        "coreTemp": { "name": "^GPU Temperature$", "units": ["°C"] },
+        "hotspotTemp": { "name": "^GPU Hot ?Spot Temperature$|^GPU Hot ?Spot$", "units": ["°C"] },
+        "memJunctionTemp": { "name": "^GPU Memory Junction Temperature$", "units": ["°C"] },
+        "power": { "name": "^(GPU Power|Total Board Power|GPU Power \\(Total\\))$", "units": ["W"] },
+        "load": { "name": "^(GPU Core Load|GPU Utilization)$", "units": ["%"] },
+        "vramUsed": { "name": "^(GPU Memory Allocated|GPU Memory Used|GPU D3D Memory Dedicated)$", "units": ["MB", "GB"] },
+        "clock": { "name": "^GPU Clock$", "units": ["MHz"] }
+      }
+    },
+    "ram": {
+      "sensor": "^System:",
+      "readings": {
+        "usedMB": { "name": "^Physical Memory Used$", "units": ["MB", "GB"] },
+        "availableMB": { "name": "^Physical Memory Available$", "units": ["MB", "GB"] },
+        "loadPct": { "name": "^Physical Memory Load$", "units": ["%"] }
+      }
+    },
+    "dimm": {
+      "sensor": "DIMM|SPD|DDR5",
+      "readings": { "temp": { "name": "Temperature|^DIMM", "units": ["°C"] } }
+    },
+    "nvme": {
+      "sensor": "S\\.M\\.A\\.R\\.T\\.|NVMe",
+      "readings": {
+        "temp": { "name": "^Drive Temperature( \\d+)?$|^Temperature$", "units": ["°C"] },
+        "remainingLife": { "name": "Remaining Life", "units": ["%"] }
+      }
+    },
+    "wireview": {
+      "sensor": "WireView",
+      "pinName": "(?:Pin|12V)\\s*#?\\s*([1-6])(?![0-9])",
+      "pinUnits": { "currentA": ["A"], "voltageV": ["V"], "powerW": ["W"] },
+      "totalPower": { "name": "^(Total Power|Power Total|Connector Power)$", "units": ["W"] },
+      "temperature": { "name": "Temp", "units": ["°C"] }
+    }
+  }
+}

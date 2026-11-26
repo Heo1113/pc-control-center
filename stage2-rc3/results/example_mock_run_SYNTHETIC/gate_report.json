@@ -1,0 +1,219 @@
+{
+  "schema": "iron.rc3.gate_report/1",
+  "generatedBy": "HWiNfoRestPoC analyze (RC3)",
+  "runDir": "results/example_mock_run_SYNTHETIC",
+  "source": "SYNTHETIC",
+  "sourceReason": "응답에 SYNTHETIC 표시(_notice)가 있음 — 모의 서버",
+  "passPolicy": "PASS/FAIL은 source=LIVE_CAPTURE일 때만. OFFLINE_JSON·SYNTHETIC·UNVERIFIED_ENDPOINT는 UNVERIFIED.",
+  "G1": {
+    "gate": "G1",
+    "source": "SYNTHETIC",
+    "criteriaMet": false,
+    "verdict": "UNVERIFIED",
+    "clockOffsetMs": 7.7,
+    "cpu": {
+      "collectMeanPct": null,
+      "baselineMeanPct": null
+    },
+    "checks": [
+      {
+        "name": "samples",
+        "value": 8,
+        "limit": ">= 60",
+        "pass": false
+      },
+      {
+        "name": "successRatePct",
+        "value": 100,
+        "limit": ">= 100",
+        "pass": true
+      },
+      {
+        "name": "versionMismatches",
+        "value": 0,
+        "limit": "<= 0 (Version 1)",
+        "pass": true
+      },
+      {
+        "name": "rttP95Ms",
+        "value": 13.1,
+        "limit": "<= 300",
+        "pass": true
+      },
+      {
+        "name": "readoutP95Ms",
+        "value": 110,
+        "limit": "<= 250",
+        "pass": true
+      },
+      {
+        "name": "timestampViolations",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "staleSamples",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "hwinfoCpuOverheadPct",
+        "value": null,
+        "limit": "<= 3",
+        "pass": null,
+        "note": "REST 비활성 기준선(baseline.json) 없음"
+      }
+    ]
+  },
+  "G2": {
+    "gate": "G2",
+    "source": "SYNTHETIC",
+    "criteriaMet": true,
+    "verdict": "UNVERIFIED",
+    "checks": [
+      {
+        "name": "readToSdbMappingPct",
+        "value": 100,
+        "limit": ">= 99",
+        "pass": true
+      },
+      {
+        "name": "blockingUnitMismatches",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "decimalCommaSuspects",
+        "value": 0,
+        "limit": "<= 0",
+        "pass": true
+      },
+      {
+        "name": "gpuCount",
+        "value": 2,
+        "limit": "== 2",
+        "pass": true
+      },
+      {
+        "name": "cpu.tctl",
+        "value": 64.8,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "cpu.usage",
+        "value": 41.2,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].coreTemp",
+        "value": 66.5,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].power",
+        "value": 332.5,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[0].load",
+        "value": 97,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[1].coreTemp",
+        "value": 44,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[1].power",
+        "value": 61.2,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "gpu[1].load",
+        "value": 12,
+        "limit": "present",
+        "pass": true
+      },
+      {
+        "name": "ram.usedMB",
+        "value": 36864,
+        "limit": "present",
+        "pass": true
+      }
+    ],
+    "blockingUnitMismatches": [],
+    "informational": {
+      "cpu.packagePower": true,
+      "gpu.hotspotTemp": [
+        true,
+        false
+      ],
+      "gpu.memJunctionTemp": [
+        true,
+        false
+      ],
+      "gpu.vramUsed": [
+        true,
+        true
+      ],
+      "dimm.temp": [
+        true
+      ],
+      "nvme.temp": [
+        true
+      ],
+      "nvme.remainingLife": [
+        true
+      ]
+    }
+  },
+  "G3A": {
+    "gate": "G3A",
+    "source": "SYNTHETIC",
+    "verdict": "NOT_RUN",
+    "note": "이 수집은 G3A 모드(-Gate G3A)가 아님"
+  },
+  "G3B": {
+    "gate": "G3B",
+    "verdict": "NOT_RUN",
+    "note": "WireView 동시 접근 시험은 사용자 별도 승인 전 금지"
+  },
+  "G4S": {
+    "gate": "G4S",
+    "verdict": "MANUAL",
+    "checks": [
+      "HWiNFO 재실행 후 REST 서버 자동 시작 여부 기록",
+      "8764/8765 점유 시 기존 프로세스 무변경 중단(Exit 1)"
+    ]
+  },
+  "G5": {
+    "gate": "G5",
+    "verdict": "RUN_SEPARATELY",
+    "command": "python -m unittest discover -s tests -p \"test_*.py\" -v",
+    "lanExposure": "NOT_RUN (--allow-lan 은 별도 승인 전 금지)"
+  },
+  "firstFrame": {
+    "source": "SYNTHETIC",
+    "status": "ONLINE",
+    "wireViewStatus": "OK",
+    "gpuPowerText": "393.7 W"
+  },
+  "longTermNotVerified": [
+    "12시간 이상 연속 운용(무료판 제한 여부 포함)",
+    "HWiNFO 재부팅·자동 시작 반복",
+    "WireView 동시 접근(G3B)",
+    "Remote LAN 노출",
+    "장시간 CPU 오버헤드 추세"
+  ]
+}

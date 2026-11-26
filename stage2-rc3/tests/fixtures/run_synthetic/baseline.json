@@ -1,0 +1,17 @@
+{
+ "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+ "mode": "Baseline",
+ "restListening": false,
+ "samples": [
+  {
+   "cpuPct": 1.1
+  },
+  {
+   "cpuPct": 1.0
+  },
+  {
+   "cpuPct": 1.2
+  }
+ ],
+ "meanCpuPct": 1.1
+}

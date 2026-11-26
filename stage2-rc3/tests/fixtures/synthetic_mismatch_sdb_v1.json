@@ -1,0 +1,543 @@
+{
+ "_notice": "SYNTHETIC TEST FIXTURE — RC3 합성 데이터(실측 아님). 이름은 예시이며 실기 SDB로 확정해야 함.",
+ "Version": 1,
+ "System: Synthetic Test": {
+  "Physical Memory Used": {
+   "8": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "MB",
+    "Tooltip": "Physical Memory Used",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 8,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Physical Memory Available": {
+   "8": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "MB",
+    "Tooltip": "Physical Memory Available",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 8,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Physical Memory Load": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "Physical Memory Load",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "CPU [#0]: AMD Ryzen 7 9800X3D": {
+  "CPU (Tctl/Tdie)": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "CPU (Tctl/Tdie)",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Total CPU Usage": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "Total CPU Usage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "CPU Package Power": {
+   "5": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "W",
+    "Tooltip": "CPU Package Power",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 5,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Core Clocks (avg)": {
+   "6": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "MHz",
+    "Tooltip": "Core Clocks (avg)",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 6,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "GPU [#0]: NVIDIA GeForce RTX 5080": {
+  "GPU Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "GPU Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Hot Spot Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "GPU Hot Spot Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Memory Junction Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "GPU Memory Junction Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Power": {
+   "5": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "W",
+    "Tooltip": "GPU Power",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 5,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Core Load": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "GPU Core Load",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Memory Allocated": {
+   "8": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "MB",
+    "Tooltip": "GPU Memory Allocated",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 8,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Clock": {
+   "6": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "MHz",
+    "Tooltip": "GPU Clock",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 6,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "GPU [#1]: NVIDIA GeForce RTX 5060 Ti": {
+  "GPU Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "GPU Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Power": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "GPU Power",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Core Load": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "GPU Core Load",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "GPU Memory Allocated": {
+   "8": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "GB",
+    "Tooltip": "GPU Memory Allocated",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 8,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "DDR5 DIMM [#0] (SPD)": {
+  "SPD Hub Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "SPD Hub Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "S.M.A.R.T.: Samsung SSD 990 PRO 2TB": {
+  "Drive Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "Drive Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Drive Remaining Life": {
+   "7": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "%",
+    "Tooltip": "Drive Remaining Life",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 7,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ },
+ "Thermal Grizzly WireView Pro II": {
+  "Total Power": {
+   "5": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "W",
+    "Tooltip": "Total Power",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 5,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Connector Temperature": {
+   "1": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "°C",
+    "Tooltip": "Connector Temperature",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 1,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 1 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 1 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 1 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 1 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 2 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 2 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 2 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 2 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 3 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 3 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 3 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 3 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 4 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 4 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 4 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 4 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 5 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 5 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 5 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 5 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 6 Current": {
+   "4": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "A",
+    "Tooltip": "Pin 6 Current",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 4,
+     "eTypeUnion": 0
+    }
+   }
+  },
+  "Pin 6 Voltage": {
+   "2": {
+    "hide": 0,
+    "monitoring": 1,
+    "logging": 1,
+    "Unit": "V",
+    "Tooltip": "Pin 6 Voltage",
+    "tSensorLocation": {},
+    "tReadingLocation": {},
+    "tReadingType": {
+     "eType": 2,
+     "eTypeUnion": 0
+    }
+   }
+  }
+ }
+}

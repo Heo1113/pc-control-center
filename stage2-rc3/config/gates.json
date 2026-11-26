@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "_note": "G1~G5 판정 기준의 단일 출처. poc/Collect-HWiNfoRest.ps1, poc/HWiNfoRestPoC (analyze), 문서가 모두 이 파일의 값을 사용한다. 단기 게이트 PASS는 LIVE_CAPTURE 데이터로만 가능하며, OFFLINE_JSON·SYNTHETIC 데이터로는 항상 UNVERIFIED.",
+  "ports": {
+    "basalt": 8080,
+    "hwinfo": 8764,
+    "relay": 8765,
+    "forbidden": [
+      8080
+    ]
+  },
+  "hwinfo": {
+    "expectedUpdateMs": 2000,
+    "minPollMs": 500,
+    "_source": "공식 HWiNFO_REST_API_SKILL.md (malikm/HWiNFO@97f5d5d): readings update at the sensor source's own rate (about every 2 s)"
+  },
+  "freshness": {
+    "maxAgeMs": 6000,
+    "maxFrozenMs": 6000,
+    "_rule": "age = (수신 시각 + ping 시계 오프셋) - 'Timestamp ms'. 'Timestamp ms'가 maxFrozenMs 동안 증가하지 않거나 age > maxAgeMs 이면 STALE. RS <= Timestamp <= RE 위반 또는 역행은 INVALID(폐기)."
+  },
+  "G1": {
+    "name": "API 연결·지연·신선도·오버헤드",
+    "samples": 60,
+    "intervalMs": 1000,
+    "successRatePctMin": 100,
+    "versionRequired": 1,
+    "rttP95MsMax": 300,
+    "readoutP95MsMax": 250,
+    "timestampViolationsMax": 0,
+    "staleSamplesMax": 0,
+    "hwinfoCpuOverheadPctMax": 3.0,
+    "_overhead": "REST 서버를 끈 기준선(Baseline 모드)과 REST 폴링 중(Collect 모드)의 HWiNFO64 CPU 사용률 차이. 기준선이 없으면 G1은 UNVERIFIED."
+  },
+  "G2": {
+    "name": "SDB↔Read 매핑·단위 기반 센서 식별",
+    "readToSdbMappingPctMin": 99.0,
+    "unitMismatchesMax": 0,
+    "decimalCommaSuspectsMax": 0,
+    "expectedGpuCount": 2,
+    "requiredCpu": [
+      "tctl",
+      "usage"
+    ],
+    "requiredPerGpu": [
+      "coreTemp",
+      "power",
+      "load"
+    ],
+    "requiredRam": [
+      "usedMB"
+    ],
+    "informational": [
+      "cpu.packagePower",
+      "gpu.hotspotTemp",
+      "gpu.memJunctionTemp",
+      "gpu.vramUsed",
+      "dimm.temp",
+      "nvme.temp",
+      "nvme.remainingLife"
+    ],
+    "_decimalComma": "공식 문서는 Value 문자열의 쉼표를 지우라고만 한다. 소수점이 쉼표인 로캘이면 '64,8'이 648이 되므로, 쉼표 뒤 숫자가 1~2자리로 끝나는 값(천 단위 구분은 항상 3자리)을 의심 값으로 세어 1건이라도 있으면 G2 미달."
+  },
+  "G3A": {
+    "name": "WireView Pro II 단독 접근 (HWiNFO만 접근)",
+    "samples": 600,
+    "intervalMs": 1000,
+    "pinsRequired": 6,
+    "frozenDistinctTimestampsMax": 10,
+    "dropSamplesMax": 0,
+    "requiresOperatorAttestation": true,
+    "_rule": "6핀 전류(A) 모두 매 샘플에 존재해야 함(INCOMPLETE 0). WireView 센서의 모든 수치가 서로 다른 HWiNFO 타임스탬프 기준 frozenDistinctTimestampsMax회 넘게 같으면 FROZEN. 소유권은 REST 센서 노출만으로 확정하지 않으며 운영자 확인과 증거(프로세스·PnP)를 함께 기록한다."
+  },
+  "G3B": {
+    "name": "WireView 동시 접근",
+    "status": "NOT_RUN",
+    "_rule": "사용자 별도 승인 전 실행 금지"
+  },
+  "G4S": {
+    "name": "운용성 단기 확인 (수동 기록)",
+    "checks": [
+      "HWiNFO 재실행 후 REST 서버 자동 시작 여부 기록",
+      "8764/8765 점유 시 기존 프로세스 무변경 중단(Exit 1)"
+    ]
+  },
+  "G5": {
+    "name": "Relay·Remote 자동 부정 테스트",
+    "command": "python -m unittest discover -s tests -p \"test_*.py\" -v",
+    "lanExposure": "NOT_RUN (--allow-lan 은 별도 승인 전 금지)"
+  },
+  "evidence": {
+    "_note": "소유권·동시 접근 증거 수집용. 프로세스 이름은 추정이며 Inventory 결과로 사용자 PC의 실제 이름을 확인해 고쳐야 한다. 수집기는 어떤 프로세스도 종료하지 않는다.",
+    "hwinfoProcessNames": [
+      "HWiNFO64",
+      "HWiNFO32",
+      "HWiNFO"
+    ],
+    "wireViewClientProcessNames": [
+      "WireView",
+      "WireView2",
+      "WireView2-SW",
+      "WireViewPro2",
+      "WireViewPro",
+      "iUnity"
+    ],
+    "scanPattern": "wire|unity|iron|pccontrol|basalt|hwinfo",
+    "usbIds": {
+      "wireViewPro2": {
+        "pnp": "VID_0483&PID_5740",
+        "_source": "CLAUDE_CODE_IMPLEMENTATION_PROMPT.md (A-Slim) — STM32 USB CDC, EF05/EF06"
+      },
+      "antecFluxPro": {
+        "pnp": "VID_2022&PID_0522",
+        "_source": "CLAUDE_CODE_IMPLEMENTATION_PROMPT.md (A-Slim) — 12바이트 HID"
+      }
+    }
+  },
+  "exitCodes": {
+    "0": "수집 완료 · G1 PASS (Inventory/Baseline은 정상 완료)",
+    "1": "정책 위반·포트 상태 불일치 — 기존 프로세스 무변경 중단",
+    "2": "연결·버전 실패",
+    "3": "수집 완료 · G1 FAIL(기준 미달)",
+    "4": "수집 완료 · G1 UNVERIFIED(기준선 없음·출처 미확인·합성)",
+    "5": "WireView 동시 접근 위험 감지 — 수집 중단(프로세스는 건드리지 않음)"
+  }
+}

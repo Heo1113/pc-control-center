@@ -1,0 +1,44 @@
+{
+  "_provenance": {
+    "note": "IRON Stage 1 (feat/iron-ui-stage1) 소스에서 tools/extract_stage1_thresholds.py로 추출한 UI 주의 기준. Stage 1은 값을 저장하지 않으므로 '실제 설정' = 소스의 기본값·허용 범위. 하드웨어(WireView 펌웨어) 보호 임계값과 무관.",
+    "repository": "Heo1113/pc-control-center",
+    "branch": "feat/iron-ui-stage1",
+    "commit": "187d5339a2dda4bfdf811b6dc8d3ead5944878e0",
+    "files": {
+      "src/Iron.App/Presentation/ShellViewModel.cs": "34-35 (NumericSetting 기본값·범위)",
+      "src/Iron.App/Presentation/Alerts.cs": "26 PinLatchReadings, 29 ApproachingShare, 43-48 IsHot/LevelOf (>= 비교)",
+      "src/Iron.App/Presentation/DeviceViewModels.cs": "35 PinScaleA"
+    },
+    "sha256": {
+      "src/Iron.App/Presentation/ShellViewModel.cs": "e527719b95fdbfdc860ab5934b06ee76dd927cf90105b5fff4df238c8846f1e3",
+      "src/Iron.App/Presentation/Alerts.cs": "b7e923720ca7b9499ddcc5cb35bbbc0b832697fbb347d0df962bc229dfb962a4",
+      "src/Iron.App/Presentation/DeviceViewModels.cs": "b1c936436248e237f4f4f3f22d37735b9d4d42c77260739297aca2f2154fee7b"
+    }
+  },
+  "rules": {
+    "gpuTemperature": "GPU 코어 온도(NVML 'GPU Temperature'에 해당) >= 기준이면 해당 GPU만 즉시 경고. 핫스팟·메모리 정션은 Stage 1 기준이 없으므로 표시만 하고 경고하지 않음.",
+    "pinLevel": "핀 전류 >= 기준이면 Over(적색), >= 기준 x pinApproachingShare 이면 Approaching(앰버)",
+    "pinLatch": "Over 상태가 서로 다른 HWiNFO 타임스탬프 기준으로 pinLatchReadings회 연속이면 '핀 불균형 주의' 래치",
+    "independence": "WireView 데이터가 없거나(USB 해제·미연결·INCOMPLETE) 해제되면 핀 경고만 해제되고 GPU 온도 경고는 영향받지 않음"
+  },
+  "notDefinedInStage1": [
+    "imbalancePercent (RC2의 35%는 Stage 1에 없는 값)",
+    "connectorTemperatureC (RC2의 75 °C는 Stage 1에 없는 값)",
+    "pinCriticalA (RC2의 9.0 A는 Stage 1 입력 범위 상한이지 경고 기준이 아님)"
+  ],
+  "gpuTemperatureC": {
+    "default": 72.0,
+    "min": 55.0,
+    "max": 95.0,
+    "decimals": 0
+  },
+  "wireViewPinCurrentA": {
+    "default": 7.0,
+    "min": 4.0,
+    "max": 9.0,
+    "decimals": 1
+  },
+  "pinApproachingShare": 0.72,
+  "pinLatchReadings": 3,
+  "pinScaleMaxA": 9.5
+}
