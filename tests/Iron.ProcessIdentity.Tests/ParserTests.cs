@@ -92,7 +92,7 @@ public class ClassifierTests
         Assert.Contains(noScm.Notes, n => n.Contains("서비스 목록", StringComparison.Ordinal));
         var noCmd = C("svchost.exe", null, services: [new ServiceEntry("Dhcp", "DHCP Client")]);
         Assert.Equal("DHCP Client", noCmd.Title!.Text);
-        Assert.Contains(noCmd.Notes, n => n.Contains("명령줄", StringComparison.Ordinal));
+        Assert.Contains(noCmd.Notes, n => n.Contains("서비스 그룹 미확인", StringComparison.Ordinal));
     }
 
     [Fact]

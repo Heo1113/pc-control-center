@@ -92,7 +92,10 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
           }
           Add-Type -AssemblyName System.Drawing
-          Add-Type -ReferencedAssemblies ([System.Drawing.Bitmap].Assembly.Location), ([System.Drawing.Rectangle].Assembly.Location) -TypeDefinition @"
+          $probe = [System.Drawing.Bitmap]::new(1, 1); $probe.Dispose()
+          # .NET 10 splits System.Drawing over several assemblies (GdiPlus, Primitives): reference every loaded one.
+          $refs = [AppDomain]::CurrentDomain.GetAssemblies() | Where-Object { -not $_.IsDynamic -and $_.Location -and $_.GetName().Name -match '^System\.(Drawing|Private\.Windows)' } | ForEach-Object Location
+          Add-Type -ReferencedAssemblies $refs -TypeDefinition @"
           using System; using System.Drawing; using System.Drawing.Imaging; using System.Runtime.InteropServices;
           public static class PixelDiff {
             // "count x0,y0-x1,y1" of differing pixels, or "size" when the images differ in size
@@ -160,6 +163,7 @@ jobs:
           Copy-Item tools/Iron.ProcessIdentity.Bench/bin/Release/net10.0/* "$w\bench" -Recurse
           python -m venv "$w\work\ml-lab\.venv"
           $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+          "node: $node"
           # A throwaway local standard user (Users group only) for this runner; the password is never printed.
           # 14 characters: net user asks an interactive question for longer passwords.
           $pw = 'Ib!' + [guid]::NewGuid().ToString('N').Substring(0, 9) + 'x9'

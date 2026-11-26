@@ -163,7 +163,7 @@ public static partial class SharedHostClassifier
         }
         else if (!hasCmd && !input.IsMock)
         {
-            b.Notes.Add("명령줄: 읽을 수 없음(권한 부족) — 서비스 그룹 미확인");
+            b.Notes.Add("서비스 그룹 미확인(명령줄 없음)");
         }
     }
 
@@ -175,7 +175,7 @@ public static partial class SharedHostClassifier
         {
             if (!input.IsMock)
             {
-                b.Notes.Add(hasCmd ? "COM 서러게이트 ID(/Processid)가 명령줄에 없음" : "명령줄: 읽을 수 없음(권한 부족) — COM 구성 요소 미확인");
+                b.Notes.Add(hasCmd ? "COM 서러게이트 ID(/Processid)가 명령줄에 없음" : "COM 구성 요소 미확인(명령줄 없음)");
             }
 
             return;
@@ -503,7 +503,7 @@ public static partial class SharedHostClassifier
         {
             if (!b.IsMock)
             {
-                b.Notes.Add("명령줄: 읽을 수 없음(권한 부족) — 호스트 앱 미확인");
+                b.Notes.Add("호스트 앱 미확인(명령줄 없음)");
             }
 
             return;
@@ -610,7 +610,7 @@ public static partial class SharedHostClassifier
     {
         if (!input.IsMock)
         {
-            b.Notes.Add("명령줄: 읽을 수 없음(권한 부족 또는 종료) — 실행 대상 미확인");
+            b.Notes.Add("실행 대상 미확인(명령줄 없음)");
         }
     }
 

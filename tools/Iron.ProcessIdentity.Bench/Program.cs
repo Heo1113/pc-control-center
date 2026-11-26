@@ -90,6 +90,9 @@ internal static class Program
         var nextSample = TimeSpan.FromSeconds(5);
         var end = TimeSpan.FromMinutes(minutes);
         var tick = 0;
+        var startCpu = me.TotalProcessorTime;
+        TimeSpan? cpuAt30 = null;
+        double? allIdentifiedAt = null;
         while (sw.Elapsed < end)
         {
             var snap = query.Snapshot(); // the polling loop's own work in both modes
@@ -107,6 +110,17 @@ internal static class Program
             }
 
             tick++;
+            if (resolver is not null && allIdentifiedAt is null && identified == snap.Count)
+            {
+                allIdentifiedAt = Math.Round(sw.Elapsed.TotalSeconds, 1);
+            }
+
+            if (cpuAt30 is null && sw.Elapsed >= TimeSpan.FromSeconds(30))
+            {
+                me.Refresh();
+                cpuAt30 = me.TotalProcessorTime;
+            }
+
             if (sw.Elapsed >= nextSample)
             {
                 me.Refresh();
@@ -128,6 +142,12 @@ internal static class Program
         }
 
         var steady = samples.Where(s => s.T >= 30).ToList();
+        me.Refresh();
+        var cpuEnd = me.TotalProcessorTime;
+        var elapsed = sw.Elapsed;
+        // Whole-period CPU: much finer than 5 s samples (Windows CPU time advances in ~15.6 ms steps).
+        var steadyCpu = cpuAt30 is { } c30 ? (cpuEnd - c30).TotalMilliseconds / (elapsed - TimeSpan.FromSeconds(30)).TotalMilliseconds / Environment.ProcessorCount * 100 : 0;
+        var warmupCpu = cpuAt30 is { } w30 ? (w30 - startCpu).TotalMilliseconds / 30000.0 / Environment.ProcessorCount * 100 : 0;
         var result = new
         {
             mode,
@@ -149,6 +169,9 @@ internal static class Program
                 processes = samples.LastOrDefault()?.Processes ?? 0,
                 identified = samples.LastOrDefault()?.Identified ?? 0,
                 steadyFrom = "30 s (JIT·초기 해석 제외)",
+                steadyCpuPctFromTotals = Math.Round(steadyCpu, 4),
+                warmupCpuPctFirst30s = Math.Round(warmupCpu, 3),
+                allIdentifiedAtS = allIdentifiedAt,
             },
             resolver = resolver?.Stats,
             fileCache = resolver is null ? null : new { resolver.Files.Count, resolver.Files.Capacity, resolver.Files.Hits, resolver.Files.Evictions, resolver.Files.Reloads },
@@ -207,14 +230,22 @@ internal static class Program
             Start(node, $"\"{Path.Combine(app, "server.js")}\" --token=abc.def.ghi", "node");
         }
 
-        var wv = Directory.GetFiles(@"C:\Program Files (x86)\Microsoft\EdgeWebView\Application", "msedgewebview2.exe", SearchOption.AllDirectories).FirstOrDefault();
+        var wvRoot = @"C:\Program Files (x86)\Microsoft\EdgeWebView\Application";
+        var wv = Directory.Exists(wvRoot) ? Directory.GetFiles(wvRoot, "msedgewebview2.exe", SearchOption.AllDirectories).FirstOrDefault() : null;
         if (wv is not null)
         {
-            Start(wv, $"--headless --no-first-run --webview-exe-name=IronBenchHost.exe --user-data-dir=\"{Path.Combine(work, "IronBenchHost", "EBWebView")}\" about:blank", "msedgewebview2");
+            // Without a host app the WebView2 browser may refuse to stay up; two ways are tried and what survives is recorded.
+            Start(wv, $"--headless=new --no-first-run --webview-exe-name=IronBenchHost.exe --user-data-dir=\"{Path.Combine(work, "IronBenchHost", "EBWebView")}\" about:blank", "msedgewebview2(headless)");
+            Start(wv, $"--embedded-browser-webview=1 --no-first-run --webview-exe-name=IronBenchHost2.exe --user-data-dir=\"{Path.Combine(work, "IronBenchHost2", "EBWebView")}\" about:blank", "msedgewebview2(embedded)");
         }
         else
         {
             log.Add("msedgewebview2: 런타임 없음");
+        }
+
+        if (node is null || !File.Exists(node))
+        {
+            log.Add("node: 실행 파일 없음(" + (node ?? "경로 미지정") + ")");
         }
 
         Start(Path.Combine(Environment.SystemDirectory, "dllhost.exe"), "/Processid:{AB8902B4-09CA-4BB6-B78D-A8F59079A8D5}", "dllhost(썸네일 캐시)");
@@ -229,6 +260,11 @@ internal static class Program
             snap = query.Snapshot();
             resolver.Observe(snap);
             Thread.Sleep(500);
+        }
+
+        foreach (var p in started.Where(HasExited))
+        {
+            log.Add($"PID {p.Id}: 식별 전에 종료(종료 코드 {ExitCode(p)})");
         }
 
         var mine = started.Where(p => !HasExited(p)).Select(p => p.Id).ToHashSet();
@@ -280,10 +316,26 @@ internal static class Program
             }
         }
 
-        var result = new { environment = Environment_(), startedAt, log, resolver = resolver.Stats, rows };
+        // Self-check: none of the secrets planted in the test command lines may appear anywhere in what is kept.
+        var planted = new[] { "hunter2", "sk-test-1234567890abcdef", "abc.def.ghi" };
+        var serializedRows = JsonSerializer.Serialize(rows, Json);
+        var leaked = planted.Count(x => serializedRows.Contains(x, StringComparison.Ordinal));
+        var result = new { environment = Environment_(), startedAt, log, resolver = resolver.Stats, secretCheck = new { planted = planted.Length, leaked }, rows };
         File.WriteAllText(outPath, JsonSerializer.Serialize(result, Json));
         Console.WriteLine($"samples: {rows.Count}개 기록 · " + string.Join(" / ", log));
         return 0;
+    }
+
+    private static string ExitCode(Process p)
+    {
+        try
+        {
+            return p.ExitCode.ToString(CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            return "?";
+        }
     }
 
     private static bool HasExited(Process p)
@@ -321,7 +373,9 @@ internal static class Program
             sb.AppendLine($"| {label} | {x.ToString("F" + d, CultureInfo.InvariantCulture)} | {y.ToString("F" + d, CultureInfo.InvariantCulture)} | {(y - x >= 0 ? "+" : "")}{(y - x).ToString("F" + d, CultureInfo.InvariantCulture)} |");
         }
 
-        Row("평균 CPU % (전체 코어 대비)", "avgCpuPct", 3);
+        Row("CPU % 정밀(30초 이후 누적 CPU 시간 ÷ 경과)", "steadyCpuPctFromTotals", 4);
+        Row("CPU % 첫 30초(초기 식별 포함)", "warmupCpuPctFirst30s", 3);
+        Row("평균 CPU % (5초 표본)", "avgCpuPct", 3);
         Row("최대 CPU %", "maxCpuPct", 3);
         Row("평균 Private 메모리 MB", "avgPrivateMb", 1);
         Row("최대 Private 메모리 MB", "maxPrivateMb", 1);
@@ -329,8 +383,11 @@ internal static class Program
         Row("GDI 객체(처음)", "gdiFirst", 0);
         Row("GDI 객체(마지막)", "gdiLast", 0);
         Row("GDI 객체(최대)", "gdiMax", 0);
+        Row("핸들(처음)", "handlesFirst", 0);
         Row("핸들(마지막)", "handlesLast", 0);
-        sb.AppendLine().AppendLine($"- 식별된 프로세스: {isum.GetProperty("identified").GetInt32()} / {isum.GetProperty("processes").GetInt32()}");
+        sb.AppendLine().AppendLine($"- 식별된 프로세스: {isum.GetProperty("identified").GetInt32()} / {isum.GetProperty("processes").GetInt32()}"
+                                   + (isum.GetProperty("allIdentifiedAtS") is { ValueKind: JsonValueKind.Number } at ? $" · 전부 식별까지 {at.GetDouble():0.0}초" : ""));
+        sb.AppendLine("- CPU 시간은 Windows에서 약 15.6 ms 단위로 늘어나므로 5초 표본 값은 해상도 한계 근처입니다. 비교는 '정밀' 행을 보십시오.");
         if (i.RootElement.TryGetProperty("resolver", out var rs) && rs.ValueKind == JsonValueKind.Object)
         {
             sb.AppendLine($"- 해석기: 큐 투입 {rs.GetProperty("Enqueued").GetInt64()} · 큐 가득 참으로 보류 {rs.GetProperty("Dropped").GetInt64()} · 완료 {rs.GetProperty("Resolved").GetInt64()} · 오류 {rs.GetProperty("Failed").GetInt64()} · 서비스 스냅샷 갱신 {rs.GetProperty("ServiceRefreshes").GetInt32()}회");
@@ -353,10 +410,26 @@ internal static class Program
                 continue;
             }
 
-            var hosted = string.Join("; ", a.GetProperty("hosted").EnumerateArray().Take(4).Select(h => h.GetString()));
-            var notes = string.Join("; ", a.GetProperty("notes").EnumerateArray().Select(n => n.GetString()));
+            var parts = new List<string>();
+            if (a.GetProperty("sharedHost").GetBoolean())
+            {
+                parts.Add("공유 호스트");
+            }
+
+            var hostedAll = a.GetProperty("hosted").EnumerateArray().Select(h => h.GetString()!).ToList();
+            if (hostedAll.Count > 0)
+            {
+                parts.Add(string.Join("; ", hostedAll.Take(4)) + (hostedAll.Count > 4 ? $" 외 {hostedAll.Count - 4}개" : ""));
+            }
+
+            var notes = a.GetProperty("notes").EnumerateArray().Select(n => n.GetString()!).ToList();
+            if (notes.Count > 0)
+            {
+                parts.Add("메모: " + string.Join("; ", notes));
+            }
+
             sb.AppendLine($"| {r.GetProperty("before").GetString()} | {Esc(a.GetProperty("title").GetString())} | {Esc(a.GetProperty("executor").GetString())} | "
-                          + $"{(a.GetProperty("sharedHost").GetBoolean() ? "공유 호스트 · " : "")}{Esc(hosted)}{(notes.Length > 0 ? " · " + Esc(notes) : "")} | {(a.GetProperty("hasIcon").GetBoolean() ? "있음" : "없음")} |");
+                          + $"{Esc(string.Join(" · ", parts))} | {(a.GetProperty("hasIcon").GetBoolean() ? "있음" : "없음")} |");
         }
 
         sb.AppendLine().AppendLine("### 이 도구가 시작한 프로세스의 명령줄(민감정보 제거 후)").AppendLine();
@@ -368,7 +441,12 @@ internal static class Program
             }
         }
 
-        sb.AppendLine().AppendLine("- 시작 기록: " + string.Join(" / ", s.RootElement.GetProperty("log").EnumerateArray().Select(x => x.GetString())));
+        if (s.RootElement.TryGetProperty("secretCheck", out var sc))
+        {
+            sb.AppendLine().AppendLine($"- 민감정보 자체 점검: 시험 명령줄에 심어 둔 비밀값 {sc.GetProperty("planted").GetInt32()}개 중 결과 파일에 남은 것 {sc.GetProperty("leaked").GetInt32()}개");
+        }
+
+        sb.AppendLine("- 시작 기록: " + string.Join(" / ", s.RootElement.GetProperty("log").EnumerateArray().Select(x => x.GetString())));
         File.WriteAllText(outPath, sb.ToString());
         Console.WriteLine(sb.ToString());
         return 0;
