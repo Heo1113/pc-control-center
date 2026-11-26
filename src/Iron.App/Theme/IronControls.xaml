@@ -12,6 +12,7 @@
   <h:EqualsConverter x:Key="Equals" />
   <h:VisibleWhenConverter x:Key="VisibleWhen" />
   <h:BoolBrushConverter x:Key="BoolBrush" />
+  <h:IconPixelsToImageConverter x:Key="IconPixelsToImage" />
   <h:NotConverter x:Key="Not" />
 
   <Style x:Key="Iron.FocusVisual">

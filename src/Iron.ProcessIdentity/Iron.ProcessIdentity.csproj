@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- IRON process identity (separate module): who a process really is — product name, icon, the real program behind a
+       shared host (svchost, dllhost, cmd, python, node, WebView2, rundll32) and a short Korean role. Reads only what a
+       standard user may read (no UAC, no driver), never attributes a shared host's resources to one program, and never
+       keeps a raw command line. .NET 10 + Win32/NTAPI P/Invoke only; no NuGet package. See docs/IRON_PROCESS_IDENTITY.md.
+       The parsers, caches and resolver are platform neutral (tested on Linux); the native layer runs on Windows only. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iron.ProcessIdentity</RootNamespace>
+    <AssemblyName>Iron.ProcessIdentity</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- ".ko." would otherwise make MSBuild treat the file as a Korean satellite resource (separate assembly). -->
+    <EmbeddedResource Include="Resources\ProcessRoleDictionary.ko.json" LogicalName="Iron.ProcessIdentity.ProcessRoleDictionary.ko.json" WithCulture="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Iron.ProcessIdentity.Tests" />
+    <InternalsVisibleTo Include="Iron.App.Tests" />
+  </ItemGroup>
+</Project>

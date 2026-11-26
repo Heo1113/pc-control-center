@@ -4,5 +4,9 @@
   <Folder Name="/iron/">
     <Project Path="src/Iron.App/Iron.App.csproj" />
     <Project Path="tests/Iron.App.Tests/Iron.App.Tests.csproj" />
+    <!-- Process identity module (separate; Stage 1 uses only its mock path) with its tests and the measurement tool. -->
+    <Project Path="src/Iron.ProcessIdentity/Iron.ProcessIdentity.csproj" />
+    <Project Path="tests/Iron.ProcessIdentity.Tests/Iron.ProcessIdentity.Tests.csproj" />
+    <Project Path="tools/Iron.ProcessIdentity.Bench/Iron.ProcessIdentity.Bench.csproj" />
   </Folder>
 </Solution>

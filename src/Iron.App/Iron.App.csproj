@@ -28,6 +28,10 @@
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Process identity module (separate). Stage 1 uses only its mock path: no real process is looked up. -->
+    <ProjectReference Include="..\Iron.ProcessIdentity\Iron.ProcessIdentity.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <Resource Include="Assets\iron.ico" />
   </ItemGroup>
   <ItemGroup>

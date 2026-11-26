@@ -99,7 +99,7 @@
             <StackPanel DockPanel.Dock="Top">
               <TextBlock Text="프로세스 상세 · WDDM PDH" Style="{StaticResource Iron.Text.BezelLabel}" Margin="0,0,0,4" />
               <TextBlock Text="{Binding Processes.Selected.Name}" FontSize="{DynamicResource Iron.FontGpuName}" FontWeight="Bold" Foreground="#F3F1EA"
-                         TextTrimming="CharacterEllipsis" ToolTip="{Binding Processes.Selected.Name}" />
+                         TextTrimming="CharacterEllipsis" ToolTip="{Binding Processes.Selected.Identity}" />
               <StackPanel Orientation="Horizontal" Margin="0,4,0,12">
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" Text="PID " />
                 <TextBlock Style="{StaticResource Iron.Text.BezelMono}" Text="{Binding Processes.Selected.PidText}" />

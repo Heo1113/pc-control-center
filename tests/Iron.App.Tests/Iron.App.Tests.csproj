@@ -16,4 +16,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\Iron.App\Presentation\**\*.cs" Link="Presentation\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Iron.ProcessIdentity\Iron.ProcessIdentity.csproj" />
+  </ItemGroup>
 </Project>

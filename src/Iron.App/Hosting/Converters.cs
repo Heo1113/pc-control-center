@@ -6,6 +6,32 @@ using Iron.App.Presentation;
 
 namespace Iron.App.Hosting;
 
+/// <summary>
+/// Identity icon pixels → a frozen BitmapSource (the HICON was already destroyed by Iron.ProcessIdentity). One image per
+/// pixel array, kept only while the identity is alive. Stage 1 mock rows have no icon (null → no image).
+/// </summary>
+public sealed class IconPixelsToImageConverter : IValueConverter
+{
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Iron.ProcessIdentity.IconPixels, System.Windows.Media.Imaging.BitmapSource> Images = new();
+
+    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not Iron.ProcessIdentity.IconPixels px || px.Width <= 0 || px.Height <= 0 || px.Bgra.Length < px.Width * px.Height * 4)
+        {
+            return null;
+        }
+
+        return Images.GetValue(px, p =>
+        {
+            var bmp = System.Windows.Media.Imaging.BitmapSource.Create(p.Width, p.Height, 96, 96, PixelFormats.Bgra32, null, p.Bgra, p.Width * 4);
+            bmp.Freeze();
+            return bmp;
+        });
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
+}
+
 internal static class Res
 {
     public static Brush Brush(string key) => (Brush)Application.Current.FindResource(key);

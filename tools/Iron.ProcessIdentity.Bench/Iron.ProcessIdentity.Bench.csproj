@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Measurement tool for the process identity module (Windows): CPU / memory / GDI cost against a plain process-list
+       loop, and before/after identity examples. Run as a standard user. Not part of IRON's program. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Iron.ProcessIdentity.Bench</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Iron.ProcessIdentity\Iron.ProcessIdentity.csproj" />
+  </ItemGroup>
+</Project>

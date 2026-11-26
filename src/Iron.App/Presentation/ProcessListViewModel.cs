@@ -22,6 +22,9 @@ public sealed partial class ProcessRowViewModel(ProcessReading reading) : Observ
 
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
+    /// <summary>Shown in the existing name tooltip (identity text and icon). Stage 1: from mock data only.</summary>
+    [ObservableProperty] public partial ProcessIdentityView? Identity { get; set; }
+
     public bool IsSoftwareAdapter { get; private set; } = reading.IsSoftwareAdapter;
     public ProcessReading Reading { get; private set; } = reading;
 
@@ -54,6 +57,9 @@ public sealed partial class ProcessListViewModel : ObservableObject
     private readonly Dictionary<int, History> _histories = [];
     private readonly Dictionary<int, ProcessRowViewModel> _rows = [];
     private IReadOnlyList<ProcessReading> _latest = [];
+
+    /// <summary>Identity for the name tooltip. Stage 1 uses mock data only (no real process lookup).</summary>
+    public IProcessIdentityProvider IdentityProvider { get; init; } = new MockProcessIdentityProvider();
 
     public ObservableCollection<ProcessRowViewModel> OverviewRows { get; } = [];
     public ObservableCollection<ProcessRowViewModel> Rows { get; } = [];
@@ -168,8 +174,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
             .ToList();
 
         var selectedPid = Selected?.Pid;
-        Sync(OverviewRows, overview, _rows);
-        Sync(Rows, full, _rows);
+        Sync(OverviewRows, overview, _rows, IdentityProvider);
+        Sync(Rows, full, _rows, IdentityProvider);
         var selected = Rows.FirstOrDefault(r => r.Pid == selectedPid) ?? OverviewRows.FirstOrDefault(r => r.Pid == selectedPid)
                        ?? Rows.FirstOrDefault();
         Selected = selected;
@@ -188,7 +194,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
     }
 
     /// <summary>Keeps row objects (and so selection and scroll position) when the same processes stay in the same order.</summary>
-    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted, Dictionary<int, ProcessRowViewModel> shared)
+    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted, Dictionary<int, ProcessRowViewModel> shared,
+        IProcessIdentityProvider identities)
     {
         var same = rows.Count == wanted.Count && rows.Select(r => r.Pid).SequenceEqual(wanted.Select(p => p.Pid));
         if (same)
@@ -196,6 +203,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
             for (var i = 0; i < wanted.Count; i++)
             {
                 rows[i].Update(wanted[i]);
+                rows[i].Identity = identities.Identify(wanted[i]);
             }
 
             return;
@@ -214,6 +222,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
                 shared[p.Pid] = row = new ProcessRowViewModel(p);
             }
 
+            row.Identity = identities.Identify(p);
             rows.Add(row);
         }
     }

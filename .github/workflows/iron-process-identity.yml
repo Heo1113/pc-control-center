@@ -1,0 +1,174 @@
+name: IRON process identity
+
+# Separate module Iron.ProcessIdentity on top of IRON Stage 1 (187d533): tests, Stage 1 regression (screens compared
+# pixel by pixel with the 187d533 build, live window smoke test) and a standard-user measurement on the Windows runner.
+# Runs only on this branch; main, feat/iron-ui-stage1 and the existing workflows are not changed.
+on:
+  push:
+    branches:
+      - "feat/iron-process-identity"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iron-process-identity-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  STAGE1_BASE: "187d5339a2dda4bfdf811b6dc8d3ead5944878e0"
+
+jobs:
+  linux:
+    name: Linux - build, Stage 1 + identity tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Stage 1 screen logic tests (48 existing + identity tooltip)
+        run: dotnet test --project tests/Iron.App.Tests -c Release --no-build
+
+      - name: Identity tests (parsers, redaction, caches, resolver)
+        run: dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
+
+  windows:
+    name: Windows - tests, Stage 1 regression vs 187d533, standard-user measurement
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build
+        id: build
+        run: dotnet build Iron.slnx -c Release
+
+      - name: Tests (Stage 1 screen logic, identity incl. Windows native)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          dotnet test --project tests/Iron.App.Tests -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Stage 1 tests failed' }
+          dotnet test --project tests/Iron.ProcessIdentity.Tests -c Release --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'identity tests failed' }
+
+      - name: Publish this branch and the 187d533 baseline
+        id: publish
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./scripts/iron-publish.ps1 -OutputDir dist
+          git fetch --no-tags --depth=1 origin $env:STAGE1_BASE
+          git worktree add base FETCH_HEAD
+          ./base/scripts/iron-publish.ps1 -OutputDir dist-base
+
+      - name: Stage 1 regression - screens of this branch vs 187d533 (same mock data, same clock)
+        id: screens
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          foreach ($pair in @(@('dist/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/new'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base'), @('dist-base/Iron.App-win-x64/Iron.App.exe', 'dist/cmp/base2'))) {
+            $p = Start-Process $pair[0] -ArgumentList '--render-screens', $pair[1] -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "render $($pair[1]) exit $($p.ExitCode)" }
+          }
+          $files = Get-ChildItem dist/cmp/base -Filter *.png | Sort-Object Name
+          $same = 0; $diff = @(); $baseNoise = 0
+          foreach ($f in $files) {
+            $h0 = (Get-FileHash $f.FullName).Hash
+            $h1 = (Get-FileHash (Join-Path 'dist/cmp/new' $f.Name)).Hash
+            $h2 = (Get-FileHash (Join-Path 'dist/cmp/base2' $f.Name)).Hash
+            if ($h0 -ne $h2) { $baseNoise++ }
+            if ($h0 -eq $h1) { $same++ } else { $diff += $f.Name }
+          }
+          $rn = Get-Content dist/cmp/new/layout-report.json -Raw | ConvertFrom-Json
+          $rb = Get-Content dist/cmp/base/layout-report.json -Raw | ConvertFrom-Json
+          $summary = "screens: $($files.Count) · byte-identical to 187d533: $same · different: $($diff.Count) · 187d533 vs itself different: $baseNoise · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
+          $summary
+          "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          foreach ($d in $diff) { "  different: $d" }
+          if ($diff.Count -gt 0 -and $baseNoise -eq 0) { throw 'screens differ from the 187d533 baseline' }
+          if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
+
+      - name: Stage 1 regression - live window (tabs, states, USB handover, half width, tray)
+        id: live
+        if: ${{ !cancelled() && steps.publish.outcome == 'success' }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/stage1/live | Out-Null
+          $p = Start-Process dist/Iron.App-win-x64/Iron.App.exe -ArgumentList '--smoke-test', 'dist/stage1/live' -PassThru
+          if (-not $p.WaitForExit(150000)) { $p.Kill(); throw 'live smoke test did not finish in time' }
+          $report = Get-Content dist/stage1/live/smoke-report.json -Raw | ConvertFrom-Json
+          "steps: $($report.steps.Count) · issues: $($report.issues) · binding errors: $($report.bindingErrors.Count)"
+          foreach ($s in $report.steps) { "  $($s.step): layout=$($s.layout) status=$($s.status)"; foreach ($i in $s.issues) { "    $($i.Kind): '$($i.Text)'" }; if ($s.error) { "    ERROR $($s.error)" } }
+          foreach ($e in $report.bindingErrors) { "  binding: $e" }
+          if ($p.ExitCode -ne 0) { throw "live smoke exit code $($p.ExitCode)" }
+
+      - name: Standard-user measurement (5 min baseline, 5 min with identity, before/after samples)
+        id: measure
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 25
+        run: |
+          $w = 'C:\ironbench'
+          New-Item -ItemType Directory -Force -Path "$w\bench", "$w\out", "$w\work" | Out-Null
+          Copy-Item tools/Iron.ProcessIdentity.Bench/bin/Release/net10.0/* "$w\bench" -Recurse
+          python -m venv "$w\work\ml-lab\.venv"
+          $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+          # A throwaway local standard user (Users group only) for this runner; the password is never printed.
+          $pw = 'Ib!' + [guid]::NewGuid().ToString('N') + 'x9'
+          net user ironbench $pw /add /expires:never | Out-Null
+          icacls $w /grant 'ironbench:(OI)(CI)M' /T /Q | Out-Null
+          Start-Service seclogon -ErrorAction SilentlyContinue
+          $cred = [pscredential]::new('ironbench', (ConvertTo-SecureString $pw -AsPlainText -Force))
+          $dotnet = (Get-Command dotnet).Source
+          function Invoke-AsUser([string[]]$argList, [string]$name) {
+            $p = Start-Process -FilePath $dotnet -ArgumentList $argList -Credential $cred -LoadUserProfile -WorkingDirectory "$w\bench" `
+                   -RedirectStandardOutput "$w\out\$name.out.txt" -RedirectStandardError "$w\out\$name.err.txt" -PassThru -Wait
+            Get-Content "$w\out\$name.out.txt", "$w\out\$name.err.txt" -ErrorAction SilentlyContinue
+            if ($p.ExitCode -ne 0) { throw "$name exit $($p.ExitCode)" }
+          }
+          $bench = "$w\bench\Iron.ProcessIdentity.Bench.dll"
+          Invoke-AsUser @($bench, 'measure', '--mode', 'baseline', '--minutes', '5', '--out', "$w\out\baseline.json") 'baseline'
+          Invoke-AsUser @($bench, 'measure', '--mode', 'identity', '--minutes', '5', '--out', "$w\out\identity.json") 'identity'
+          $sampleArgs = @($bench, 'samples', '--work', "$w\work\samples", '--python', "$w\work\ml-lab\.venv\Scripts\python.exe", '--out', "$w\out\samples.json")
+          if ($node) { $sampleArgs += @('--node', $node) }
+          Invoke-AsUser $sampleArgs 'samples'
+          & $dotnet $bench report --baseline "$w\out\baseline.json" --identity "$w\out\identity.json" --samples "$w\out\samples.json" --out "$w\out\report.md"
+          Get-Content "$w\out\report.md" -Raw | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          New-Item -ItemType Directory -Force -Path dist/measure | Out-Null
+          Copy-Item "$w\out\*" dist/measure
+
+      - name: Crash details (only when a step above failed)
+        if: ${{ failure() }}
+        run: |
+          Get-ChildItem dist -Recurse -Filter crash.txt -ErrorAction SilentlyContinue | ForEach-Object { "== $($_.FullName)"; Get-Content $_.FullName }
+
+      - name: Upload screens, reports and measurement
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iron-process-identity
+          path: |
+            dist/cmp/**/*.json
+            dist/cmp/new/*.png
+            dist/stage1/live/*.json
+            dist/measure/**
+          if-no-files-found: warn
+          retention-days: 14
