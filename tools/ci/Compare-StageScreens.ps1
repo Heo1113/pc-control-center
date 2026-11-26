@@ -155,16 +155,16 @@ $rows = foreach ($f in $files) {
 }
 
 foreach ($r in $rows) {
-    if ($r.Whole) { $state = "identical to $BaseLabel" }
+    if ($r.Whole) { $state = "identical to ${BaseLabel}" }
     elseif ($r.Outside -eq 0) { $state = "changed only inside name cells ($($r.Inside) px)" }
     elseif ($r.Outside -lt 0) { $state = 'SIZE DIFFERS' }
-    elseif ($r.BestOutside -eq 0) { $state = "changed inside name cells ($($r.Inside) px); outside them run 1 differs by $($r.Outside) px at $($r.Box) but another run of this branch matches $BaseLabel there (run-to-run variation)" }
+    elseif ($r.BestOutside -eq 0) { $state = "changed inside name cells ($($r.Inside) px); outside them run 1 differs by $($r.Outside) px at $($r.Box) but another run of this branch matches ${BaseLabel} there (run-to-run variation)" }
     else { $state = "OUTSIDE name cells: $($r.Outside) px at $($r.Box), in every run (inside: $($r.Inside) px)" }
-    $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: $BaseLabel $($r.BaseVariants), branch $($r.BranchVariants)"
+    $line = "  $($r.File): name cells $($r.Cells) · $state · variants over $Runs runs: ${BaseLabel} $($r.BaseVariants), branch $($r.BranchVariants)"
     if ($r.BranchSelfOutside -gt 0) { $line += " (branch vs itself outside name cells: $($r.BranchSelfOutside) px)" }
     $line
     if ($r.Outside -gt 0) {
-        "    sample ($BaseLabel vs this branch): " + [ScreenDiff]::OutsideSample((PathOf $Base $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
+        "    sample (${BaseLabel} vs this branch): " + [ScreenDiff]::OutsideSample((PathOf $Base $r.File), (PathOf 'new' $r.File), $cellsByFile[$r.File], 12)
         if ($r.Box -match '^(\d+),(\d+)-') {
             $bx = [int]$Matches[1]; $by = [int]$Matches[2]; $cl = $cellsByFile[$r.File]; $pr = $procsByFile[$r.File]
             for ($i = 0; $i + 3 -lt $cl.Count; $i += 4) {
@@ -179,7 +179,7 @@ foreach ($r in $rows) {
                 }
             }
             if ($script:pictures++ -lt 0) {
-                "    this branch around $bx,$by (X = differs from $BaseLabel; luminance ' ' dark .. '#' light):"
+                "    this branch around $bx,$by (X = differs from ${BaseLabel}; luminance ' ' dark .. '#' light):"
                 [ScreenDiff]::Around((PathOf $Base $r.File), (PathOf 'new' $r.File), $bx + 30, $by, 80, 24)
             }
         }
@@ -189,16 +189,16 @@ foreach ($r in $rows) {
 $outsideScreens = @($rows | Where-Object { $_.BestOutside -ne 0 })
 $jitterScreens = @($rows | Where-Object { $_.Outside -ne 0 -and $_.BestOutside -eq 0 })
 $insideOnly = @($rows | Where-Object { -not $_.Whole -and $_.BestOutside -eq 0 })
-$summary = "screens: $($rows.Count) (name cells counted $CellMarginPx px wider on each side) · identical to $BaseLabel: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
+$summary = "screens: $($rows.Count) (name cells counted $CellMarginPx px wider on each side) · identical to ${BaseLabel}: $(@($rows | Where-Object Whole).Count) · changed only inside the process-name cells: $($insideOnly.Count) " +
     "($(($rows | Measure-Object Cells -Sum).Sum) cells) · changed outside the name cells in every run: $($outsideScreens.Count) · " +
     "outside the name cells only in some runs of this branch: $($jitterScreens.Count) · " +
-    "screens varying across $Runs runs: $BaseLabel $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
+    "screens varying across $Runs runs: ${BaseLabel} $(@($rows | Where-Object { $_.BaseVariants -gt 1 }).Count), branch $(@($rows | Where-Object { $_.BranchVariants -gt 1 }).Count) " +
     "(outside name cells: $(@($rows | Where-Object { $_.BranchSelfOutside -gt 0 }).Count)) · layout issues new/base: $($rn.totalIssues)/$($rb.totalIssues) · " +
     "binding errors new/base: $($rn.bindingErrors.Count)/$($rb.bindingErrors.Count)"
 $summary
 if ($env:GITHUB_STEP_SUMMARY) { "## Stage 1 회귀(화면)`n`n$summary" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY }
 
-# crops of the name column (first rows) for a look at the change, from this branch and from $BaseLabel
+# crops of the name column (first rows) for a look at the change, from this branch and from ${BaseLabel}
 $c = $cellsByFile[$CropScreen]
 if ($c -and $c.Count -ge 4) {
     $n = [Math]::Min($CropRows, $c.Count / 4)
@@ -213,5 +213,5 @@ if ($c -and $c.Count -ge 4) {
 
 if ($ReportOnly) { return }
 if ($rn.totalIssues -ne $rb.totalIssues -or $rn.bindingErrors.Count -ne $rb.bindingErrors.Count) { throw 'layout report differs from the baseline' }
-if ($outsideScreens.Count -gt 0) { throw "screens differ from $BaseLabel outside the process-name cells (see above)" }
+if ($outsideScreens.Count -gt 0) { throw "screens differ from ${BaseLabel} outside the process-name cells (see above)" }
 if (($rows | Measure-Object Cells -Sum).Sum -eq 0) { throw 'no process-name cells reported: the masked comparison would compare nothing' }
