@@ -52,4 +52,7 @@ if ((Slope 'Private') -gt 5) {
     else { $flags += '메모리 증가 추세' }
 }
 elseif ($gcDistinct -ge 3 -and (Slope 'HeapGc' $gcPts) -gt 5) { $flags += '전체 GC 후 관리 힙 증가 추세' }
-"판정(참고): " + $(if ($flags.Count -eq 0) { '증가 추세 없음' } else { $flags -join ', ' })
+# A slope over a short window is mostly noise (CI, 15 min of the IRON window: Private within 164.3-167.5 MB fitted +5.5 MB/h).
+$span = if ($after.Count -gt 1) { $after[-1].Min - $after[0].Min } else { 0 }
+$short = if ($span -lt 120) { " — 준비 구간 이후 $([Math]::Round($span / 60, 2))시간: 2시간 미만은 기울기 잡음이 커서 판정하지 않습니다" } else { '' }
+"판정(참고): " + $(if ($flags.Count -eq 0) { '증가 추세 없음' } else { $flags -join ', ' }) + $short
