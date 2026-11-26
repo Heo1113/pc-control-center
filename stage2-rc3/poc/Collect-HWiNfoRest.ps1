@@ -218,9 +218,13 @@ $script:EpochBase = ([DateTime]::UtcNow - (New-Object DateTime 1970, 1, 1, 0, 0,
 $script:Clock = [Diagnostics.Stopwatch]::StartNew()
 function Get-NowMs { return $script:EpochBase + $script:Clock.Elapsed.TotalMilliseconds }
 
+# 요청 시간 제한(초). 준비 단계(ping·SDB)는 5초, 수집 루프는 간격에 맞춰 줄인다(아래 RC3.2 참고).
+$script:RequestTimeoutSec = 5
+$script:SkippedLate = 'SKIPPED_LATE: 앞 요청이 이 주기를 넘겨 요청하지 않음(따라잡기 없음)'
+
 function Invoke-HwGet([string]$Path) {
     if ($AllowedPaths -notcontains $Path) { throw "허용되지 않은 경로: $Path" }
-    $p = @{ Uri = ($BaseUrl.TrimEnd('/') + $Path); Method = 'Get'; TimeoutSec = 5; UseBasicParsing = $true }
+    $p = @{ Uri = ($BaseUrl.TrimEnd('/') + $Path); Method = 'Get'; TimeoutSec = $script:RequestTimeoutSec; UseBasicParsing = $true }
     if ($SkipCertificateCheck) { $p['SkipCertificateCheck'] = $true }
     $t0 = Get-NowMs
     try {
@@ -596,10 +600,22 @@ $prevCpu = $null; $prevCpuT = $null
 if ($hwPid) { $prevCpu = Get-CpuSeconds $hwPid; $prevCpuT = Get-NowMs }
 $writer = New-Object IO.StreamWriter((Join-Path $dir 'samples_all.jsonl'), $false, $Utf8)
 $aborted = $null
+# RC3.2: 수집 루프의 요청 시간 제한 = 간격의 2배(1~5초). Windows는 닫힌 포트(HWiNFO 꺼짐)에 연결할 때 실패까지
+# 약 2초를 쓰므로, 5초 제한이면 끊긴 동안 요청 하나가 여러 주기를 붙잡는다. 놓친 주기는 따라잡지 않는다.
+$script:RequestTimeoutSec = [int][Math]::Min(5, [Math]::Max(1, [Math]::Ceiling(2.0 * $IntervalMs / 1000.0)))
 $start = $script:Clock.ElapsedMilliseconds
+$skippedLate = 0
 try {
     for ($i = 1; $i -le $Samples; $i++) {
-        $wait = ($i - 1) * [long]$IntervalMs - ($script:Clock.ElapsedMilliseconds - $start)
+        $due = ($i - 1) * [long]$IntervalMs
+        if (($script:Clock.ElapsedMilliseconds - $start) - $due -ge $IntervalMs) {
+            # 이 샘플의 주기가 통째로 지났다: 요청하지 않고 빈칸으로 기록(밀린 샘플을 연달아 보내지 않음)
+            $skippedLate++
+            $writer.WriteLine(('{{"i":{0},"t0Ms":null,"t3Ms":null,"rttMs":null,"ok":false,"status":null,"error":{1},"cpuPct":null,"read":null}}' -f $i, (ConvertTo-Json -InputObject $script:SkippedLate -Compress)))
+            if (($i % 10) -eq 0) { $writer.Flush(); Write-Host ("  {0}/{1}" -f $i, $Samples) }
+            continue
+        }
+        $wait = $due - ($script:Clock.ElapsedMilliseconds - $start)
         if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
         $r = Invoke-HwGet '/api/sensors/read'
         $cpuPct = $null
@@ -635,6 +651,8 @@ try {
 finally { $writer.Dispose() }
 
 $manifest['finishedAtUtc'] = [DateTime]::UtcNow.ToString('o')
+$manifest['skippedLate'] = $skippedLate
+$manifest['requestTimeoutSec'] = $script:RequestTimeoutSec
 if ($aborted) { $manifest['aborted'] = $aborted }
 Write-Text (Join-Path $dir 'run_manifest.json') (ConvertTo-JsonText $manifest)
 if ($aborted) { Write-Host "[중단] $aborted — 동시 접근 시험은 승인 전 금지. 수집을 멈췄습니다(프로세스는 건드리지 않음)."; exit 5 }

@@ -19,6 +19,53 @@ using IronPoc;
 internal static class Program
 {
     private static readonly string[] AllowedPaths = ["/api/ping", "/api/sensors/sdb", "/api/sensors/read"];
+
+    /// <summary>Error text of a sample that was not requested because the previous request ran past its whole period.</summary>
+    public const string SkippedLate = "SKIPPED_LATE: 앞 요청이 이 주기를 넘겨 요청하지 않음(따라잡기 없음)";
+
+    /// <summary>Connect: at most the interval (≥ 250 ms, ≤ 1 s). Whole request: two intervals (1–5 s).</summary>
+    internal static (TimeSpan Connect, TimeSpan Request) Timeouts(int intervalMs) =>
+        (TimeSpan.FromMilliseconds(Math.Clamp(intervalMs, 250, 1000)), TimeSpan.FromMilliseconds(Math.Clamp(intervalMs * 2, 1000, 5000)));
+
+    /// <summary>
+    /// Measures how long a GET to a loopback port with no listener takes to fail: with the RC3 client (HttpClientHandler,
+    /// 5 s timeout, no connect timeout) and with the RC3.2 client (SocketsHttpHandler with a connect timeout). Read-only.
+    /// </summary>
+    private static async Task<int> ProbeRefused(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || !u.IsLoopback) return Usage();
+        var (connect, request) = Timeouts(500);
+        foreach (var (name, make) in new (string, Func<HttpClient>)[]
+                 {
+                     ("rc3 HttpClientHandler, Timeout 5 s", () => new HttpClient(new HttpClientHandler()) { Timeout = TimeSpan.FromSeconds(5) }),
+                     ($"rc3.2 SocketsHttpHandler ConnectTimeout {connect.TotalMilliseconds:0} ms, Timeout {request.TotalMilliseconds:0} ms",
+                         () => new HttpClient(new SocketsHttpHandler { ConnectTimeout = connect }) { Timeout = request }),
+                 })
+        {
+            var times = new List<double>();
+            string? last = null;
+            for (var k = 0; k < 3; k++)
+            {
+                using var http = make();
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    using var r = await http.GetAsync(url);
+                    last = "HTTP " + (int)r.StatusCode;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                {
+                    last = ex.GetType().Name + (ex.InnerException is { } inner ? " / " + inner.GetType().Name : "");
+                }
+
+                times.Add(sw.Elapsed.TotalMilliseconds);
+            }
+
+            Console.WriteLine($"probe-refused [{name}]: {string.Join(", ", times.Select(t => t.ToString("0", CultureInfo.InvariantCulture)))} ms · {last}");
+        }
+
+        return 0;
+    }
     private static readonly JsonSerializerOptions Pretty = new() { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private static async Task<int> Main(string[] args)
@@ -32,6 +79,7 @@ internal static class Program
                 "selftest" => SelfTest(Opt(args, "--root"), Opt(args, "--out")),
                 "analyze" when args.Length >= 2 => Analyze(args[1], Opt(args, "--root")),
                 "live" when args.Length >= 4 => await Live(args),
+                "probe-refused" when args.Length >= 2 => await ProbeRefused(args[1]),
                 _ => Usage(),
             };
         }
@@ -44,7 +92,7 @@ internal static class Program
 
     private static int Usage()
     {
-        Console.Error.WriteLine("사용법: HWiNfoRestPoC selftest | live <url> <samples> <outDir> [--interval-ms N] [--gate G1|G3A] | analyze <runDir>");
+        Console.Error.WriteLine("사용법: HWiNfoRestPoC selftest | live <url> <samples> <outDir> [--interval-ms N] [--gate G1|G3A] | analyze <runDir> | probe-refused <loopback url>");
         return 1;
     }
 
@@ -205,20 +253,25 @@ internal static class Program
         if (forbidden.Contains(uri.Port)) { Console.Error.WriteLine($"[ERROR] 포트 {uri.Port}는 Basalt 운영 포트입니다. 사용하지 않습니다."); return 1; }
         if (!uri.IsLoopback) { Console.Error.WriteLine("[ERROR] 루프백(127.0.0.1/localhost/::1)만 허용합니다. LAN 접근은 별도 승인 전 금지."); return 1; }
 
-        var handler = new HttpClientHandler();
+        // RC3.2: 연결 시간 제한을 따로 둔다. Windows는 닫힌 포트(서버 꺼짐)에 연결할 때 RST를 받고도 SYN을 다시 보내
+        // 실패까지 약 2초가 걸리고, 요청 전체 제한 5초와 겹치면 끊긴 동안 요청 하나가 몇 초씩 붙잡힌다.
+        var (connectTimeout, requestTimeout) = Timeouts(interval);
+        var handler = new SocketsHttpHandler { ConnectTimeout = connectTimeout };
         if (uri.Scheme == "https" && args.Contains("--insecure-loopback-tls"))
         {
             // HWiNFO 기본 HTTPS는 자체 서명 인증서. 루프백 주소에 한해서만, 명시적으로 요청했을 때만 검증을 생략한다.
-            handler.ServerCertificateCustomValidationCallback = (req, _, _, _) => req.RequestUri is { IsLoopback: true };
+            handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => uri.IsLoopback;
         }
 
+        // 준비 단계(ping·SDB)는 5초, 수집 루프의 요청은 간격에 맞춘 제한(requestTimeout)을 따로 건다.
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
-        async Task<(int Status, string Body, double T0, double T3)> Get(string path)
+        async Task<(int Status, string Body, double T0, double T3)> Get(string path, TimeSpan? limit = null)
         {
             if (!AllowedPaths.Contains(path)) throw new InvalidOperationException("허용되지 않은 경로: " + path);
+            using var cts = new CancellationTokenSource(limit ?? Timeout.InfiniteTimeSpan);
             var t0 = NowMs();
-            using var resp = await http.GetAsync(baseUrl + path);
-            var body = await resp.Content.ReadAsStringAsync();
+            using var resp = await http.GetAsync(baseUrl + path, cts.Token);
+            var body = await resp.Content.ReadAsStringAsync(cts.Token);
             return ((int)resp.StatusCode, body, t0, NowMs());
         }
 
@@ -276,18 +329,32 @@ internal static class Program
         var (_, bestPing) = Gates.ClockOffset(File.ReadAllLines(Path.Combine(outDir, "pings.jsonl")).Where(l => l.Length > 0).Select(l => JsonNode.Parse(l)!.AsObject()).ToList());
         if (bestPing is not null) tracker.SetClockOffset(bestPing["t"]!.GetValue<double>(), bestPing["t0Ms"]!.GetValue<double>(), bestPing["t3Ms"]!.GetValue<double>());
         var failures = 0;
+        var skipped = 0;
         var synthetic = false; // 응답에 SYNTHETIC 표시(_notice)가 있으면 모의 서버 — 출처를 SYNTHETIC으로 기록
         var sw = Stopwatch.StartNew();
         await using (var w = new StreamWriter(Path.Combine(outDir, "samples_all.jsonl"), false, new UTF8Encoding(false)))
         {
             for (var i = 1; i <= samples; i++)
             {
-                var wait = (i - 1) * (long)interval - sw.ElapsedMilliseconds;
+                // RC3.2: 이 샘플의 주기 전체가 이미 지났으면(앞 요청이 늦게 끝남) 요청하지 않고 빈칸으로 기록한다.
+                // 예전처럼 밀린 샘플을 곧바로 연달아 보내면 재연결 직후 요청이 몰리고, 같은 순간의 값이 여러 샘플로 남는다.
+                var due = (i - 1) * (long)interval;
+                if (sw.ElapsedMilliseconds - due >= interval)
+                {
+                    failures++;
+                    skipped++;
+                    await w.WriteLineAsync($"{{\"i\":{i},\"t0Ms\":null,\"t3Ms\":null,\"rttMs\":null,\"ok\":false,\"status\":null,\"error\":\"{SkippedLate}\",\"cpuPct\":null,\"read\":null}}");
+                    Console.WriteLine($"[{i,4}] 건너뜀(앞 요청이 이 주기를 넘김 — 따라잡지 않음)");
+                    continue;
+                }
+
+                var wait = due - sw.ElapsedMilliseconds;
                 if (wait > 0) await Task.Delay((int)wait);
                 string line;
+                var tStart = NowMs(); // also kept for a failed request: how long it took to fail is part of the record
                 try
                 {
-                    var (st, body, t0, t3) = await Get("/api/sensors/read");
+                    var (st, body, t0, t3) = await Get("/api/sensors/read", requestTimeout);
                     var ok = st == 200;
                     var read = ok ? Compact(body) : "null";
                     line = $"{{\"i\":{i},\"t0Ms\":{Js.Num(t0)},\"t3Ms\":{Js.Num(t3)},\"rttMs\":{Js.Num(t3 - t0)},\"ok\":{(ok ? "true" : "false")},\"status\":{st},\"error\":null,\"cpuPct\":null,\"read\":{read}}}";
@@ -315,7 +382,8 @@ internal static class Program
                 {
                     failures++;
                     var err = JsonValue.Create(ex.GetType().Name + ": " + ex.Message).ToJsonString();
-                    line = $"{{\"i\":{i},\"t0Ms\":null,\"t3Ms\":null,\"rttMs\":null,\"ok\":false,\"status\":null,\"error\":{err},\"cpuPct\":null,\"read\":null}}";
+                    var tEnd = NowMs();
+                    line = $"{{\"i\":{i},\"t0Ms\":{Js.Num(tStart)},\"t3Ms\":{Js.Num(tEnd)},\"rttMs\":null,\"ok\":false,\"status\":null,\"error\":{err},\"cpuPct\":null,\"read\":null}}";
                     Console.WriteLine($"[{i,4}] 실패: {ex.Message}");
                 }
 
@@ -324,6 +392,9 @@ internal static class Program
         }
 
         manifest["finishedAtUtc"] = DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+        manifest["skippedLate"] = skipped;
+        manifest["connectTimeoutMs"] = connectTimeout.TotalMilliseconds;
+        manifest["requestTimeoutMs"] = requestTimeout.TotalMilliseconds;
         if (synthetic)
         {
             manifest["source"] = "SYNTHETIC";

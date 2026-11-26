@@ -1,5 +1,19 @@
 # CHANGELOG — IRON Stage 2 HWiNFO REST API 독립 조사 및 검증 패키지
 
+## [RC3.2] - 2026-11-26 — 연결 끊김 중 요청 누적 수정
+
+통합 브랜치 `feat/iron-stage2-integration`에서 수정했습니다. `rc3/windows-ci-check`는 그대로 둡니다.
+
+### 원인 (수정 전 코드 기준, 시간표는 CI `tests/disconnect_timeline.py`)
+1. **절대 일정 + 따라잡기:** PoC `live`와 `Collect-HWiNfoRest.ps1` 모두 샘플 i를 `(i-1)×간격`에 맞추고, 이미 늦었으면 기다리지 않고 바로 보냈다. 앞 요청이 오래 걸리면 밀린 샘플이 재연결 직후 연달아(한 간격 안에 여러 개) 나가, 같은 순간의 값이 여러 샘플로 기록되고 HWiNFO에 순간 부하가 몰린다.
+2. **긴 시간 제한:** 요청 시간 제한이 5초(연결 시간 제한 없음)라 서버가 꺼진 동안 요청 하나가 실패할 때까지 여러 주기를 붙잡았다. Windows는 닫힌 포트에 연결할 때 RST를 받고도 다시 시도해 실패까지 시간이 걸린다(실측값은 CI 로그 `refused connect`).
+
+### Fixed
+- 샘플 주기 전체가 이미 지났으면 요청하지 않고 `SKIPPED_LATE`로 기록(샘플 수·시각 정렬 유지, 따라잡기 없음). 실행 기록에 `skippedLate` 개수.
+- 수집 루프의 요청 시간 제한 = 간격의 2배(1~5초). PoC는 연결 시간 제한(간격, 0.25~1초)을 따로 둠. 준비 단계(ping·SDB)는 5초 유지.
+- PoC: 실패한 요청도 시작·끝 시각을 기록(수집기와 같게) — 실패까지 걸린 시간을 보고서에서 볼 수 있음.
+- PoC `probe-refused <url>`: 닫힌 루프백 포트에 GET이 실패하기까지 걸리는 시간을 RC3/RC3.2 설정으로 잰다(읽기 전용).
+
 ## [RC3.1] - 2026-11-26 — Windows 러너 호환성 검증 반영
 
 임시 브랜치 `rc3/windows-ci-check`의 GitHub Actions Windows 러너(Windows PowerShell 5.1.26100, PowerShell 7.6.10, .NET 10, 로캘 ko-KR·de-DE)에서 **모의 HWiNFO 서버(SYNTHETIC)**로 검증했습니다. 실제 하드웨어 측정이 아닙니다. `main`·`feat/iron-ui-stage1`은 변경하지 않았습니다.
