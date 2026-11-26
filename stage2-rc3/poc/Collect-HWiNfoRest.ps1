@@ -579,7 +579,8 @@ if ($BaselineFile) {
     Copy-Item -LiteralPath $BaselineFile -Destination (Join-Path $dir 'baseline.json'); $baseRel = 'baseline.json'
 }
 
-$hwPid = $null; if ($source -eq 'LIVE_CAPTURE') { $hwPid = [int]$owner.pid }
+# CPU는 포트 소유자가 HWiNFO로 확인되면 출처와 무관하게 잰다(위에서 HWiNFO가 아닌 소유자는 이미 중단)
+$hwPid = $null; if ($null -ne $owner.pid) { $hwPid = [int]$owner.pid }
 $manifest = [ordered]@{
     schema = 'iron.rc3.run/1'; source = $source; sourceReason = $sourceReason; collector = 'Collect-HWiNfoRest.ps1 (RC3)'; gate = $Gate
     url = $BaseUrl; startedAtUtc = [DateTime]::UtcNow.ToString('o'); samplesRequested = $Samples; intervalMs = $IntervalMs

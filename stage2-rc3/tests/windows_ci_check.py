@@ -163,6 +163,9 @@ class Scenario:
         for c in self.checks:
             if not c["ok"]:
                 print("   - " + c["check"] + ": " + c["detail"])
+        if not ok and self.info:
+            # 아티팩트를 못 받는 환경에서도 원인을 볼 수 있게 실패 시 정보도 로그에 남긴다
+            print("   info: " + json.dumps(self.info, ensure_ascii=False)[:3000])
 
 
 def analyze_and_compare(env, sc, run_dir):
@@ -385,14 +388,17 @@ def s_disconnect(env, suite, ed):
     timeline = {}
     try:
         t0 = time.time()
-        # 첫 10샘플이 기록(10샘플마다 flush)된 뒤 끊는다
+        # 수집 루프가 시작되면(samples_all.jsonl 생성) 2.5초 뒤 끊고 4초 뒤 다시 켠다(줄 수·flush에 의존하지 않음)
         while time.time() - t0 < 60:
             f = newest(root, "run_G1_*")
-            if f and complete_lines(os.path.join(f, "samples_all.jsonl")) >= 10:
+            if f and os.path.isfile(os.path.join(f, "samples_all.jsonl")):
                 break
-            time.sleep(0.2)
+            time.sleep(0.1)
+        timeline["loopStart_s"] = round(time.time() - t0, 1)
+        time.sleep(2.5)
         timeline["killAt_s"] = round(time.time() - t0, 1)
         env.stop(p, HW_PORT)
+        timeline["portClosed"] = not port_open(HW_PORT)
         time.sleep(4.0)
         p2 = env.mock(hw, HW_PORT, tag="disc2")
         timeline["restartAt_s"] = round(time.time() - t0, 1)
@@ -409,9 +415,11 @@ def s_disconnect(env, suite, ed):
         lines = jsonl(os.path.join(d, "samples_all.jsonl"))
         oks = [x["ok"] for x in lines]
         sc.info["okPattern"] = "".join("o" if o else "x" for o in oks)
+        sc.info["samples"] = [[x["i"], round((x["t0Ms"] or 0) / 1000.0 - t0, 2) if x["t0Ms"] else None, x["status"], (x["error"] or "")[:50],
+                               (x["read"] or {}).get("Timestamp ms") if isinstance(x["read"], dict) else None] for x in lines]
         sc.check("샘플 24개 기록(중단 없음)", len(lines) == 24, len(lines))
-        sc.check("처음 10개 성공", all(oks[:10]), sc.info["okPattern"])
-        sc.check("끊긴 동안 실패 기록(1개 이상, 오류 문구 포함)", any((not x["ok"]) and x["error"] for x in lines[10:]), sc.info["okPattern"])
+        sc.check("처음 3개 성공", all(oks[:3]), sc.info["okPattern"])
+        sc.check("끊긴 동안 실패 기록(1개 이상, 오류 문구 포함)", any((not x["ok"]) and x["error"] for x in lines), sc.info["okPattern"])
         sc.check("재연결 후 마지막 3개 성공", all(oks[-3:]), sc.info["okPattern"])
         analyze_and_compare(env, sc, d)
     sc.done()
