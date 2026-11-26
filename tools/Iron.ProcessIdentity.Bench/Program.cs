@@ -223,8 +223,9 @@ internal static class Program
     /// Long run: the identity resolver on the 1 Hz process list while this tool starts a short process every few seconds
     /// (new keys, evictions, file cache, service refreshes). Every minute: handles by type, threads, GDI/USER, memory.
     /// Slopes per hour are fitted after the warm-up (10 min by default, as Analyze-SoakLog.ps1 does for the IRON window; at most
-    /// half of a short run): the file and icon caches fill during the first minutes (CI run 4: Private 20 -> 28.5 MB from
-    /// minute 2 to 5, then flat), which a 2-minute warm-up counted as growth. A leak shows as a steady slope, a plateau as ~0.
+    /// half of a short run): until the first GC the managed heap only climbs (CI run 6: ~2.7 MB/min, first collection at
+    /// ~5.5 min; run 7: none in 10 min, while the caches were full after the first minute), which a 2-minute warm-up counted
+    /// as growth. A leak shows as a steady slope and as more managed memory left after the forced GCs, a plateau as ~0.
     /// </summary>
     private static int Soak(double minutes, string outPath, int churnSeconds, double warmupMinutes)
     {
