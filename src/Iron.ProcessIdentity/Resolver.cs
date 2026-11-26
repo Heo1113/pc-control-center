@@ -342,5 +342,6 @@ public sealed class ProcessIdentityResolver : IDisposable
         public string? ResolveSystemPath(string fileName) => native.ResolveSystemPath(fileName);
         public string? ReadPackageName(string directory) => native.ReadPackageName(directory);
         public bool FileExists(string path) => native.FileExists(path);
+        public string? ServiceDescription(string serviceName) => native.ServiceDescription(serviceName);
     }
 }

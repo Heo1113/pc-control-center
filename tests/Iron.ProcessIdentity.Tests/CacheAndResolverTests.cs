@@ -146,7 +146,7 @@ public class ResolverTests
         r.Observe(n.Snapshot());
         Drain(r, n);
         Assert.True(r.TryGet(new ProcessKey(1200, 40), out var cmd));
-        Assert.Equal("배치 파일 deploy.bat · 부모 explorer.exe", cmd.Executor!.Text);
+        Assert.Equal("배치 파일 deploy.bat · 폴더 work · 부모 explorer.exe", cmd.Executor!.Text);
         Assert.Equal("Windows 명령 프로세서", cmd.FileDescription);
         Assert.True(r.TryGet(new ProcessKey(1300, 50), out var py));
         Assert.Equal("main.py · 프로젝트 shop · 가상환경 .venv", py.Executor!.Text);

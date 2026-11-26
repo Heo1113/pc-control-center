@@ -18,6 +18,8 @@ internal class FakeHostContext : IHostContext
     public string? ResolveSystemPath(string fileName) => Files.ContainsKey(SystemDir + "\\" + fileName) ? SystemDir + "\\" + fileName : null;
     public string? ReadPackageName(string directory) => Packages.GetValueOrDefault(directory.TrimEnd('\\'));
     public bool FileExists(string path) => Existing.Contains(path) || Files.ContainsKey(path);
+    public Dictionary<string, string> ServiceDescriptions { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? ServiceDescription(string serviceName) => ServiceDescriptions.GetValueOrDefault(serviceName);
 }
 
 /// <summary>A process table and system answers for the resolver; counts calls and can be slow or deny access.</summary>

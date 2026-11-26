@@ -55,7 +55,7 @@ public static class IdentityComposer
                     ?? (roleEntry is not null ? new IdentityText(roleEntry.ShortName, IdentityConfidence.Inferred, mock ? "역할 사전(모의)" : "역할 사전") : null)
                     ?? (file?.ProductName is { Length: > 0 } p ? new IdentityText(p, IdentityConfidence.Confirmed, "버전 정보") : null)
                     ?? new IdentityText(imageName, mock ? IdentityConfidence.Inferred : IdentityConfidence.Confirmed, mock ? "실행 파일 이름(모의)" : "실행 파일 이름");
-        var role = roleEntry is null ? null : new IdentityText(roleEntry.Role, IdentityConfidence.Inferred, mock ? "역할 사전(모의)" : "역할 사전");
+        var role = c.Role ?? (roleEntry is null ? null : new IdentityText(roleEntry.Role, IdentityConfidence.Inferred, mock ? "역할 사전(모의)" : "역할 사전"));
         return new ProcessIdentityInfo
         {
             Key = key,

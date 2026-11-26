@@ -55,6 +55,30 @@ public class WindowsNativeTests
     }
 
     [Fact]
+    public void ServiceDescriptionIsLocalizedText()
+    {
+        WindowsOnly();
+        using var q = new WindowsProcessQuery();
+        var d = q.ServiceDescription("EventLog");
+        Assert.False(string.IsNullOrWhiteSpace(d));
+        Assert.False(d!.StartsWith('@')); // indirect string expanded
+        Assert.Null(q.ServiceDescription("NoSuchService_Iron_" + Guid.NewGuid().ToString("N")));
+    }
+
+    [Fact]
+    public void ProtectedProcessIsNamedInsteadOfAccessDenied()
+    {
+        WindowsOnly();
+        using var q = new WindowsProcessQuery();
+        var csrss = q.Snapshot().FirstOrDefault(p => p.ImageName.Equals("csrss.exe", StringComparison.OrdinalIgnoreCase));
+        Assert.SkipUnless(csrss is not null, "csrss 없음");
+        var cmd = q.QueryCommandLine(csrss!.Pid, out var failure);
+        Assert.SkipUnless(cmd is null && failure is not null && !failure.StartsWith("권한 부족", StringComparison.Ordinal) || failure?.Contains("보호", StringComparison.Ordinal) == true,
+            "이 계정에서는 csrss를 열 수 없음(일반 사용자): " + failure);
+        Assert.Contains("보호 프로세스", failure!, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void IconExtractionDoesNotLeakGdiHandles()
     {
         WindowsOnly();

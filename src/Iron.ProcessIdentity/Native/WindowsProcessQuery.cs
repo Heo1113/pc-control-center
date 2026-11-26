@@ -186,7 +186,9 @@ public sealed class WindowsProcessQuery : INativeProcessQuery, IDisposable
 
                     if (st != STATUS_SUCCESS)
                     {
-                        failure = st == unchecked((int)0xC0000022) ? "권한 부족" : "NTSTATUS 0x" + st.ToString("X8", CultureInfo.InvariantCulture);
+                        failure = st == unchecked((int)0xC0000022)
+                            ? (Protection(h) is { } kind ? kind + " — 명령줄·모듈은 읽을 수 없음(정상)" : "권한 부족")
+                            : "NTSTATUS 0x" + st.ToString("X8", CultureInfo.InvariantCulture);
                         return null;
                     }
 
@@ -552,6 +554,67 @@ public sealed class WindowsProcessQuery : INativeProcessQuery, IDisposable
                 DeleteObject(ii.hbmMask);
             }
         }
+    }
+
+    /// <summary>"보호 프로세스(PPL)" / "보호 프로세스" when Windows protects the process (security software, csrss ...); null otherwise or unknown.</summary>
+    private static string? Protection(IntPtr process)
+    {
+        var buf = Marshal.AllocHGlobal(8);
+        try
+        {
+            Marshal.WriteByte(buf, 0);
+            if (NtQueryInformationProcess(process, ProcessProtectionInformation, buf, 1, out _) != STATUS_SUCCESS)
+            {
+                return null;
+            }
+
+            return (Marshal.ReadByte(buf) & 0x7) switch
+            {
+                1 => "보호 프로세스(PPL)",
+                2 => "보호 프로세스",
+                _ => null,
+            };
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string?> _serviceDescriptions = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// HKLM\SYSTEM\CurrentControlSet\Services\name\Description ("@dll,-id" expanded to the localized text). Per-user service
+    /// instances (name_1a2b3c) fall back to their template. Readable by a standard user; cached (descriptions do not change).
+    /// </summary>
+    public string? ServiceDescription(string serviceName)
+    {
+        if (_serviceDescriptions.Count > 2048)
+        {
+            _serviceDescriptions.Clear();
+        }
+
+        return _serviceDescriptions.GetOrAdd(serviceName, name =>
+        {
+            foreach (var candidate in new[] { name, System.Text.RegularExpressions.Regex.Replace(name, "_[0-9a-fA-F]{4,}$", "") }.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\" + candidate);
+                    if (key?.GetValue("Description") is string raw && raw.Length > 0)
+                    {
+                        var text = LoadIndirect(Environment.ExpandEnvironmentVariables(raw).Trim());
+                        return text.StartsWith('@') ? null : text; // unresolved indirect string: nothing useful to show
+                    }
+                }
+                catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+                {
+                    return null;
+                }
+            }
+
+            return null;
+        });
     }
 
     // ---------- registry / indirect strings ----------

@@ -137,7 +137,7 @@ public class ClassifierTests
     [Fact]
     public void Cmd_FindsBatchOrCommandAndParent()
     {
-        Assert.Equal("배치 파일 deploy.bat · 부모 explorer.exe", C("cmd.exe", "C:\\Windows\\system32\\cmd.exe /c \"C:\\work\\deploy.bat\" --password=x", parent: "explorer.exe").Executor!.Text);
+        Assert.Equal("배치 파일 deploy.bat · 폴더 work · 부모 explorer.exe", C("cmd.exe", "C:\\Windows\\system32\\cmd.exe /c \"C:\\work\\deploy.bat\" --password=x", parent: "explorer.exe").Executor!.Text);
         Assert.Equal("명령 ping", C("cmd.exe", "cmd.exe /C ping -n 30 127.0.0.1").Executor!.Text);
         Assert.Equal("프로그램 node.exe", C("cmd.exe", "cmd /k call node.exe app.js").Executor!.Text);
         Assert.Equal("대화형 명령 프롬프트", C("cmd.exe", "cmd.exe").Executor!.Text);
@@ -169,7 +169,7 @@ public class ClassifierTests
     {
         var ctx = new FakeHostContext();
         ctx.Packages[@"C:\web\shop\node_modules\vite\bin"] = "vite";
-        Assert.Equal("vite (node_modules) · 패키지 vite", C("node.exe", @"node.exe C:\web\shop\node_modules\vite\bin\vite.js --port 5173", ctx).Executor!.Text);
+        Assert.Equal("vite (node_modules)", C("node.exe", @"node.exe C:\web\shop\node_modules\vite\bin\vite.js --port 5173", ctx).Executor!.Text);
         var ctx2 = new FakeHostContext();
         ctx2.Packages[@"C:\web\shop"] = "shop-server";
         Assert.Equal("server.js · 패키지 shop-server", C("node.exe", @"node --inspect C:\web\shop\server.js", ctx2).Executor!.Text);
@@ -205,6 +205,78 @@ public class ClassifierTests
         var unknown = C("rundll32.exe", "rundll32.exe \"C:\\Program Files\\Foo\\foo.dll\",#12");
         Assert.Equal("foo.dll · 진입점 #12", unknown.Executor!.Text);
         Assert.Equal(IdentityConfidence.Inferred, unknown.Executor.Confidence);
+    }
+
+    [Fact]
+    public void Java_DotNet_Wsl_Conhost()
+    {
+        Assert.Equal("JAR server.jar · 폴더 minecraft", C("javaw.exe", @"javaw.exe -Xmx4G -Dfile.encoding=UTF-8 -cp lib\a.jar -jar D:\games\minecraft\server.jar nogui").Executor!.Text);
+        Assert.Equal("클래스 org.example.Main", C("java.exe", @"java -cp build\classes org.example.Main --port 1").Executor!.Text);
+        Assert.Equal("모듈 com.app/com.app.Main", C("java.exe", "java -p mods -m com.app/com.app.Main").Executor!.Text);
+        Assert.Equal("앱 Basalt.Server.dll · 폴더 basalt", C("dotnet.exe", @"dotnet C:\AI\basalt\bin\Basalt.Server.dll --urls http://127.0.0.1:8080").Executor!.Text);
+        Assert.Equal("SDK 명령 run · Iron.App.csproj", C("dotnet.exe", @"dotnet run --project src\Iron.App\Iron.App.csproj").Executor!.Text);
+        Assert.Equal("배포판 Ubuntu-24.04 · 명령 python3", C("wsl.exe", "wsl.exe -d Ubuntu-24.04 -- python3 train.py").Executor!.Text);
+        Assert.Equal("배포판 기본값", C("wsl.exe", "wsl.exe").Executor!.Text);
+        Assert.Equal("콘솔 창: python.exe", C("conhost.exe", @"\??\C:\Windows\system32\conhost.exe 0x4", parent: "python.exe").Executor!.Text);
+    }
+
+    [Fact]
+    public void ScriptFolderNamesTheApp()
+    {
+        Assert.Equal("배치 파일 run_nvidia_gpu.bat · 폴더 ComfyUI_windows_portable",
+            C("cmd.exe", @"C:\Windows\system32\cmd.exe /c ""D:\AI\ComfyUI_windows_portable\run_nvidia_gpu.bat""").Executor!.Text);
+        Assert.Equal("스크립트 backup.ps1 · 폴더 nas-sync", C("powershell.exe", @"powershell.exe -NoProfile -File D:\tools\nas-sync\backup.ps1").Executor!.Text);
+        Assert.Equal("배치 파일 go.bat", C("cmd.exe", "cmd.exe /c go.bat").Executor!.Text); // no folder given
+    }
+
+    [Fact]
+    public void Svchost_DescriptionOfTheServiceIsTheRole()
+    {
+        var ctx = new FakeHostContext();
+        ctx.ServiceDescriptions["Audiosrv"] = "Windows 기반 프로그램의 오디오를 관리합니다.";
+        var one = C("svchost.exe", "svchost.exe -k LocalServiceNetworkRestricted -p", ctx, services: [new ServiceEntry("Audiosrv", "Windows Audio")]);
+        Assert.Equal("Windows 기반 프로그램의 오디오를 관리합니다.", one.Role!.Text);
+        Assert.Equal(IdentityConfidence.Confirmed, one.Role.Confidence);
+        var two = C("svchost.exe", "svchost.exe -k x", ctx, services: [new ServiceEntry("Audiosrv", "Windows Audio"), new ServiceEntry("Zz", "Zeta")]);
+        Assert.StartsWith("Windows Audio: ", two.Role!.Text, StringComparison.Ordinal); // which service the description belongs to
+        var info = IdentityComposer.Compose(new NativeFacts(new ProcessEntry(10, 4, "svchost.exe", 1), null, "svchost.exe -k x",
+            null, null, null, [new ServiceEntry("Audiosrv", "Windows Audio")], null, null, false, []), ctx, Dict, out _);
+        Assert.Equal("Windows 기반 프로그램의 오디오를 관리합니다.", info.Role!.Text); // replaces the dictionary role
+        Assert.Contains("근거: 서비스 관리자 · 서비스 설명", info.ToToolTipText(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Dllhost_ThirdPartyComServerIsNamedFromItsVersionInfo()
+    {
+        var id = Guid.Parse("11111111-2222-3333-4444-555555555556");
+        var ctx = new FakeHostContext();
+        ctx.AppIds[id] = new ComAppIdInfo(id, "Vendor Surrogate", true);
+        ctx.Clsids[id] = new ComClsidInfo(id, "Vendor Class", @"C:\Program Files\Vendor\vcom.dll", id);
+        ctx.Files[@"C:\Program Files\Vendor\vcom.dll"] = new FileIdentityInfo("", "Vendor Preview Handler", "Vendor", "Vendor Inc.", null, null, null);
+        var r = C("dllhost.exe", "dllhost.exe /Processid:{11111111-2222-3333-4444-555555555556}", ctx);
+        Assert.Equal("COM 서버 Vendor Preview Handler · Vendor Inc.", r.Executor!.Text);
+        Assert.Equal(IdentityConfidence.Confirmed, r.Executor.Confidence);
+        Assert.Contains(r.Hosted, h => h.Kind == SharedHostClassifier.KindClsid && h.Detail!.Contains("(Vendor Preview Handler · Vendor Inc.)", StringComparison.Ordinal));
+        Assert.True(r.IsSharedHost); // still a shared host: the server is named, its use is not split out
+    }
+
+    [Fact]
+    public void Node_ScopedPackageNameIsNotRepeated()
+    {
+        var ctx = new FakeHostContext();
+        ctx.Packages[@"C:\Users\kim\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code"] = "@anthropic-ai/claude-code";
+        Assert.Equal("@anthropic-ai/claude-code (node_modules)",
+            C("node.exe", @"node.exe C:\Users\kim\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\cli.js", ctx).Executor!.Text);
+    }
+
+    [Fact]
+    public void DictionaryCoversCommonProcessesAndMarksAggregatesShared()
+    {
+        Assert.True(Dict.ImageCount >= 150);
+        Assert.True(Dict.Image("vmmemWSL")!.Shared);
+        Assert.True(Dict.Image("WUDFHost.exe")!.Shared);
+        Assert.True(C("WUDFHost.exe", "WUDFHost.exe -HostGUID:{x}").IsSharedHost);
+        Assert.Equal("Ollama", Dict.Image("ollama.exe")!.ShortName);
     }
 
     [Fact]

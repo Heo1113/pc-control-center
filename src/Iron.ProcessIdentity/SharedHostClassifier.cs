@@ -24,6 +24,9 @@ public interface IHostContext
     string? ReadPackageName(string directory);
 
     bool FileExists(string path);
+
+    /// <summary>The service's own description (what it does), localized; null when unknown. Read lazily and cached.</summary>
+    string? ServiceDescription(string serviceName) => null;
 }
 
 /// <summary>Looks nothing up (Stage 1 mock rows: no registry, no file, no process access).</summary>
@@ -58,7 +61,8 @@ public sealed record ClassifyResult(
     IReadOnlyList<HostedItem> Hosted,
     IReadOnlyList<string> Notes,
     bool WantsModuleCheck,
-    RoleEntry? GuidRole);
+    RoleEntry? GuidRole,
+    IdentityText? Role = null);
 
 /// <summary>
 /// Finds the real program behind generic launchers and shared hosts. Pure: everything it needs comes in through
@@ -92,7 +96,7 @@ public static partial class SharedHostClassifier
         switch (input.ImageName.ToLowerInvariant())
         {
             case "svchost.exe":
-                Svchost(input, args, hasCmd, dict, b);
+                Svchost(input, args, hasCmd, ctx, dict, b);
                 break;
             case "dllhost.exe":
                 Dllhost(input, args, hasCmd, ctx, dict, b);
@@ -126,14 +130,32 @@ public static partial class SharedHostClassifier
 
                 break;
             case "wmiprvse.exe":
+            case "wudfhost.exe":
                 b.Shared = true;
+                break;
+            case "java.exe":
+            case "javaw.exe":
+                Java(input, args, hasCmd, b);
+                break;
+            case "dotnet.exe":
+                DotNet(input, args, hasCmd, b);
+                break;
+            case "wsl.exe":
+                Wsl(args, hasCmd, b);
+                break;
+            case "conhost.exe":
+                if (input.ParentImageName is { Length: > 0 } client)
+                {
+                    b.Executor = b.Text("콘솔 창: " + client, IdentityConfidence.Inferred, "프로세스 트리");
+                }
+
                 break;
         }
 
         return b.Build();
     }
 
-    private static void Svchost(ClassifyInput input, IReadOnlyList<string> args, bool hasCmd, RoleDictionary dict, Builder b)
+    private static void Svchost(ClassifyInput input, IReadOnlyList<string> args, bool hasCmd, IHostContext ctx, RoleDictionary dict, Builder b)
     {
         b.Shared = true;
         var group = CommandLineParser.Option(args, "-k");
@@ -145,6 +167,11 @@ public static partial class SharedHostClassifier
             rep ??= ordered[0];
             var title = rep.DisplayName + (ordered.Count > 1 ? $" 외 {ordered.Count - 1}개" : "");
             b.Title = b.Text(title, IdentityConfidence.Confirmed, "서비스 관리자");
+            if (!input.IsMock && ctx.ServiceDescription(rep.Name) is { Length: > 0 } description)
+            {
+                // what the (first) hosted service says it does; the host's use is still not split among its services
+                b.Role = b.Text((ordered.Count > 1 ? rep.DisplayName + ": " : "") + Short(description.Trim(), 160), IdentityConfidence.Confirmed, "서비스 설명");
+            }
             foreach (var s in ordered)
             {
                 b.Hosted.Add(new HostedItem(KindService, s.DisplayName, b.Cap(IdentityConfidence.Confirmed), s.Name));
@@ -194,11 +221,21 @@ public static partial class SharedHostClassifier
 
         var clsid = ctx.LookupClsid(id);
         var linked = clsid is not null && clsid.AppId == id;
+        FileIdentityInfo? serverFile = null;
         if (clsid is not null)
         {
             var server = clsid.InprocServer is null ? null : CommandLineParser.FileName(clsid.InprocServer);
+            serverFile = clsid.InprocServer is null ? null : ctx.GetFile(clsid.InprocServer);
+            var serverText = server is null ? "" : "InprocServer32 " + server
+                + (serverFile?.FileDescription is { } fd ? " (" + fd + (serverFile.CompanyName is { } co ? " · " + co : "") + ")" : "") + " · ";
             b.Hosted.Add(new HostedItem(KindClsid, clsid.Name ?? idText, b.Cap(linked ? IdentityConfidence.Confirmed : IdentityConfidence.Inferred),
-                (server is null ? "" : "InprocServer32 " + server + " · ") + (linked ? "AppID 연결 확인" : "AppID 연결 미확인")));
+                serverText + (linked ? "AppID 연결 확인" : "AppID 연결 미확인")));
+            // a third-party COM server (outside Windows) is what this surrogate runs for: name it, as the registered server
+            if (linked && clsid.InprocServer is { } serverPath && IsNonWindowsModule(serverPath))
+            {
+                b.Executor = b.Text("COM 서버 " + (serverFile?.FileDescription ?? server) + (serverFile?.CompanyName is { } c2 ? " · " + c2 : ""),
+                    serverFile is null ? IdentityConfidence.Inferred : IdentityConfidence.Confirmed, "레지스트리·버전 정보");
+            }
         }
 
         var name = appId?.Name ?? (linked ? clsid!.Name : null);
@@ -296,7 +333,7 @@ public static partial class SharedHostClassifier
                 tokens.RemoveAt(0);
             }
 
-            text = tokens.Count == 0 ? "명령 실행" : Describe(tokens[0]);
+            text = tokens.Count == 0 ? "명령 실행" : Describe(tokens[0]) + FolderOf(tokens[0]);
         }
 
         b.Executor = b.Text(text + Parent(input), IdentityConfidence.Inferred, "명령줄");
@@ -317,13 +354,13 @@ public static partial class SharedHostClassifier
             var name = a.TrimStart('-', '/').ToLowerInvariant();
             if (!a.StartsWith('-') && !a.StartsWith('/'))
             {
-                text = a.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase) ? "스크립트 " + CommandLineParser.FileName(a) : null;
+                text = a.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase) ? "스크립트 " + CommandLineParser.FileName(a) + FolderOf(a) : null;
                 break;
             }
 
             if (name is "file" or "f")
             {
-                text = i + 1 < args.Count ? "스크립트 " + CommandLineParser.FileName(args[i + 1]) : "스크립트";
+                text = i + 1 < args.Count ? "스크립트 " + CommandLineParser.FileName(args[i + 1]) + FolderOf(args[i + 1]) : "스크립트";
             }
             else if (name is "encodedcommand" or "enc" or "ec" or "e" || name.StartsWith("encodedcommand", StringComparison.Ordinal))
             {
@@ -482,7 +519,11 @@ public static partial class SharedHostClassifier
             var conf = IdentityConfidence.Inferred;
             if (pkgJson is not null)
             {
-                text += " · 패키지 " + pkgJson;
+                // the package.json name confirms the node_modules package; repeat it only when it says something new
+                if (!text.StartsWith(pkgJson + " ", StringComparison.Ordinal))
+                {
+                    text += " · 패키지 " + pkgJson;
+                }
             }
             else if (ProjectFolder(a) is { } proj)
             {
@@ -580,6 +621,123 @@ public static partial class SharedHostClassifier
             file is null ? "명령줄" : "명령줄·버전 정보");
     }
 
+    /// <summary>java / javaw: -jar target, -m module, or the main class (class path and VM options skipped).</summary>
+    private static void Java(ClassifyInput input, IReadOnlyList<string> args, bool hasCmd, Builder b)
+    {
+        if (!hasCmd)
+        {
+            NoCmd(input, b);
+            return;
+        }
+
+        for (var i = 1; i < args.Count; i++)
+        {
+            var a = args[i];
+            if (a is "-cp" or "-classpath" or "--class-path" or "-p" or "--module-path" or "--add-opens" or "--add-exports" or "--add-modules"
+                or "--add-reads" or "--patch-module" or "--upgrade-module-path" or "--limit-modules" or "-agentpath" or "-javaagent")
+            {
+                i++;
+                continue;
+            }
+
+            if (a is "-jar" && i + 1 < args.Count)
+            {
+                b.Executor = b.Text("JAR " + CommandLineParser.FileName(args[i + 1]) + FolderOf(args[i + 1]) + Parent(input), IdentityConfidence.Inferred, "명령줄");
+                return;
+            }
+
+            if (a is "-m" or "--module" && i + 1 < args.Count)
+            {
+                b.Executor = b.Text("모듈 " + Short(args[i + 1], 60), IdentityConfidence.Inferred, "명령줄");
+                return;
+            }
+
+            if (a.StartsWith('-') || a.StartsWith('@'))
+            {
+                continue;
+            }
+
+            b.Executor = b.Text("클래스 " + Short(a, 60), IdentityConfidence.Inferred, "명령줄");
+            return;
+        }
+
+        b.Executor = b.Text("대상 미확인" + Parent(input), IdentityConfidence.Inferred, "명령줄");
+    }
+
+    private static readonly HashSet<string> DotNetCommands = new(StringComparer.OrdinalIgnoreCase)
+    { "run", "watch", "build", "test", "publish", "restore", "pack", "tool", "exec", "ef", "format", "new", "msbuild", "nuget", "dev-certs", "workload", "sln", "add", "remove", "list", "clean" };
+
+    /// <summary>dotnet: "dotnet app.dll" (the app) or an SDK command ("dotnet run --project X").</summary>
+    private static void DotNet(ClassifyInput input, IReadOnlyList<string> args, bool hasCmd, Builder b)
+    {
+        if (!hasCmd)
+        {
+            NoCmd(input, b);
+            return;
+        }
+
+        for (var i = 1; i < args.Count; i++)
+        {
+            var a = args[i];
+            if (a.StartsWith('-'))
+            {
+                if (a is "--additionalprobingpath" or "--depsfile" or "--runtimeconfig" or "--fx-version" or "--roll-forward" or "--additional-deps")
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            if (a.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                b.Executor = b.Text("앱 " + CommandLineParser.FileName(a) + FolderOf(a), IdentityConfidence.Inferred, "명령줄");
+                return;
+            }
+
+            if (DotNetCommands.Contains(a))
+            {
+                var project = CommandLineParser.Option(args, "--project");
+                b.Executor = b.Text("SDK 명령 " + a.ToLowerInvariant() + (project is null ? "" : " · " + CommandLineParser.FileName(project)) + Parent(input),
+                    IdentityConfidence.Inferred, "명령줄");
+                return;
+            }
+
+            break;
+        }
+
+        b.Executor = b.Text("대상 미확인" + Parent(input), IdentityConfidence.Inferred, "명령줄");
+    }
+
+    /// <summary>wsl.exe: the distribution (-d) and, when given, the command it runs (-e / --exec / after "--").</summary>
+    private static void Wsl(IReadOnlyList<string> args, bool hasCmd, Builder b)
+    {
+        if (!hasCmd)
+        {
+            return;
+        }
+
+        var distro = CommandLineParser.Option(args, "-d") ?? CommandLineParser.Option(args, "--distribution");
+        string? command = CommandLineParser.Option(args, "-e") ?? CommandLineParser.Option(args, "--exec");
+        var dashes = args.ToList().IndexOf("--");
+        if (command is null && dashes > 0 && dashes + 1 < args.Count)
+        {
+            command = args[dashes + 1];
+        }
+
+        var parts = new List<string> { "배포판 " + (distro ?? "기본값") };
+        if (command is not null)
+        {
+            parts.Add("명령 " + Short(CommandLineParser.FileName(command), 40));
+        }
+
+        b.Executor = b.Text(string.Join(" · ", parts), IdentityConfidence.Inferred, "명령줄");
+    }
+
+    /// <summary>" · 폴더 X" for a script or program given with a path, when its folder names something (not "src", "bin" ...).</summary>
+    private static string FolderOf(string path) =>
+        (path.Contains('\\') || path.Contains('/')) && ProjectFolder(path) is { } folder ? " · 폴더 " + folder : "";
+
     private static string Describe(string token)
     {
         var name = CommandLineParser.FileName(token);
@@ -646,6 +804,7 @@ public static partial class SharedHostClassifier
         public bool Shared { get; set; }
         public bool WantsModuleCheck { get; set; }
         public RoleEntry? GuidRole { get; set; }
+        public IdentityText? Role { get; set; }
         public List<HostedItem> Hosted { get; } = [];
         public List<string> Notes { get; } = [];
 
@@ -654,6 +813,6 @@ public static partial class SharedHostClassifier
 
         public IdentityText Text(string text, IdentityConfidence c, string basis) => new(text, Cap(c), IsMock ? basis + "(모의)" : basis);
 
-        public ClassifyResult Build() => new(Title, Executor, Shared, Hosted, Notes, WantsModuleCheck, GuidRole);
+        public ClassifyResult Build() => new(Title, Executor, Shared, Hosted, Notes, WantsModuleCheck, GuidRole, Role);
     }
 }

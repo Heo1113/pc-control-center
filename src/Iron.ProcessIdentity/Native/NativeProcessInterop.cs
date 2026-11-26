@@ -16,6 +16,9 @@ internal static class NativeProcessInterop
     public const uint PROCESS_VM_READ = 0x0010;
 
     public const int ProcessCommandLineInformation = 60;
+
+    /// <summary>PS_PROTECTION (one byte): type in bits 0-2 (0 none, 1 protected light, 2 protected), signer in bits 4-7.</summary>
+    public const int ProcessProtectionInformation = 61;
     public const int SystemProcessInformation = 5;
     public const int STATUS_SUCCESS = 0;
     public const int STATUS_INFO_LENGTH_MISMATCH = unchecked((int)0xC0000004);
