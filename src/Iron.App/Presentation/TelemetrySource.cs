@@ -82,7 +82,9 @@ public sealed class RealTelemetrySource(Func<DateTimeOffset, Stage2Frame> latest
         // the command line is the identity module's redacted text, never the process's own
         ProcessesUnavailableReason = f.ProcessesUnavailable,
         Processes = f.Processes.Select(p => new ProcessReading(p.Pid, p.ImageName, p.Adapter, p.DedicatedGb, p.SharedGb, p.UtilizationPercent, p.Engine,
-            p.CommandLine, p.IsSoftwareAdapter)).ToList(),
+            p.CommandLine, p.IsSoftwareAdapter, p.AdapterLuid, p.StartTicks,
+            [.. (p.OtherAdapters ?? []).Select(o => new AdapterUsage(o.Adapter, o.Luid, o.DedicatedGb, o.SharedGb, o.UtilizationPercent, o.Engine, o.IsSoftwareAdapter))]))
+            .ToList(),
     };
 }
 

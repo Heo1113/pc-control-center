@@ -62,7 +62,25 @@ public sealed record WireViewReading
 /// <summary>Antec FLUX PRO side-panel display (one-way USB HID temperature output).</summary>
 public sealed record FluxReading(bool Connected, bool IUnityRunning);
 
-/// <summary>One process's GPU memory as the Windows WDDM counters (PDH) report it. Never mixed with NVML values.</summary>
+/// <summary>One process's memory and engine use on one GPU (that adapter's WDDM counters only; never summed across GPUs).</summary>
+/// <param name="Luid">The adapter's LUID (Stage 2); 0 = not known (Stage 1 mock rows), then the name identifies the GPU.</param>
+public sealed record AdapterUsage(string Adapter, long Luid, double DedicatedGb, double SharedGb, double UtilizationPercent, string Engine,
+    bool IsSoftwareAdapter = false)
+{
+    /// <summary>
+    /// Internal identity of the GPU: its LUID, never its model name (two cards of the same model stay apart). The name is
+    /// used only for mock rows, which have no LUID.
+    /// </summary>
+    public string Id => Luid != 0 ? "luid:" + Luid.ToString("X", System.Globalization.CultureInfo.InvariantCulture) : "name:" + Adapter;
+}
+
+/// <summary>
+/// One process's GPU memory as the Windows WDDM counters (PDH) report it. Never mixed with NVML values. The row values are
+/// one GPU's: the representative GPU (most dedicated memory) in "전체", the chosen GPU under a GPU filter.
+/// </summary>
+/// <param name="AdapterLuid">LUID of <paramref name="Adapter"/> (Stage 2); 0 for mock rows.</param>
+/// <param name="StartTicks">The process's creation time (UTC ticks, Stage 2): with the PID it tells a reused PID apart; 0 = not known.</param>
+/// <param name="OtherAdapters">The process's use of the other GPUs (Stage 2), shown in the tooltip, never added to the row values.</param>
 public sealed record ProcessReading(
     int Pid,
     string Name,
@@ -72,7 +90,33 @@ public sealed record ProcessReading(
     double UtilizationPercent,
     string Engine,
     string CommandLine,
-    bool IsSoftwareAdapter = false);
+    bool IsSoftwareAdapter = false,
+    long AdapterLuid = 0,
+    long StartTicks = 0,
+    IReadOnlyList<AdapterUsage>? OtherAdapters = null)
+{
+    /// <summary>The GPU the row values belong to.</summary>
+    public AdapterUsage Shown => new(Adapter, AdapterLuid, DedicatedGb, SharedGb, UtilizationPercent, Engine, IsSoftwareAdapter);
+
+    /// <summary>Every GPU the process uses: the shown one first.</summary>
+    public IEnumerable<AdapterUsage> Usages => OtherAdapters is { Count: > 0 } o ? [Shown, .. o] : [Shown];
+
+    /// <summary>The process instance: PID plus creation time (a reused PID is another process).</summary>
+    public (int Pid, long StartTicks) Instance => (Pid, StartTicks);
+
+    /// <summary>The same process with the values of one of its GPUs (the others move to <see cref="OtherAdapters"/>).</summary>
+    public ProcessReading On(AdapterUsage u) => this with
+    {
+        Adapter = u.Adapter,
+        AdapterLuid = u.Luid,
+        DedicatedGb = u.DedicatedGb,
+        SharedGb = u.SharedGb,
+        UtilizationPercent = u.UtilizationPercent,
+        Engine = u.Engine,
+        IsSoftwareAdapter = u.IsSoftwareAdapter,
+        OtherAdapters = [.. Usages.Where(x => x.Id != u.Id)],
+    };
+}
 
 /// <summary>Everything one reading of the sensors gives (Stage 1: one simulated reading).</summary>
 public sealed record TelemetryFrame

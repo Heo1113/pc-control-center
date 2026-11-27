@@ -7,6 +7,9 @@ namespace Iron.App.Presentation;
 public sealed partial class ProcessRowViewModel(ProcessReading reading) : ObservableObject
 {
     public int Pid { get; } = reading.Pid;
+
+    /// <summary>The process instance this row stands for (PID + creation time): a reused PID gets a new row.</summary>
+    public (int Pid, long StartTicks) Instance { get; } = reading.Instance;
     public string PidText => Pid.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     [ObservableProperty] public partial string Name { get; private set; } = reading.Name;
@@ -25,8 +28,20 @@ public sealed partial class ProcessRowViewModel(ProcessReading reading) : Observ
     /// <summary>Shown in the existing name tooltip (identity text and icon). Stage 1: from mock data only.</summary>
     [ObservableProperty] public partial ProcessIdentityView? Identity { get; set; }
 
+    /// <summary>
+    /// Null for a process on one GPU. For a process on several: says that the row is one GPU's use (not a total) and lists the
+    /// other GPUs' dedicated/shared memory and engine load (shown as a tooltip on the GPU and memory cells; no new element).
+    /// </summary>
+    [ObservableProperty] public partial string? UsageNote { get; private set; } = Note(reading);
+
+    /// <summary>The GPU cell's tooltip: the adapter name, plus <see cref="UsageNote"/> for a process on several GPUs.</summary>
+    [ObservableProperty] public partial string AdapterToolTip { get; private set; } = AdapterTip(reading);
+
     public bool IsSoftwareAdapter { get; private set; } = reading.IsSoftwareAdapter;
     public ProcessReading Reading { get; private set; } = reading;
+
+    /// <summary>Key of the load history this row shows: the process instance on the GPU whose values the row shows.</summary>
+    public ProcessListViewModel.UsageKey HistoryKey => new(Reading.Pid, Reading.StartTicks, Reading.Shown.Id);
 
     public void Update(ProcessReading r)
     {
@@ -40,7 +55,23 @@ public sealed partial class ProcessRowViewModel(ProcessReading reading) : Observ
         Engine = r.Engine;
         IsHeavy = r.DedicatedGb > 3;
         IsSoftwareAdapter = r.IsSoftwareAdapter;
+        UsageNote = Note(r);
+        AdapterToolTip = AdapterTip(r);
     }
+
+    internal static string? Note(ProcessReading r)
+    {
+        if (r.OtherAdapters is not { Count: > 0 } others)
+        {
+            return null;
+        }
+
+        var lines = others.Select(o => $"· {o.Adapter}: 전용 {Fmt.Gb(o.DedicatedGb)} · 공유 {Fmt.Gb(o.SharedGb)}"
+                                       + (o.Engine.Length > 0 ? $" · {o.Engine} {Fmt.Int(o.UtilizationPercent)}%" : ""));
+        return $"표시 값은 {r.Adapter} 한 GPU의 사용량입니다 (모든 GPU의 합계가 아님).\n다른 GPU 사용:\n" + string.Join("\n", lines);
+    }
+
+    private static string AdapterTip(ProcessReading r) => Note(r) is { } note ? r.Adapter + "\n" + note : r.Adapter;
 
     public static string Short(string adapter) => adapter.StartsWith("RTX ", StringComparison.Ordinal) ? adapter[4..] : adapter.Contains("Basic Render", StringComparison.Ordinal) ? "SW" : adapter;
 }
@@ -54,8 +85,11 @@ public sealed partial class ProcessListViewModel : ObservableObject
     public const string All = "전체";
     public static readonly IReadOnlyList<string> Filters = [All, "RTX 5080", "RTX 5060 Ti"];
 
-    private readonly Dictionary<int, History> _histories = [];
-    private readonly Dictionary<int, ProcessRowViewModel> _rows = [];
+    /// <summary>One load history per process instance and GPU: a reused PID, or the same process on another GPU, never shares one.</summary>
+    public readonly record struct UsageKey(int Pid, long StartTicks, string AdapterId);
+
+    private readonly Dictionary<UsageKey, History> _histories = [];
+    private readonly Dictionary<(int Pid, long StartTicks), ProcessRowViewModel> _rows = [];
     private IReadOnlyList<ProcessReading> _latest = [];
 
     /// <summary>Identity for the name tooltip. Stage 1 uses mock data only (no real process lookup).</summary>
@@ -111,21 +145,35 @@ public sealed partial class ProcessListViewModel : ObservableObject
     public void Apply(IReadOnlyList<ProcessReading> processes, SensorPhase phase, string? unavailable = null)
     {
         _latest = processes;
-        var alive = new HashSet<int>();
+        var alive = new HashSet<UsageKey>();
+        var instances = new HashSet<(int, long)>();
         foreach (var p in processes)
         {
-            alive.Add(p.Pid);
-            if (!_histories.TryGetValue(p.Pid, out var history))
+            instances.Add(p.Instance);
+            foreach (var u in p.Usages)
             {
-                _histories[p.Pid] = history = new History();
-            }
+                // every GPU of the process keeps its own history, whichever GPU the row shows now
+                var key = new UsageKey(p.Pid, p.StartTicks, u.Id);
+                if (alive.Add(key))
+                {
+                    if (!_histories.TryGetValue(key, out var history))
+                    {
+                        _histories[key] = history = new History();
+                    }
 
-            history.Add(p.UtilizationPercent);
+                    history.Add(u.UtilizationPercent);
+                }
+            }
         }
 
-        foreach (var gone in _histories.Keys.Where(pid => !alive.Contains(pid)).ToList())
+        // a process (instance) gone, a GPU it stopped using, or no current reading at all: that history ends
+        foreach (var gone in _histories.Keys.Where(k => !alive.Contains(k)).ToList())
         {
             _histories.Remove(gone);
+        }
+
+        foreach (var gone in _rows.Keys.Where(k => !instances.Contains(k)).ToList())
+        {
             _rows.Remove(gone);
         }
 
@@ -154,7 +202,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
             newValue.IsSelected = true;
         }
 
-        SelectedHistory = newValue is not null && _histories.TryGetValue(newValue.Pid, out var h) ? h.Snapshot() : [];
+        SelectedHistory = newValue is not null && _histories.TryGetValue(newValue.HistoryKey, out var h) ? h.Snapshot() : [];
     }
 
     [RelayCommand]
@@ -165,8 +213,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
 
     private void Refresh()
     {
-        var ordered = _latest.OrderByDescending(p => p.DedicatedGb).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        var byAdapter = ordered.Where(p => Filter == All || p.Adapter == Filter).ToList();
+        var ordered = OnFilter(_latest, Filter).OrderByDescending(p => p.DedicatedGb).ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var byAdapter = ordered;
         var overview = byAdapter.Where(p => !p.IsSoftwareAdapter).Take(OverviewLimit).ToList();
         var search = Search.Trim();
         var full = byAdapter.Where(p => ShowSoftwareAdapter || !p.IsSoftwareAdapter)
@@ -175,18 +223,18 @@ public sealed partial class ProcessListViewModel : ObservableObject
                                            || IdentityProvider.Identify(p).Matches(search))
             .ToList();
 
-        var selectedPid = Selected?.Pid;
+        var selectedInstance = Selected?.Instance;
         Sync(OverviewRows, overview, _rows, IdentityProvider);
         Sync(Rows, full, _rows, IdentityProvider);
-        var selected = Rows.FirstOrDefault(r => r.Pid == selectedPid) ?? OverviewRows.FirstOrDefault(r => r.Pid == selectedPid)
+        var selected = Rows.FirstOrDefault(r => r.Instance == selectedInstance) ?? OverviewRows.FirstOrDefault(r => r.Instance == selectedInstance)
                        ?? Rows.FirstOrDefault();
         Selected = selected;
         foreach (var row in OverviewRows.Concat(Rows))
         {
-            row.IsSelected = selected is not null && row.Pid == selected.Pid;
+            row.IsSelected = selected is not null && row.Instance == selected.Instance;
         }
 
-        if (selected is not null && _histories.TryGetValue(selected.Pid, out var history))
+        if (selected is not null && _histories.TryGetValue(selected.HistoryKey, out var history))
         {
             SelectedHistory = history.Snapshot();
         }
@@ -195,11 +243,31 @@ public sealed partial class ProcessListViewModel : ObservableObject
         CountText = $"{full.Count}개 프로세스" + (hidden > 0 ? $" · 소프트웨어 어댑터 {hidden}개 숨김" : "");
     }
 
+    /// <summary>
+    /// The rows of a view. "전체": one row per process with its representative GPU's values (as before). A GPU filter: every
+    /// process that holds memory on that GPU, with that GPU's dedicated/shared memory and engine load. The filter label is a
+    /// model name (the buttons); it is resolved to the GPUs' identities (LUIDs) seen in this reading, and rows are matched by
+    /// identity. With two cards of one model (separate labels deferred) a process shows the larger of its uses on them.
+    /// </summary>
+    internal static IEnumerable<ProcessReading> OnFilter(IReadOnlyList<ProcessReading> processes, string filter)
+    {
+        if (filter == All)
+        {
+            return processes;
+        }
+
+        var ids = processes.SelectMany(p => p.Usages).Where(u => u.Adapter == filter).Select(u => u.Id).ToHashSet();
+        return processes
+            .Select(p => (p, use: p.Usages.Where(u => ids.Contains(u.Id)).OrderByDescending(u => u.DedicatedGb).FirstOrDefault()))
+            .Where(x => x.use is not null)
+            .Select(x => x.use!.Id == x.p.Shown.Id ? x.p : x.p.On(x.use!));
+    }
+
     /// <summary>Keeps row objects (and so selection and scroll position) when the same processes stay in the same order.</summary>
-    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted, Dictionary<int, ProcessRowViewModel> shared,
+    private static void Sync(ObservableCollection<ProcessRowViewModel> rows, List<ProcessReading> wanted, Dictionary<(int, long), ProcessRowViewModel> shared,
         IProcessIdentityProvider identities)
     {
-        var same = rows.Count == wanted.Count && rows.Select(r => r.Pid).SequenceEqual(wanted.Select(p => p.Pid));
+        var same = rows.Count == wanted.Count && rows.Select(r => r.Instance).SequenceEqual(wanted.Select(p => p.Instance));
         if (same)
         {
             for (var i = 0; i < wanted.Count; i++)
@@ -215,13 +283,13 @@ public sealed partial class ProcessListViewModel : ObservableObject
         rows.Clear();
         foreach (var p in wanted)
         {
-            if (shared.TryGetValue(p.Pid, out var row))
+            if (shared.TryGetValue(p.Instance, out var row))
             {
                 row.Update(p);
             }
             else
             {
-                shared[p.Pid] = row = new ProcessRowViewModel(p);
+                shared[p.Instance] = row = new ProcessRowViewModel(p);
             }
 
             row.Identity = identities.Identify(p);

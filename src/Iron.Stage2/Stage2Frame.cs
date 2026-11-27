@@ -43,15 +43,20 @@ public sealed record Stage2WireView(bool Connected, double? PowerW, double? Volt
 }
 
 /// <summary>A process's memory on one more adapter (WDDM counters of that adapter only).</summary>
-public sealed record AdapterShare(string Adapter, double DedicatedGb, double SharedGb);
+/// <param name="Luid">The adapter's LUID: the GPU's identity (two cards of the same model have the same name).</param>
+public sealed record AdapterShare(string Adapter, double DedicatedGb, double SharedGb, long Luid = 0, double UtilizationPercent = 0, string Engine = "",
+    bool IsSoftwareAdapter = false);
 
 /// <param name="CommandLine">Always the redacted command line (secrets and the user profile name removed); empty until identified.</param>
 /// <param name="OtherAdapters">
-/// Diagnostic only (the probe report; not shown in the window): the process's memory on adapters other than <paramref name="Adapter"/>.
-/// The row shows the adapter with the most dedicated memory; see docs/IRON_STAGE2.md, "듀얼 GPU".
+/// The process's memory and engine use on adapters other than <paramref name="Adapter"/> (the representative GPU, most dedicated
+/// memory). The window lists the process under each GPU filter it uses and names the others in the tooltip; see docs/IRON_STAGE2.md, "듀얼 GPU".
 /// </param>
+/// <param name="AdapterLuid">LUID of <paramref name="Adapter"/>.</param>
+/// <param name="StartTicks">Creation time of the process (UTC ticks, from the WDDM reader's process table); 0 = not known.</param>
 public sealed record Stage2Process(int Pid, string ImageName, string Adapter, double DedicatedGb, double SharedGb, double UtilizationPercent,
-    string Engine, string CommandLine, bool IsSoftwareAdapter, ProcessIdentityInfo? Identity, IReadOnlyList<AdapterShare>? OtherAdapters = null);
+    string Engine, string CommandLine, bool IsSoftwareAdapter, ProcessIdentityInfo? Identity, IReadOnlyList<AdapterShare>? OtherAdapters = null,
+    long AdapterLuid = 0, long StartTicks = 0);
 
 public sealed record Stage2Frame
 {

@@ -167,18 +167,19 @@ public class Stage2AppTests
     }
 
     [Fact]
-    public void DualGpuProcessIsOneRowUnderTheGpuWithMoreDedicatedMemory()
+    public void DualGpuProcessIsOneRowInAllAndListedUnderEachGpuItUses()
     {
-        // Known limit (docs/IRON_STAGE2.md, "듀얼 GPU"): rows are keyed by PID, so a process on both GPUs is one row showing the GPU
-        // with more dedicated memory; the "RTX 5060 Ti" filter does not list it although it holds memory there.
-        var frame = Frame(new Stage2Process(100, "python.exe", "RTX 5080", 6, 0, 40, "Compute", "", false, null, [new AdapterShare("RTX 5060 Ti", 1, 0)]));
+        // A1/A2 (docs/IRON_STAGE2.md, "듀얼 GPU"): one row per process in 전체 (the GPU with more dedicated memory, the other in
+        // the tooltip); the RTX 5060 Ti filter lists it with its 5060 Ti memory (before A1 it was missing there).
+        var frame = Frame(new Stage2Process(100, "python.exe", "RTX 5080", 6, 0, 40, "Compute", "", false, null, [new AdapterShare("RTX 5060 Ti", 1, 0, 2, 12, "Compute")], 1, 7));
         var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0), new RealTelemetrySource(_ => frame));
         vm.Tick();
         var row = Assert.Single(vm.Processes.Rows);
         Assert.Equal("RTX 5080", row.Adapter);
+        Assert.NotNull(row.UsageNote);
         vm.Processes.Filter = "RTX 5060 Ti";
-        Assert.Empty(vm.Processes.Rows);
+        Assert.Equal("1.00 GB", Assert.Single(vm.Processes.Rows).DedicatedText);
         vm.Processes.Filter = "RTX 5080";
-        Assert.Single(vm.Processes.Rows);
+        Assert.Equal("6.00 GB", Assert.Single(vm.Processes.Rows).DedicatedText);
     }
 }

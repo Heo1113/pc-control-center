@@ -96,13 +96,19 @@ public static class Composer
                 identity,
                 [.. group.Where(x => !ReferenceEquals(x, p) && ((x.DedicatedBytes ?? 0) > 0 || (x.SharedBytes ?? 0) > 0))
                     .OrderByDescending(x => x.DedicatedBytes ?? 0)
-                    .Select(x => new AdapterShare(
-                        ShortGpuName(adapters.GetValueOrDefault(x.Luid)?.Name) ?? GpuLuid.Format(x.Luid),
-                        Math.Round((x.DedicatedBytes ?? 0) / Gb, 2),
-                        Math.Round((x.SharedBytes ?? 0) / Gb, 2)))]));
+                    .Select(x => Share(x, adapters.GetValueOrDefault(x.Luid)))],
+                p.Luid,
+                entry?.StartTime?.UtcTicks ?? 0));
         }
 
         return rows;
+    }
+
+    private static AdapterShare Share(GpuProcessMemory x, GpuAdapterInfo? info)
+    {
+        var (util, engine) = TopEngine(x.Engines);
+        return new AdapterShare(ShortGpuName(info?.Name) ?? GpuLuid.Format(x.Luid), Math.Round((x.DedicatedBytes ?? 0) / Gb, 2),
+            Math.Round((x.SharedBytes ?? 0) / Gb, 2), x.Luid, util, engine, info?.IsSoftware ?? false);
     }
 
     private static (double Util, string Engine) TopEngine(EngineUsage? e)

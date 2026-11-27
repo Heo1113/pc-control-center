@@ -188,7 +188,9 @@ public class ComposerTests
         Assert.Equal(6, py.DedicatedGb);
         // its 1 GB on the second GPU is not in the row; the probe lists it (dual-GPU review)
         var other = Assert.Single(py.OtherAdapters!);
-        Assert.Equal(new AdapterShare("RTX 5060 Ti", 1, 0), other);
+        Assert.Equal(new AdapterShare("RTX 5060 Ti", 1, 0, Luid: 2), other);
+        Assert.Equal(1, py.AdapterLuid); // GPUs are identified by LUID, not by model name
+        Assert.Equal(DateTimeOffset.UnixEpoch.UtcTicks, py.StartTicks); // creation time from the WDDM process table: PID reuse is told apart
         Assert.DoesNotContain("sk-live", py.CommandLine, StringComparison.Ordinal);
         Assert.Contains("--api-key=***", py.CommandLine, StringComparison.Ordinal);
         var dwm = frame.Processes.Single(p => p.Pid == 200);

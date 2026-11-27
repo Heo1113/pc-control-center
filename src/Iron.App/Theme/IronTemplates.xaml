@@ -167,8 +167,8 @@
         <ColumnDefinition Width="{DynamicResource Iron.ColUtil}" />
       </Grid.ColumnDefinitions>
       <ContentPresenter x:Name="ProcessNameCell" Content="{Binding}" ContentTemplate="{StaticResource Iron.ProcessNameCell}" />
-      <TextBlock Grid.Column="1" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" />
-      <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right"
+      <TextBlock Grid.Column="1" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" ToolTip="{Binding UsageNote}" />
+      <TextBlock Grid.Column="2" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right" ToolTip="{Binding UsageNote}"
                  Foreground="{Binding IsHeavy, Converter={StaticResource BoolBrush}, ConverterParameter=IronInkHeavyOnBezel|IronInkBezel}" />
       <TextBlock Grid.Column="3" Text="{Binding SharedText}" Style="{StaticResource Iron.CellMuted}" HorizontalAlignment="Right" />
       <TextBlock Grid.Column="4" Text="{Binding UtilizationText}" Style="{StaticResource Iron.Cell}" HorizontalAlignment="Right" />
@@ -188,8 +188,8 @@
       </Grid.ColumnDefinitions>
       <ContentPresenter x:Name="ProcessNameCell" Content="{Binding}" ContentTemplate="{StaticResource Iron.ProcessNameCell}" />
       <TextBlock Grid.Column="1" Text="{Binding PidText}" Style="{StaticResource Iron.CellMuted}" Visibility="{Binding DataContext.IsNarrow, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource VisibleWhen}, ConverterParameter=invert}" />
-      <TextBlock Grid.Column="2" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" ToolTip="{Binding Adapter}" />
-      <TextBlock Grid.Column="3" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right"
+      <TextBlock Grid.Column="2" Text="{Binding AdapterShort}" Style="{StaticResource Iron.CellMuted}" ToolTip="{Binding AdapterToolTip}" />
+      <TextBlock Grid.Column="3" Text="{Binding DedicatedText}" Style="{StaticResource Iron.Cell}" FontWeight="Bold" HorizontalAlignment="Right" ToolTip="{Binding UsageNote}"
                  Foreground="{Binding IsHeavy, Converter={StaticResource BoolBrush}, ConverterParameter=IronInkHeavyOnBezel|IronInkBezel}" />
       <TextBlock Grid.Column="4" Text="{Binding SharedText}" Style="{StaticResource Iron.CellMuted}" HorizontalAlignment="Right" />
       <TextBlock Grid.Column="5" Text="{Binding UtilizationText}" Style="{StaticResource Iron.Cell}" HorizontalAlignment="Right" />
