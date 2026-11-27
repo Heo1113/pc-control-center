@@ -105,6 +105,9 @@ public static class LayoutRules
 public static class Fmt
 {
     public const string Missing = "—";
+
+    /// <summary>A size or limit the reader did not report (VRAM, installed RAM): never replaced by an assumed value.</summary>
+    public const string Unknown = "N/A";
     private static readonly CultureInfo C = CultureInfo.InvariantCulture;
 
     public static string Int(double? value) => value is double v ? (Math.Round(v) + 0.0).ToString("0", C) : Missing; // + 0.0: no "-0"

@@ -100,6 +100,7 @@ internal static partial class RealProbe
                 processes = frame.Processes.Select(p => new
                 {
                     p.Pid, p.ImageName, p.Adapter, p.DedicatedGb, p.SharedGb, p.UtilizationPercent, p.Engine, p.CommandLine, p.IsSoftwareAdapter,
+                    otherAdapters = p.OtherAdapters ?? [], // memory on a second GPU: not in the window row (dual-GPU review)
                     identity = p.Identity is null ? null : Describe(p.Identity),
                 }),
             },

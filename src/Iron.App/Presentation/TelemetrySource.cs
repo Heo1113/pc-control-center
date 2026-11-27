@@ -61,11 +61,11 @@ public sealed class RealTelemetrySource(Func<DateTimeOffset, Stage2Frame> latest
             PowerW = g.PowerW,
             UtilizationPercent = g.UtilizationPercent,
             VramUsedGb = g.VramUsedGb,
-            VramTotalGb = g.VramTotalGb ?? 16,
+            VramTotalGb = g.VramTotalGb, // null stays null (N/A): no assumed card size
             ClockMhz = g.ClockMhz,
         }).ToList(),
         Cpu = new CpuReading(f.Cpu.LoadPercent, f.Cpu.TctlC, f.Cpu.PackageC, f.Cpu.CoreMaxC),
-        Ram = new RamReading(f.RamUsedGb, f.RamTotalGb ?? 128),
+        Ram = new RamReading(f.RamUsedGb, f.RamTotalGb), // null stays null (N/A): no assumed RAM size
         Ssd = new SsdReading(f.SsdTemperatureC, f.SsdReadMBps),
         WireView = f.WireView.Connected
             ? new WireViewReading
@@ -80,6 +80,7 @@ public sealed class RealTelemetrySource(Func<DateTimeOffset, Stage2Frame> latest
             : WireViewReading.None,
         Flux = new FluxReading(false, false),
         // the command line is the identity module's redacted text, never the process's own
+        ProcessesUnavailableReason = f.ProcessesUnavailable,
         Processes = f.Processes.Select(p => new ProcessReading(p.Pid, p.ImageName, p.Adapter, p.DedicatedGb, p.SharedGb, p.UtilizationPercent, p.Engine,
             p.CommandLine, p.IsSoftwareAdapter)).ToList(),
     };

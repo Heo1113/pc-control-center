@@ -89,4 +89,96 @@ public class Stage2AppTests
         Assert.Equal("모의 데이터", vm.MockButtonLabel);
         Assert.StartsWith("모의 데이터 (Stage 1) — 상태 전환: F5 정상", vm.SourceToolTip, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void UnknownCapacitiesStayNotAvailable()
+    {
+        // NVML gave VRAM used but no total, Windows gave no installed RAM: no 16 GB / 128 GB stand-in
+        var frame = Frame() with
+        {
+            Gpus = [new Stage2Gpu(0, "RTX 5080", 61, 210, 55, 9, null, null), new Stage2Gpu(1, "RTX 5060 Ti", 44, 30, 3, 1.2, 16, 210)],
+            RamTotalGb = null,
+        };
+        var t = RealTelemetrySource.Map(frame);
+        Assert.Null(t.Gpus[0].VramTotalGb);
+        Assert.Null(t.Ram.TotalGb);
+        var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0), new RealTelemetrySource(_ => frame));
+        vm.Tick();
+        Assert.Equal("/ N/A", vm.Gpus[0].VramTotalText);
+        Assert.Null(vm.Gpus[0].VramRatio); // no meter against a guessed size
+        Assert.Equal("9.0", vm.Gpus[0].VramText); // the measured part is still shown
+        Assert.Equal("/ 16 GB", vm.Gpus[1].VramTotalText);
+        Assert.Equal("40 GB / N/A", vm.Ram.Value);
+        Assert.Null(vm.Ram.Ratio);
+    }
+
+    [Fact]
+    public void MockCapacitiesAreUnchanged()
+    {
+        var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0));
+        vm.Tick();
+        Assert.Equal("/ 16 GB", vm.Gpus[0].VramTotalText);
+        Assert.Equal("/ 16 GB", vm.Gpus[1].VramTotalText);
+        Assert.EndsWith(" / 128 GB", vm.Ram.Value, StringComparison.Ordinal);
+        Assert.EndsWith(" · 모의 데이터", vm.TrayToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GpuCardsDoNotKeepValuesTheReaderNoLongerGives()
+    {
+        var frame = Frame();
+        var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0), new RealTelemetrySource(_ => frame));
+        vm.Tick();
+        Assert.Equal("61°C", vm.Gpus[0].TemperatureText);
+        Assert.Equal("44°C", vm.Gpus[1].TemperatureText);
+
+        // NVML lost the GPUs (or the hardware reader stopped and its reading went stale): the frame has no GPU readings
+        frame = Frame() with { Phase = Stage2Phase.NoDevice, Gpus = [] };
+        vm.Tick();
+        foreach (var card in vm.Gpus)
+        {
+            Assert.Equal(Fmt.Missing, card.TemperatureText);
+            Assert.Equal(Fmt.Missing, card.VramText);
+            Assert.Equal("/ N/A", card.VramTotalText);
+            Assert.Null(card.LoadRatio);
+            Assert.False(card.IsHot);
+        }
+
+        Assert.Equal("RTX 5080", vm.Gpus[0].Name); // the card keeps its label, not its values
+        Assert.EndsWith(" · 실측 데이터", vm.TrayToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProcessListSaysWhyItIsEmptyWhenWddmGaveNothingCurrent()
+    {
+        var frame = Frame(new Stage2Process(100, "python.exe", "RTX 5080", 6, 0.5, 40, "Compute", "", false, null));
+        var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0), new RealTelemetrySource(_ => frame));
+        vm.Tick();
+        Assert.Single(vm.Processes.Rows);
+
+        frame = Frame() with { ProcessesUnavailable = "WDDM 카운터 값이 9초째 들어오지 않아 프로세스 목록을 표시하지 않습니다." };
+        vm.Tick();
+        Assert.Empty(vm.Processes.Rows); // the previous process is not kept
+        Assert.Equal("WDDM 카운터 값이 9초째 들어오지 않아 프로세스 목록을 표시하지 않습니다.", vm.Processes.EmptyText);
+
+        frame = Frame();
+        vm.Tick();
+        Assert.Equal("GPU 메모리를 쓰는 프로세스가 없습니다.", vm.Processes.EmptyText); // current and empty
+    }
+
+    [Fact]
+    public void DualGpuProcessIsOneRowUnderTheGpuWithMoreDedicatedMemory()
+    {
+        // Known limit (docs/IRON_STAGE2.md, "듀얼 GPU"): rows are keyed by PID, so a process on both GPUs is one row showing the GPU
+        // with more dedicated memory; the "RTX 5060 Ti" filter does not list it although it holds memory there.
+        var frame = Frame(new Stage2Process(100, "python.exe", "RTX 5080", 6, 0, 40, "Compute", "", false, null, [new AdapterShare("RTX 5060 Ti", 1, 0)]));
+        var vm = new ShellViewModel(new MockTelemetryProvider(jitter: false), new TestScheduler(Rig.T0), new RealTelemetrySource(_ => frame));
+        vm.Tick();
+        var row = Assert.Single(vm.Processes.Rows);
+        Assert.Equal("RTX 5080", row.Adapter);
+        vm.Processes.Filter = "RTX 5060 Ti";
+        Assert.Empty(vm.Processes.Rows);
+        vm.Processes.Filter = "RTX 5080";
+        Assert.Single(vm.Processes.Rows);
+    }
 }

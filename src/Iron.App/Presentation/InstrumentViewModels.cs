@@ -20,7 +20,7 @@ public sealed partial class GpuCardViewModel(int index) : ObservableObject
     [ObservableProperty] public partial string LoadText { get; private set; } = Fmt.Missing;
     [ObservableProperty] public partial double? LoadRatio { get; private set; }
     [ObservableProperty] public partial string VramText { get; private set; } = Fmt.Missing;
-    [ObservableProperty] public partial string VramTotalText { get; private set; } = "/ 16 GB";
+    [ObservableProperty] public partial string VramTotalText { get; private set; } = "/ " + Fmt.Unknown;
     [ObservableProperty] public partial double? VramRatio { get; private set; }
     [ObservableProperty] public partial string VramShortText { get; private set; } = Fmt.Missing;
 
@@ -36,8 +36,8 @@ public sealed partial class GpuCardViewModel(int index) : ObservableObject
         LoadText = Fmt.Int(gpu.UtilizationPercent);
         LoadRatio = gpu.UtilizationPercent / 100.0;
         VramText = Fmt.One(gpu.VramUsedGb);
-        VramTotalText = $"/ {Fmt.Int(gpu.VramTotalGb)} GB";
-        VramRatio = gpu.VramUsedGb is double used && gpu.VramTotalGb > 0 ? used / gpu.VramTotalGb : null;
+        VramTotalText = gpu.VramTotalGb is double total ? $"/ {Fmt.Int(total)} GB" : "/ " + Fmt.Unknown;
+        VramRatio = gpu.VramUsedGb is double used && gpu.VramTotalGb is double t && t > 0 ? used / t : null;
         VramShortText = gpu.VramUsedGb is double v ? Fmt.One(v) + " GB" : Fmt.Missing;
     }
 }

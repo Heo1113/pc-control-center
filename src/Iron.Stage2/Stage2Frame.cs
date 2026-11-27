@@ -42,9 +42,16 @@ public sealed record Stage2WireView(bool Connected, double? PowerW, double? Volt
     public static Stage2WireView None { get; } = new(false, null, null, null, null, [], "ABSENT");
 }
 
+/// <summary>A process's memory on one more adapter (WDDM counters of that adapter only).</summary>
+public sealed record AdapterShare(string Adapter, double DedicatedGb, double SharedGb);
+
 /// <param name="CommandLine">Always the redacted command line (secrets and the user profile name removed); empty until identified.</param>
+/// <param name="OtherAdapters">
+/// Diagnostic only (the probe report; not shown in the window): the process's memory on adapters other than <paramref name="Adapter"/>.
+/// The row shows the adapter with the most dedicated memory; see docs/IRON_STAGE2.md, "듀얼 GPU".
+/// </param>
 public sealed record Stage2Process(int Pid, string ImageName, string Adapter, double DedicatedGb, double SharedGb, double UtilizationPercent,
-    string Engine, string CommandLine, bool IsSoftwareAdapter, ProcessIdentityInfo? Identity);
+    string Engine, string CommandLine, bool IsSoftwareAdapter, ProcessIdentityInfo? Identity, IReadOnlyList<AdapterShare>? OtherAdapters = null);
 
 public sealed record Stage2Frame
 {
@@ -58,5 +65,9 @@ public sealed record Stage2Frame
     public double? SsdReadMBps { get; init; }
     public Stage2WireView WireView { get; init; } = Stage2WireView.None;
     public IReadOnlyList<Stage2Process> Processes { get; init; } = [];
+
+    /// <summary>Why <see cref="Processes"/> is empty because the WDDM counters gave nothing current (null when they did).</summary>
+    public string? ProcessesUnavailable { get; init; }
+
     public IReadOnlyList<SourceStatus> Sources { get; init; } = [];
 }

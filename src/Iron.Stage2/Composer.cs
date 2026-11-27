@@ -16,7 +16,8 @@ public static class Composer
     private const double Gb = 1024.0 * 1024 * 1024;
 
     public static Stage2Frame Compose(DateTimeOffset now, HardwareSnapshot? hardware, bool gpuReaderAvailable, GpuMemorySnapshot? gpuMemory,
-        HwInfoValues? hwinfo, double? diskReadBytesPerSec, Func<int, ProcessIdentityInfo?> identityOf, IReadOnlyList<SourceStatus> sources)
+        HwInfoValues? hwinfo, double? diskReadBytesPerSec, Func<int, ProcessIdentityInfo?> identityOf, IReadOnlyList<SourceStatus> sources,
+        string? processesUnavailable = null)
     {
         var phase = hardware is null ? Stage2Phase.Initializing : gpuReaderAvailable && hardware.Gpus.Count > 0 ? Stage2Phase.Ready : Stage2Phase.NoDevice;
         var gpus = hardware?.Gpus.OrderBy(g => g.Index).Select(g => new Stage2Gpu(
@@ -41,6 +42,7 @@ public static class Composer
             SsdReadMBps = diskReadBytesPerSec is double b ? Math.Round(b / (1024 * 1024), 1) : null,
             WireView = hwinfo?.WireView ?? Stage2WireView.None,
             Processes = gpuMemory is null ? [] : Processes(gpuMemory, identityOf),
+            ProcessesUnavailable = gpuMemory is null ? processesUnavailable : null,
             Sources = sources,
         };
     }
@@ -91,7 +93,13 @@ public static class Composer
                 engine,
                 identity?.RedactedCommandLine ?? "",
                 info?.IsSoftware ?? false,
-                identity));
+                identity,
+                [.. group.Where(x => !ReferenceEquals(x, p) && ((x.DedicatedBytes ?? 0) > 0 || (x.SharedBytes ?? 0) > 0))
+                    .OrderByDescending(x => x.DedicatedBytes ?? 0)
+                    .Select(x => new AdapterShare(
+                        ShortGpuName(adapters.GetValueOrDefault(x.Luid)?.Name) ?? GpuLuid.Format(x.Luid),
+                        Math.Round((x.DedicatedBytes ?? 0) / Gb, 2),
+                        Math.Round((x.SharedBytes ?? 0) / Gb, 2)))]));
         }
 
         return rows;

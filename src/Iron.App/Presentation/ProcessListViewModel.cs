@@ -107,7 +107,8 @@ public sealed partial class ProcessListViewModel : ObservableObject
         }
     }
 
-    public void Apply(IReadOnlyList<ProcessReading> processes, SensorPhase phase)
+    /// <param name="unavailable">Stage 2: why there is no current list (WDDM failed or stale); shown instead of "no process".</param>
+    public void Apply(IReadOnlyList<ProcessReading> processes, SensorPhase phase, string? unavailable = null)
     {
         _latest = processes;
         var alive = new HashSet<int>();
@@ -128,7 +129,7 @@ public sealed partial class ProcessListViewModel : ObservableObject
             _rows.Remove(gone);
         }
 
-        EmptyText = phase switch
+        EmptyText = processes.Count == 0 && unavailable is not null ? unavailable : phase switch
         {
             SensorPhase.Initializing => "WDDM 카운터를 여는 중...",
             SensorPhase.NoDevice => "GPU 어댑터 카운터를 찾지 못했습니다 (미연결).",

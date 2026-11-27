@@ -186,10 +186,14 @@ public class ComposerTests
         var py = frame.Processes.Single(p => p.Pid == 100);
         Assert.Equal("RTX 5080", py.Adapter); // the adapter with the most dedicated memory; never summed across adapters
         Assert.Equal(6, py.DedicatedGb);
+        // its 1 GB on the second GPU is not in the row; the probe lists it (dual-GPU review)
+        var other = Assert.Single(py.OtherAdapters!);
+        Assert.Equal(new AdapterShare("RTX 5060 Ti", 1, 0), other);
         Assert.DoesNotContain("sk-live", py.CommandLine, StringComparison.Ordinal);
         Assert.Contains("--api-key=***", py.CommandLine, StringComparison.Ordinal);
         var dwm = frame.Processes.Single(p => p.Pid == 200);
         Assert.Equal("", dwm.CommandLine); // not identified yet: no command line at all
+        Assert.Empty(dwm.OtherAdapters!);
         Assert.True(dwm.IsSoftwareAdapter);
     }
 
@@ -202,5 +206,131 @@ public class ComposerTests
         Assert.Equal(Stage2Phase.NoDevice, f.Phase);
         Assert.Equal(3, f.Cpu.LoadPercent); // CPU still read without a GPU reader
         Assert.Equal("RTX 5060 Ti", Composer.ShortGpuName("NVIDIA GeForce RTX 5060 Ti"));
+    }
+
+    /// <summary>A clock the test moves by hand (monotonic timestamps in ticks).</summary>
+    private sealed class ManualTime : TimeProvider
+    {
+        public long Now { get; set; } = 1_000_000;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Now;
+        public void Advance(TimeSpan t) => Now += t.Ticks;
+    }
+
+    private static SourceStatus[] LiveSources() =>
+    [
+        new("NVML (GPU)", SourceState.Live), new("Windows CPU·RAM", SourceState.Live), new("WDDM 프로세스 GPU 메모리", SourceState.Live),
+        new("디스크 읽기(PDH)", SourceState.Live), new("프로세스 식별", SourceState.Live), new("HWiNFO REST", SourceState.Live),
+    ];
+
+    private static HardwareSnapshot Hardware() => new()
+    {
+        Timestamp = DateTimeOffset.UnixEpoch,
+        System = SystemSample.Empty with { CpuUtilizationPercent = 12.5, MemoryUsedBytes = 40L << 30, MemoryTotalBytes = 128L << 30 },
+        Gpus = [new GpuSample { Index = 0, Name = "NVIDIA GeForce RTX 5080", TemperatureC = 61, PowerW = 210, MemoryUsedBytes = 9L << 30, MemoryTotalBytes = 16L << 30 }],
+    };
+
+    [Fact]
+    public void ReadingsOlderThanThreePeriodsAreNotShown()
+    {
+        var time = new ManualTime();
+        var hw = new Timed<HardwareReading>(new HardwareReading(Hardware(), 50 * 1048576.0, true), time.GetTimestamp());
+        var gm = new Timed<GpuMemorySnapshot>(Memory(new GpuProcessMemory { ProcessId = 100, Luid = 1, DedicatedBytes = 6L << 30 }), time.GetTimestamp());
+        var second = TimeSpan.FromSeconds(1);
+        var two = TimeSpan.FromSeconds(2);
+
+        var fresh = Stage2Collector.Fresh(time, hw, second, gm, two, LiveSources());
+        Assert.Same(hw.Value, fresh.Hardware);
+        Assert.Same(gm.Value, fresh.GpuMemory);
+        Assert.All(fresh.Sources, s => Assert.Equal(SourceState.Live, s.State));
+        Assert.Null(fresh.ProcessesUnavailable);
+
+        // the hardware loop hangs for 3.5 s (a driver call that does not return): over 3 periods of 1 s
+        time.Advance(TimeSpan.FromSeconds(3.5));
+        var late = Stage2Collector.Fresh(time, hw, second, gm, two, LiveSources());
+        Assert.NotNull(late.Hardware);
+        Assert.Empty(late.Hardware!.Snapshot.Gpus);
+        Assert.Null(late.Hardware.Snapshot.System.MemoryUsedBytes);
+        Assert.Null(late.Hardware.DiskReadBytesPerSec);
+        Assert.Equal(SourceState.Stale, late.Sources[0].State); // NVML
+        Assert.Equal(SourceState.Stale, late.Sources[1].State); // CPU·RAM
+        Assert.Equal(SourceState.Stale, late.Sources[3].State); // disk, read in the same loop
+        Assert.Contains("마지막 값 3초 전", late.Sources[0].Detail, StringComparison.Ordinal);
+        Assert.Same(gm.Value, late.GpuMemory); // the process loop (2 s period, 6 s limit) is still current
+        var frame = Composer.Compose(DateTimeOffset.UnixEpoch, late.Hardware.Snapshot, late.Hardware.GpuAvailable, late.GpuMemory, null,
+            late.Hardware.DiskReadBytesPerSec, _ => null, late.Sources, late.ProcessesUnavailable);
+        Assert.Equal(Stage2Phase.NoDevice, frame.Phase); // not "ready" with old values
+        Assert.Empty(frame.Gpus);
+        Assert.Null(frame.RamUsedGb);
+        Assert.Null(frame.Cpu.LoadPercent);
+        Assert.Null(frame.SsdReadMBps);
+
+        // the process loop stops too: past 6 s its list is not shown, and the list says why
+        time.Advance(TimeSpan.FromSeconds(3));
+        var gone = Stage2Collector.Fresh(time, hw, second, gm, two, LiveSources());
+        Assert.Null(gone.GpuMemory);
+        Assert.Equal(SourceState.Stale, gone.Sources[2].State);
+        Assert.Equal("WDDM 카운터 값이 6초째 들어오지 않아 프로세스 목록을 표시하지 않습니다.", gone.ProcessesUnavailable);
+        Assert.Equal(SourceState.Live, gone.Sources[5].State); // HWiNFO judges its own age (RC3.2)
+        frame = Composer.Compose(DateTimeOffset.UnixEpoch, gone.Hardware!.Snapshot, false, gone.GpuMemory, null, null, _ => null, gone.Sources, gone.ProcessesUnavailable);
+        Assert.Empty(frame.Processes);
+        Assert.Equal(gone.ProcessesUnavailable, frame.ProcessesUnavailable);
+    }
+
+    [Fact]
+    public void FailedOrMissingReadsSayWhyAndKeepNothing()
+    {
+        var time = new ManualTime();
+        var sources = LiveSources();
+        sources[2] = new SourceStatus("WDDM 프로세스 GPU 메모리", SourceState.Offline, "읽기 오류: PDH_NO_DATA");
+        var failed = Stage2Collector.Fresh(time, null, TimeSpan.FromSeconds(1), null, TimeSpan.FromSeconds(2), sources);
+        Assert.Null(failed.Hardware); // never read yet: the frame says "initializing"
+        Assert.Equal("WDDM 카운터를 읽지 못했습니다: 읽기 오류: PDH_NO_DATA", failed.ProcessesUnavailable);
+        Assert.Equal(SourceState.Offline, failed.Sources[2].State); // an error stays an error (not turned into "stale")
+
+        sources = LiveSources();
+        sources[2] = new SourceStatus("WDDM 프로세스 GPU 메모리", SourceState.Connecting);
+        Assert.Equal("WDDM 카운터를 여는 중...", Stage2Collector.Fresh(time, null, TimeSpan.FromSeconds(1), null, TimeSpan.FromSeconds(2), sources).ProcessesUnavailable);
+
+        // a failed hardware pass is an empty reading (its own timestamp): no GPU, no CPU, no RAM, at once
+        var empty = new Timed<HardwareReading>(HardwareReading.Empty(DateTimeOffset.UnixEpoch), time.GetTimestamp());
+        var f = Stage2Collector.Fresh(time, empty, TimeSpan.FromSeconds(1), null, TimeSpan.FromSeconds(2), LiveSources());
+        var frame = Composer.Compose(DateTimeOffset.UnixEpoch, f.Hardware!.Snapshot, f.Hardware.GpuAvailable, null, null, f.Hardware.DiskReadBytesPerSec, _ => null, f.Sources);
+        Assert.Equal(Stage2Phase.NoDevice, frame.Phase);
+        Assert.Empty(frame.Gpus);
+        Assert.Null(frame.RamUsedGb);
+    }
+
+    [Fact]
+    public void NvmlStateFollowsEachPass()
+    {
+        var withGpu = Hardware();
+        Assert.Equal(SourceState.Live, Stage2Collector.NvmlStatus(withGpu, true, null, everLive: false).State);
+        var lost = new HardwareSnapshot
+        {
+            Timestamp = DateTimeOffset.UnixEpoch,
+            Issues = [new SensorIssue("NVML", "gpu", SensorStatus.Error, "GPU 연결이 끊겼습니다 (NVML GPU_IS_LOST). 다시 초기화합니다.")],
+        };
+        var offline = Stage2Collector.NvmlStatus(lost, false, "NVML이 초기화되지 않았습니다.", everLive: true);
+        Assert.Equal(SourceState.Offline, offline.State); // was live, now lost: not "live" with the old values
+        Assert.Contains("GPU_IS_LOST", offline.Detail, StringComparison.Ordinal);
+        var never = Stage2Collector.NvmlStatus(new HardwareSnapshot { Timestamp = DateTimeOffset.UnixEpoch }, false, "nvml.dll을 찾을 수 없습니다", everLive: false);
+        Assert.Equal(SourceState.Unavailable, never.State);
+        Assert.Equal("nvml.dll을 찾을 수 없습니다", never.Detail);
+    }
+
+    [Fact]
+    public void UnknownCapacitiesAreNotGuessed()
+    {
+        var hw = Hardware() with
+        {
+            System = SystemSample.Empty with { CpuUtilizationPercent = 5, MemoryUsedBytes = 40L << 30 },
+            Gpus = [new GpuSample { Index = 0, Name = "NVIDIA GeForce RTX 5080", MemoryUsedBytes = 9L << 30 }],
+        };
+        var frame = Composer.Compose(DateTimeOffset.UnixEpoch, hw, true, null, null, null, _ => null, []);
+        Assert.Equal(9, frame.Gpus[0].VramUsedGb);
+        Assert.Null(frame.Gpus[0].VramTotalGb);
+        Assert.Equal(40, frame.RamUsedGb);
+        Assert.Null(frame.RamTotalGb);
     }
 }

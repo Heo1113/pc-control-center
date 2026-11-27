@@ -49,6 +49,10 @@ L "- RAM: $($f.ram.UsedGb) / $($f.ram.TotalGb) GB"
 L "- NVMe: $($f.ssd.TemperatureC) °C (HWiNFO, 최고값) · 읽기 $($f.ssd.ReadMBps) MB/s (Windows)"
 L "- WireView(HWiNFO 경유, IRON은 USB를 열지 않음): 연결 $($f.wireView.Connected) · 핀 $(@($f.wireView.PinCurrentsA) -join ' / ') A · 전력 $($f.wireView.PowerW) W · 전압 $($f.wireView.VoltageV) V"
 L "- GPU 사용 프로세스 $(@($f.processes).Count)개, 전체 식별 $($ids.Count)개"
+# dual-GPU review: a process holding memory on both GPUs is one row (the GPU with more dedicated memory); the rest is listed here
+$multi = @($f.processes | Where-Object { @($_.otherAdapters).Count -gt 0 })
+L "- 두 GPU 이상에 메모리가 있는 프로세스 $($multi.Count)개 (창에는 전용 메모리가 큰 GPU 한 행만 표시)"
+foreach ($p in $multi) { L "  - PID $($p.Pid) $($p.ImageName): $($p.Adapter) 전용 $($p.DedicatedGb) GB + $((@($p.otherAdapters) | ForEach-Object { "$($_.Adapter) 전용 $($_.DedicatedGb) GB · 공유 $($_.SharedGb) GB" }) -join ' + ')" }
 L ""
 L "## 3. 한글 MUI (파일 설명)"
 $fromFile = @($ids | Where-Object { $_.titleBasis -eq '버전 정보' })

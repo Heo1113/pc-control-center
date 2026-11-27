@@ -25,14 +25,17 @@ public sealed record GpuReading
     public double? PowerW { get; init; }
     public double? UtilizationPercent { get; init; }
     public double? VramUsedGb { get; init; }
-    public double VramTotalGb { get; init; } = 16;
+
+    /// <summary>Total VRAM as the reader reports it; null = not known (shown as N/A, never a guessed size).</summary>
+    public double? VramTotalGb { get; init; }
     public double? ClockMhz { get; init; }
 }
 
 /// <summary>CPU load and the three temperature sensors the FLUX PRO display can show.</summary>
 public sealed record CpuReading(double? LoadPercent, double? TctlC, double? PackageC, double? CoreMaxC);
 
-public sealed record RamReading(double? UsedGb, double TotalGb);
+/// <param name="TotalGb">Installed RAM as Windows reports it; null = not known (shown as N/A, never a guessed size).</param>
+public sealed record RamReading(double? UsedGb, double? TotalGb);
 
 public sealed record SsdReading(double? TemperatureC, double? ReadMBps);
 
@@ -78,11 +81,14 @@ public sealed record TelemetryFrame
     public SensorPhase Phase { get; init; } = SensorPhase.Ready;
     public required IReadOnlyList<GpuReading> Gpus { get; init; }
     public CpuReading Cpu { get; init; } = new(null, null, null, null);
-    public RamReading Ram { get; init; } = new(null, 128);
+    public RamReading Ram { get; init; } = new(null, null);
     public SsdReading Ssd { get; init; } = new(null, null);
     public WireViewReading WireView { get; init; } = WireViewReading.None;
     public FluxReading Flux { get; init; } = new(false, false);
     public IReadOnlyList<ProcessReading> Processes { get; init; } = [];
+
+    /// <summary>Stage 2: why the process list is empty when the WDDM counters gave nothing current (null otherwise).</summary>
+    public string? ProcessesUnavailableReason { get; init; }
 
     /// <summary>Stage 1: every value is simulated.</summary>
     public bool IsMock { get; init; } = true;

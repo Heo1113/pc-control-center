@@ -87,6 +87,9 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
 
     public bool IsSpikeActive(DateTimeOffset now) => _spikeUntil is { } until && now < until;
 
+    /// <summary>The simulated cards' VRAM (both 16 GB). Only the mock states a size; real data shows N/A when NVML does not.</summary>
+    private const double MockVramGb = 16;
+
     public TelemetryFrame Next(DateTimeOffset now)
     {
         var s = State;
@@ -96,7 +99,7 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
             {
                 Timestamp = now,
                 Phase = SensorPhase.Initializing,
-                Gpus = [new GpuReading { Index = 0, Name = "RTX 5080" }, new GpuReading { Index = 1, Name = "RTX 5060 Ti" }],
+                Gpus = [new GpuReading { Index = 0, Name = "RTX 5080", VramTotalGb = MockVramGb }, new GpuReading { Index = 1, Name = "RTX 5060 Ti", VramTotalGb = MockVramGb }],
             };
         }
 
@@ -106,7 +109,7 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
             {
                 Timestamp = now,
                 Phase = SensorPhase.NoDevice,
-                Gpus = [new GpuReading { Index = 0, Name = "RTX 5080" }, new GpuReading { Index = 1, Name = "RTX 5060 Ti" }],
+                Gpus = [new GpuReading { Index = 0, Name = "RTX 5080", VramTotalGb = MockVramGb }, new GpuReading { Index = 1, Name = "RTX 5060 Ti", VramTotalGb = MockVramGb }],
                 Cpu = new CpuReading(J(6, 1.5, 0), null, null, null),
                 Ram = new RamReading(J(21, 0.2, 0), 128),
             };
@@ -117,6 +120,7 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
         {
             Index = 0,
             Name = "RTX 5080",
+            VramTotalGb = MockVramGb,
             TemperatureC = hot ? J(76, 0.4, 0) : J(48, 0.4, 0),
             PowerW = hot ? J(318, 4, 0) : J(112, 2.5, 0),
             UtilizationPercent = Clamp(hot ? J(98, 1, 0) : J(66, 3, 0), 0, 100),
@@ -127,6 +131,7 @@ public sealed class MockTelemetryProvider(int seed = 20261124, bool jitter = tru
         {
             Index = 1,
             Name = "RTX 5060 Ti",
+            VramTotalGb = MockVramGb,
             TemperatureC = hot ? J(64, 0.4, 0) : J(36, 0.4, 0),
             PowerW = s.Gpu1PowerMissing ? null : hot ? J(142, 3, 0) : J(14, 1, 0),
             UtilizationPercent = Clamp(hot ? J(84, 2, 0) : J(29, 2, 0), 0, 100),

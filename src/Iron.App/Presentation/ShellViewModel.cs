@@ -251,11 +251,11 @@ public sealed partial class ShellViewModel : ObservableObject
             var g0 = frame.Gpus.Count > 0 ? frame.Gpus[0].PowerW : null;
             _nvmlPower.Add(g0);
             _wireViewPower.Add(frame.WireView.Connected && WireView.Port == PortState.Active ? frame.WireView.PowerW : null);
-            Processes.Apply(frame.Processes, frame.Phase);
+            Processes.Apply(frame.Processes, frame.Phase, frame.ProcessesUnavailableReason);
         }
         else if (frame.Phase != SensorPhase.Ready || Processes.Rows.Count == 0)
         {
-            Processes.Apply(frame.Processes, frame.Phase);
+            Processes.Apply(frame.Processes, frame.Phase, frame.ProcessesUnavailableReason);
         }
 
         Apply(frame, counts);
@@ -269,9 +269,11 @@ public sealed partial class ShellViewModel : ObservableObject
 
         // GPU temperature warning (NVML): independent of WireView.
         _alerts.EvaluateGpus(frame.Gpus, tempLimit);
-        for (var i = 0; i < Gpus.Count && i < frame.Gpus.Count; i++)
+        for (var i = 0; i < Gpus.Count; i++)
         {
-            Gpus[i].Apply(frame.Gpus[i], _alerts.GpuHot[i], measuring);
+            // a card the frame has no reading for (NVML lost the GPU, a stopped or stale reader) shows N/A, not its last values
+            Gpus[i].Apply(i < frame.Gpus.Count ? frame.Gpus[i] : new GpuReading { Index = i, Name = Gpus[i].Name },
+                i < frame.Gpus.Count && i < _alerts.GpuHot.Count && _alerts.GpuHot[i], measuring);
         }
 
         // WireView pin warning: only while IRON reads the device; a released or missing port clears it at once.
@@ -287,7 +289,10 @@ public sealed partial class ShellViewModel : ObservableObject
 
         // System modules.
         Cpu.Set(Fmt.Percent2(frame.Cpu.LoadPercent), Fmt.Celsius(frame.Cpu.TctlC), frame.Cpu.LoadPercent / 100.0);
-        Ram.Set(frame.Ram.UsedGb is double used ? $"{Fmt.Int(used)} / {Fmt.Int(frame.Ram.TotalGb)} GB" : Fmt.Missing, "", frame.Ram.UsedGb / frame.Ram.TotalGb);
+        Ram.Set(frame.Ram.UsedGb is double used
+                ? frame.Ram.TotalGb is double totalRam ? $"{Fmt.Int(used)} / {Fmt.Int(totalRam)} GB" : $"{Fmt.Int(used)} GB / {Fmt.Unknown}"
+                : Fmt.Missing,
+            "", frame.Ram.TotalGb is > 0 ? frame.Ram.UsedGb / frame.Ram.TotalGb : null);
         Ssd.Set(Fmt.Celsius(frame.Ssd.TemperatureC), frame.Ssd.ReadMBps is double mb ? Fmt.Int(mb) + "MB/s" : "", frame.Ssd.TemperatureC / 100.0);
 
         var total = PowerTotal.Of(frame.Gpus);
@@ -331,7 +336,7 @@ public sealed partial class ShellViewModel : ObservableObject
         // Tray.
         TrayWireViewText = WireView.IsReading ? $"{WireView.PowerText} W · {Fmt.Celsius(frame.WireView.ConnectorInC)}" : WireView.StateText;
         var g = Gpus;
-        TrayToolTip = Truncate($"IRON · {StatusText} · 5080 {g[0].TemperatureText} · 5060 Ti {g[1].TemperatureText}" + " · 모의 데이터", 120);
+        TrayToolTip = Truncate($"IRON · {StatusText} · 5080 {g[0].TemperatureText} · 5060 Ti {g[1].TemperatureText}" + (_source.IsMock ? " · 모의 데이터" : " · 실측 데이터"), 120);
         OnPropertyChanged(nameof(MockSummary));
     }
 

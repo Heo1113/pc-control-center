@@ -31,6 +31,10 @@ $f = $j.frame
 if ($Secret) { Check 'secret from the test command line is nowhere in probe.json' (-not $raw.Contains($Secret)) $null }
 Check 'CPU load read (Windows counters)' ($null -ne $f.cpu.LoadPercent) $f.cpu.LoadPercent
 Check 'RAM read' ($null -ne $f.ram.UsedGb) $f.ram.UsedGb
+# installed RAM is what Windows reports, never an assumed size (the 128 GB stand-in was removed)
+$installedGb = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 0)
+Check "RAM total = installed RAM ($installedGb GB per CIM, not assumed)" ($null -ne $f.ram.TotalGb -and [math]::Abs($f.ram.TotalGb - $installedGb) -le 1) $f.ram.TotalGb
+Check 'no GPU without a reading claims a VRAM size' (@($f.gpus | Where-Object { $null -eq $_.VramUsedGb -and $null -ne $_.VramTotalGb }).Count -eq 0) $null
 Check 'NVML state reported' (@($j.sources | Where-Object { $_.Name -like 'NVML*' -and $_.State -in 'Live', 'Unavailable' }).Count -eq 1) ($j.sources | Where-Object { $_.Name -like 'NVML*' } | ForEach-Object State)
 if ($ExpectHwInfo) {
     Check 'HWiNFO REST live (mock server)' (@($j.sources | Where-Object { $_.Name -eq 'HWiNFO REST' -and $_.State -eq 'Live' }).Count -eq 1) $null
